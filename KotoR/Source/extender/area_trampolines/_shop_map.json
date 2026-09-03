@@ -1,0 +1,18 @@
+{
+  "danm13": ["dan_droid", "dan_pazaak", "dan_general"],
+  "danm14aa": ["dan_weapon"],
+  "kas_m22aa": ["kas_elistore", "kas_janosstore"],
+  "korr_m33aa": ["CzerkaKorriban", "WeaponKorriban", "MikaStore"],
+  "liv_m99aa": ["suvam01a", "suvam02a", "suvam03a"],
+  "manm26aa": ["man26aa_bar"],
+  "manm26ab": ["man_yortal", "man_yortalk"],
+  "manm26ad": ["man_merch"],
+  "manm26ae": ["man_tyvark", "man_pazaak"],
+  "tar_m02aa": ["Larrim_Store"],
+  "tar_m02ab": ["xxdroidshop"],
+  "tar_m02ac": ["zelkastore1", "zelkastore2", "zelkastore3", "zelkastore1d", "zelkastore2d", "zelkastore3d", "xxkeblastore"],
+  "tar_m03ae": ["cardstore"],
+  "tar_m04aa": ["IgearStore"],
+  "tat_m17ab": ["kas_twostore"],
+  "tat_m17ad": ["kas_fazzastore"]
+}

@@ -1,0 +1,187 @@
+import json
+import os
+import typing
+
+from BaseClasses import Item, ItemClassification
+
+
+class ItemData(typing.NamedTuple):
+    code: typing.Optional[int]
+    classification: ItemClassification
+    # Extender arm name this item forwards to (see KNOWN_ARM_NAMES in
+    # KotorClient.py / AP_ARM_NAMES in extender/src/dllmain.c). Must match
+    # exactly -- this is how the client knows what to send when the item
+    # is received.
+    arm_name: str
+
+
+class KotorItem(Item):
+    game: str = "KotOR"
+
+
+# Full arm-set coverage. Skills/xp/credits are repeatable (each grant is a
+# fixed additive increment, safe to receive many times -- see
+# kotor_reconciliation.py's ARM_EFFECT table, which uses the exact same
+# fixed amounts). Companions, feats, class switches, and the jedi-convert
+# items are one-shot progression items (re-receiving them is a safe no-op
+# via the extender's own before/after-state guards, but there's only ever
+# one copy in the pool). Credits/xp additionally exist as the client-side
+# set_xp/set_credits exact-value reconciliation actions -- that's a
+# correction mechanism, not something granted as an AP item itself.
+base_id = 9200000
+
+item_table: typing.Dict[str, ItemData] = {
+    "Skill: Computer Use": ItemData(base_id + 0, ItemClassification.useful, "computer_use"),
+    "Skill: Demolitions": ItemData(base_id + 1, ItemClassification.useful, "demolitions"),
+    "Skill: Stealth": ItemData(base_id + 2, ItemClassification.useful, "stealth"),
+    "Skill: Awareness": ItemData(base_id + 3, ItemClassification.useful, "awareness"),
+    "Skill: Persuade": ItemData(base_id + 4, ItemClassification.useful, "persuade"),
+    "Skill: Repair": ItemData(base_id + 5, ItemClassification.useful, "repair"),
+    "Skill: Security": ItemData(base_id + 6, ItemClassification.useful, "security"),
+    "Skill: Treat Injury": ItemData(base_id + 7, ItemClassification.useful, "treat_injury"),
+    "Companion: Bastila Shan": ItemData(base_id + 8, ItemClassification.progression, "companion_bastila"),
+    "Companion: Canderous Ordo": ItemData(base_id + 9, ItemClassification.progression, "companion_canderous"),
+    # base_id+10 ("Feat: Toughness"/feat_toughness) RETIRED -- feats are
+    # left entirely to normal in-game level-up choices now, never touched
+    # by AP. Not reusing this offset since it's a stable AP item code a
+    # live seed's item pool depends on, same reasoning as the retired
+    # +13/+14 offsets below.
+    "Class Switch: Jedi Guardian": ItemData(base_id + 11, ItemClassification.progression, "class_guardian"),
+    "Class Switch: Jedi Consular": ItemData(base_id + 12, ItemClassification.progression, "class_consular"),
+    # base_id+13/+14 (Companion: Jedi Conversion / Jedi Experience) RETIRED
+    # -- see generate_trampoline_batch.py's APPLIES table comment. Confirmed
+    # live: AddMultiClass and GiveXPToCreature both have zero effect on a
+    # non-PC party member in this engine build. Not renumbering the
+    # remaining items' base_id offsets since those are stable AP item codes
+    # a live seed's item pool depends on.
+    "Ability: Charisma Increase": ItemData(base_id + 15, ItemClassification.useful, "grant_test_ability"),
+    "Experience Points": ItemData(base_id + 16, ItemClassification.filler, "xp"),
+    "Credit Chit": ItemData(base_id + 17, ItemClassification.filler, "credits"),
+    "Companion: Carth Onasi": ItemData(base_id + 18, ItemClassification.progression, "companion_carth"),
+    "Companion: HK-47": ItemData(base_id + 19, ItemClassification.progression, "companion_hk47"),
+    "Companion: Jolee Bindo": ItemData(base_id + 20, ItemClassification.progression, "companion_jolee"),
+    "Companion: Juhani": ItemData(base_id + 21, ItemClassification.progression, "companion_juhani"),
+    "Companion: Mission Vao": ItemData(base_id + 22, ItemClassification.progression, "companion_mission"),
+    "Companion: T3-M4": ItemData(base_id + 23, ItemClassification.progression, "companion_t3m4"),
+    "Companion: Zaalbar": ItemData(base_id + 24, ItemClassification.progression, "companion_zaalbar"),
+    "Class Switch: Jedi Sentinel": ItemData(base_id + 25, ItemClassification.progression, "class_sentinel"),
+    "Ability: Strength Increase": ItemData(base_id + 26, ItemClassification.useful, "ability_strength"),
+    "Ability: Dexterity Increase": ItemData(base_id + 27, ItemClassification.useful, "ability_dexterity"),
+    "Ability: Constitution Increase": ItemData(base_id + 28, ItemClassification.useful, "ability_constitution"),
+    "Ability: Intelligence Increase": ItemData(base_id + 29, ItemClassification.useful, "ability_intelligence"),
+    "Ability: Wisdom Increase": ItemData(base_id + 30, ItemClassification.useful, "ability_wisdom"),
+    # Completion-condition markers (2026-08-29) -- locked (place_locked_item
+    # in __init__.py's create_regions()) to "Level 20 Reached"/"Malak
+    # Defeated" in Locations.py, real items with real codes (NOT an AP
+    # "Event" item with code=None -- that requires the LOCATION's own
+    # address to also be None, i.e. a purely internal marker never sent
+    # over the network at all, which contradicts these being real,
+    # player-visible checks the client reports via a genuine LocationChecks
+    # packet; confirmed live via Main.py's own generation-time assertion
+    # when this was first tried as a true code=None Event). arm_name
+    # "goal_marker" is deliberately unmapped to anything real in
+    # KNOWN_ARM_NAMES/HEAVY_ARMS/CLASS_ARM_TO_KEY -- there is nothing
+    # meaningful to grant for "you already reached level 20"/"you already
+    # defeated Malak" by definition, so on receipt this safely round-trips
+    # to the extender's existing "ERROR:unknown item" reply (dllmain.c's
+    # ap_apply(), the same graceful path any truly-unrecognized name hits)
+    # and stops there -- no crash, no incorrect grant, just a harmless
+    # logged no-op.
+    "Reached Level 20": ItemData(base_id + 31, ItemClassification.progression, "goal_marker"),
+    "Malak Defeated": ItemData(base_id + 32, ItemClassification.progression, "goal_marker"),
+    # true_balance's own pair, added same day once the above pattern was
+    # already in place -- locked to the EXISTING "Alignment: Dark Side 0"/
+    # "Alignment: Light Side 100" locations (no new Locations.py entries
+    # needed, unlike Level 20/Malak above) rather than the wider 0-20/80-100
+    # "extreme" bands kotor_location_tracker.py's true_balance_reached()
+    # uses live in-game -- a deliberate simplification for AP's own
+    # generation-time completion check, not a claim the two are identical;
+    # see Rules.py for the exact reasoning.
+    "Reached Dark Side 0": ItemData(base_id + 33, ItemClassification.progression, "goal_marker"),
+    "Reached Light Side 100": ItemData(base_id + 34, ItemClassification.progression, "goal_marker"),
+    # RandomizeClass=jedi_companion (2026-08-30): one guaranteed-placement
+    # item per (non-Jedi companion x possible Jedi class) -- 4 companions x
+    # 3 classes = 12 static entries here, but __init__.py's create_items()
+    # only ever actually places ONE of the 3 per companion each seed (the
+    # class was already decided by that seed's roll, same guaranteed-
+    # placement pattern as jedi_start=granted). arm_name is the
+    # "companion_class:<name>:<class>" parameterized action -- see
+    # generate_trampoline_batch.py's build_companion_class_block() and
+    # KotorClient.py's companion_class dispatch. Order/grouping matches
+    # __init__.py's NON_JEDI_COMPANIONS list.
+    "Jedi Training: Carth (Guardian)": ItemData(base_id + 35, ItemClassification.progression, "companion_class:carth:guardian"),
+    "Jedi Training: Carth (Consular)": ItemData(base_id + 36, ItemClassification.progression, "companion_class:carth:consular"),
+    "Jedi Training: Carth (Sentinel)": ItemData(base_id + 37, ItemClassification.progression, "companion_class:carth:sentinel"),
+    "Jedi Training: Canderous (Guardian)": ItemData(base_id + 38, ItemClassification.progression, "companion_class:canderous:guardian"),
+    "Jedi Training: Canderous (Consular)": ItemData(base_id + 39, ItemClassification.progression, "companion_class:canderous:consular"),
+    "Jedi Training: Canderous (Sentinel)": ItemData(base_id + 40, ItemClassification.progression, "companion_class:canderous:sentinel"),
+    "Jedi Training: Zaalbar (Guardian)": ItemData(base_id + 41, ItemClassification.progression, "companion_class:zaalbar:guardian"),
+    "Jedi Training: Zaalbar (Consular)": ItemData(base_id + 42, ItemClassification.progression, "companion_class:zaalbar:consular"),
+    "Jedi Training: Zaalbar (Sentinel)": ItemData(base_id + 43, ItemClassification.progression, "companion_class:zaalbar:sentinel"),
+    "Jedi Training: Mission (Guardian)": ItemData(base_id + 44, ItemClassification.progression, "companion_class:mission:guardian"),
+    "Jedi Training: Mission (Consular)": ItemData(base_id + 45, ItemClassification.progression, "companion_class:mission:consular"),
+    "Jedi Training: Mission (Sentinel)": ItemData(base_id + 46, ItemClassification.progression, "companion_class:mission:sentinel"),
+    # JediStart=random_class (2026-09-02): the PC's own starting class,
+    # rerolled to one of all 6 classes. A Jedi roll reuses the existing
+    # Class Switch items above (AddMultiClass, same as jedi_start=start/
+    # granted); a base-class roll needs these 3 new items instead, since
+    # AddMultiClass can't replace an existing base class -- these use
+    # KSE_SetCreatureField directly (see generate_trampoline_batch.py's
+    # pc_class_soldier/scout/scoundrel arms), the same mechanism
+    # RandomizeClass already uses for companions.
+    "PC Class: Soldier": ItemData(base_id + 47, ItemClassification.progression, "pc_class_soldier"),
+    "PC Class: Scout": ItemData(base_id + 48, ItemClassification.progression, "pc_class_scout"),
+    "PC Class: Scoundrel": ItemData(base_id + 49, ItemClassification.progression, "pc_class_scoundrel"),
+}
+
+# Curated gear (weapons/armor/equipment/consumables) lives in gear_items.json,
+# not here -- it's meant to stay live-editable by hand without a code
+# regeneration step, so it's loaded at runtime instead of baked into this
+# table. Only rows flagged included_as_item go in the pool; arm_name is the
+# give_item:<resref> sentinel KotorClient.py's _deliver_item recognizes and
+# routes to CreateItemOnObject via the extender.
+GEAR_JSON_PATH = os.path.join(os.path.dirname(__file__), "gear_items.json")
+gear_base_id = base_id + 100000  # clear of base_id+0..+30 above, room to grow
+
+
+def _load_gear_items() -> typing.Dict[str, ItemData]:
+    if not os.path.exists(GEAR_JSON_PATH):
+        return {}
+    with open(GEAR_JSON_PATH, encoding="utf-8") as f:
+        gear = json.load(f)
+
+    # sorted() by resref keeps codes stable across regens as long as the
+    # underlying JSON's key set doesn't change.
+    included = [(resref, data) for resref, data in sorted(gear.items()) if data.get("included_as_item")]
+    name_counts: typing.Dict[str, int] = {}
+    for _, data in included:
+        name_counts[data["name"]] = name_counts.get(data["name"], 0) + 1
+
+    entries: typing.Dict[str, ItemData] = {}
+    used_names: typing.Set[str] = set()
+    for index, (resref, data) in enumerate(included):
+        name = data["name"]
+        if name_counts[name] > 1:
+            name = f"{name} ({resref})"
+        while name in used_names:  # defensive: guarantee uniqueness even beyond the count check above
+            name = f"{name}_"
+        used_names.add(name)
+        entries[name] = ItemData(gear_base_id + index, ItemClassification.useful, f"give_item:{resref}")
+    return entries
+
+
+item_table.update(_load_gear_items())
+
+item_name_to_id: typing.Dict[str, int] = {name: data.code for name, data in item_table.items()}
+lookup_id_to_name: typing.Dict[int, str] = {data.code: name for name, data in item_table.items()}
+# arm_name -> item display name -- every entry's arm_name is unique, so
+# this reverse lookup is unambiguous. Single source of truth for the
+# "which item name grants this arm" question, used by both
+# generate_early() and _skill_ability_pools() in __init__.py (previously
+# each rebuilt this same dict independently).
+arm_name_to_item: typing.Dict[str, str] = {data.arm_name: name for name, data in item_table.items()}
+
+# Filler items are the ones that pad the pool out to match location count --
+# both are safely repeatable with no upper bound concern (skills cap at 127
+# via KSE, xp/credits have no meaningful ceiling).
+filler_items = ["Experience Points", "Credit Chit"]

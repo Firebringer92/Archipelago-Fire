@@ -1,0 +1,502 @@
+[
+  {
+    "tag": "Category000",
+    "target_value": 30,
+    "display_name": "The Code of the Sith"
+  },
+  {
+    "tag": "Geno_Ithorak",
+    "target_value": 99,
+    "display_name": "Genoharadan: Ithorak"
+  },
+  {
+    "tag": "Geno_Lorgal",
+    "target_value": 99,
+    "display_name": "Genoharadan: Lorgal"
+  },
+  {
+    "tag": "Geno_Rulan",
+    "target_value": 99,
+    "display_name": "Genoharadan: Rulan"
+  },
+  {
+    "tag": "Geno_Vorn",
+    "target_value": 99,
+    "display_name": "Genoharadan: Vorn"
+  },
+  {
+    "tag": "Geno_Zuulan",
+    "target_value": 100,
+    "display_name": "Genoharadan: Zuulan"
+  },
+  {
+    "tag": "Genoharadan",
+    "target_value": 102,
+    "display_name": "Genoharadan"
+  },
+  {
+    "tag": "Man26ab_swoopraces",
+    "target_value": 80,
+    "display_name": "Manaan Swoop Races"
+  },
+  {
+    "tag": "Tat20aa_worthy",
+    "target_value": 30,
+    "display_name": "Worthy of History"
+  },
+  {
+    "tag": "dan_casus",
+    "target_value": 20,
+    "display_name": "Dead Settler"
+  },
+  {
+    "tag": "dan_companion",
+    "target_value": 36,
+    "display_name": "Missing Companion"
+  },
+  {
+    "tag": "dan_council",
+    "target_value": 20,
+    "display_name": "The Jedi Council"
+  },
+  {
+    "tag": "dan_murder",
+    "target_value": 99,
+    "display_name": "Murdered Settler"
+  },
+  {
+    "tag": "dan_raiders",
+    "target_value": 40,
+    "display_name": "Mandalorian Raiders"
+  },
+  {
+    "tag": "dan_romance",
+    "target_value": 68,
+    "display_name": "Sandral-Matale Feud"
+  },
+  {
+    "tag": "dan_ruins",
+    "target_value": 20,
+    "display_name": "Investigate Ruins"
+  },
+  {
+    "tag": "dan_trials",
+    "target_value": 50,
+    "display_name": "Jedi Trials"
+  },
+  {
+    "tag": "ebo46_unfinishedbusiness",
+    "target_value": 30,
+    "display_name": "Unfinished Business"
+  },
+  {
+    "tag": "ebo_supplies",
+    "target_value": 99,
+    "display_name": "Dwindling Supplies"
+  },
+  {
+    "tag": "end_attack",
+    "target_value": 99,
+    "display_name": "Attack on the Endar Spire"
+  },
+  {
+    "tag": "k_ebonhawk",
+    "target_value": 1,
+    "display_name": "The Ebon Hawk"
+  },
+  {
+    "tag": "k_jagi",
+    "target_value": 25,
+    "display_name": "Jagi's Challenge"
+  },
+  {
+    "tag": "k_missbroth",
+    "target_value": 99,
+    "display_name": "Mission's Brother"
+  },
+  {
+    "tag": "k_pazaak",
+    "target_value": 99,
+    "display_name": "Pazaak Rules"
+  },
+  {
+    "tag": "k_pebo_gizkatrouble",
+    "target_value": 30,
+    "display_name": "The Trouble With Gizka"
+  },
+  {
+    "tag": "k_pebo_stowaway",
+    "target_value": 99,
+    "display_name": "Strange Stowaway"
+  },
+  {
+    "tag": "k_rapidtransit",
+    "target_value": 99,
+    "display_name": "Rapid Transit System"
+  },
+  {
+    "tag": "k_starforge",
+    "target_value": 75,
+    "display_name": "A Quest for the Star Forge"
+  },
+  {
+    "tag": "k_swg_bastilatalk",
+    "target_value": 100,
+    "display_name": "Bastila"
+  },
+  {
+    "tag": "k_swg_canderous",
+    "target_value": 120,
+    "display_name": "Canderous"
+  },
+  {
+    "tag": "k_swg_carthtalk",
+    "target_value": 99,
+    "display_name": "Carth"
+  },
+  {
+    "tag": "k_swg_helenatalk",
+    "target_value": 50,
+    "display_name": "Bastila's Mother"
+  },
+  {
+    "tag": "k_swg_hk47talk",
+    "target_value": 60,
+    "display_name": "HK-47"
+  },
+  {
+    "tag": "k_swg_joleetalk",
+    "target_value": 99,
+    "display_name": "Jolee Bindo"
+  },
+  {
+    "tag": "k_swg_juhani",
+    "target_value": 120,
+    "display_name": "Juhani"
+  },
+  {
+    "tag": "k_xor",
+    "target_value": 25,
+    "display_name": "Threat from Xor"
+  },
+  {
+    "tag": "kas22_EliMatton",
+    "target_value": 80,
+    "display_name": "Honest Debt"
+  },
+  {
+    "tag": "kas22_starmap",
+    "target_value": 70,
+    "display_name": "Star Map: Kashyyyk"
+  },
+  {
+    "tag": "kas23_mainwookplot",
+    "target_value": 150,
+    "display_name": "Chieftain in Need"
+  },
+  {
+    "tag": "kas23_rorworr",
+    "target_value": 80,
+    "display_name": "A Wookiee Lost"
+  },
+  {
+    "tag": "kas24_removepoachers",
+    "target_value": 40,
+    "display_name": "Jolee's Request"
+  },
+  {
+    "tag": "kas24_tachpoaching",
+    "target_value": 50,
+    "display_name": "Tach Poaching"
+  },
+  {
+    "tag": "kas25_mandalorians",
+    "target_value": 70,
+    "display_name": "Hidden Hunters"
+  },
+  {
+    "tag": "kor25_doubtsith",
+    "target_value": 50,
+    "display_name": "A Doubting Sith"
+  },
+  {
+    "tag": "kor33_enteracademy",
+    "target_value": 50,
+    "display_name": "Enter the Sith Academy"
+  },
+  {
+    "tag": "kor33_findstarmap",
+    "target_value": 40,
+    "display_name": "Star Map: Korriban"
+  },
+  {
+    "tag": "kor35_aidlashowe",
+    "target_value": 60,
+    "display_name": "Aiding Lashowe"
+  },
+  {
+    "tag": "kor35_doublecross",
+    "target_value": 30,
+    "display_name": "The Double-Cross"
+  },
+  {
+    "tag": "kor35_doublecross2",
+    "target_value": 40,
+    "display_name": "The Double-Double-Cross"
+  },
+  {
+    "tag": "kor35_findingdustil",
+    "target_value": 40,
+    "display_name": "Finding Dustil"
+  },
+  {
+    "tag": "kor35_mandalorian",
+    "target_value": 60,
+    "display_name": "The Mandalorian Weapons Cache"
+  },
+  {
+    "tag": "kor35_renegadesith",
+    "target_value": 60,
+    "display_name": "Renegade Sith"
+  },
+  {
+    "tag": "kor35_waysith",
+    "target_value": 60,
+    "display_name": "The Way of the Sith"
+  },
+  {
+    "tag": "kor37_ajuntapall",
+    "target_value": 60,
+    "display_name": "The Sword of Ajunta Pall"
+  },
+  {
+    "tag": "kor38_hermit",
+    "target_value": 40,
+    "display_name": "The Hermit in the Hills"
+  },
+  {
+    "tag": "kor38_roguedroid",
+    "target_value": 50,
+    "display_name": "Rogue Droid"
+  },
+  {
+    "tag": "lev_captured",
+    "target_value": 99,
+    "display_name": "Captured by the Leviathan"
+  },
+  {
+    "tag": "main_premium",
+    "target_value": 20,
+    "display_name": "Premium Merchant"
+  },
+  {
+    "tag": "man26_starmap",
+    "target_value": 40,
+    "display_name": "Star Map: Manaan"
+  },
+  {
+    "tag": "man_elora",
+    "target_value": 20,
+    "display_name": "Elora, Sunry's Wife"
+  },
+  {
+    "tag": "man_emb",
+    "target_value": 2,
+    "display_name": "Republic Embassy"
+  },
+  {
+    "tag": "man_firith",
+    "target_value": 20,
+    "display_name": "Firith Me the Pazaak Player"
+  },
+  {
+    "tag": "man_gluupor",
+    "target_value": 20,
+    "display_name": "Gluupor the Rodian"
+  },
+  {
+    "tag": "man_ignus",
+    "target_value": 20,
+    "display_name": "Ignus the Hotel Owner"
+  },
+  {
+    "tag": "man_merc",
+    "target_value": 20,
+    "display_name": "Republic Hiring Mercenaries"
+  },
+  {
+    "tag": "man_missing",
+    "target_value": 48,
+    "display_name": "Missing Selkath"
+  },
+  {
+    "tag": "man_murder",
+    "target_value": 56,
+    "display_name": "Sunry Murder Trial"
+  },
+  {
+    "tag": "man_planet",
+    "target_value": 75,
+    "display_name": "Mission for the Republic"
+  },
+  {
+    "tag": "man_sunry",
+    "target_value": 30,
+    "display_name": "Sunry's Story"
+  },
+  {
+    "tag": "sta_confront",
+    "target_value": 11,
+    "display_name": "The Final Confrontation"
+  },
+  {
+    "tag": "tar_bastsearch",
+    "target_value": 99,
+    "display_name": "The Search for Bastila"
+  },
+  {
+    "tag": "tar_bendakbounty",
+    "target_value": 99,
+    "display_name": "Bendak's Bounty"
+  },
+  {
+    "tag": "tar_buydroid",
+    "target_value": 99,
+    "display_name": "Purchasing a Droid"
+  },
+  {
+    "tag": "tar_diabounty",
+    "target_value": 99,
+    "display_name": "Dia's Bounty"
+  },
+  {
+    "tag": "tar_duelring",
+    "target_value": 99,
+    "display_name": "The Duel Ring"
+  },
+  {
+    "tag": "tar_escape",
+    "target_value": 99,
+    "display_name": "Escaping Taris"
+  },
+  {
+    "tag": "tar_infectedoutcasts",
+    "target_value": 99,
+    "display_name": "Infected Outcasts"
+  },
+  {
+    "tag": "tar_largobounty",
+    "target_value": 99,
+    "display_name": "Largo's Bounty"
+  },
+  {
+    "tag": "tar_matrik",
+    "target_value": 99,
+    "display_name": "Matrik's Bounty"
+  },
+  {
+    "tag": "tar_party",
+    "target_value": 1,
+    "display_name": "Invited to a Party"
+  },
+  {
+    "tag": "tar_planetinfo",
+    "target_value": 99,
+    "display_name": "Taris: Planetary Information"
+  },
+  {
+    "tag": "tar_promisedland",
+    "target_value": 40,
+    "display_name": "The Promised Land"
+  },
+  {
+    "tag": "tar_rakghoulserum",
+    "target_value": 20,
+    "display_name": "Rakghoul Serum"
+  },
+  {
+    "tag": "tar_rancor",
+    "target_value": 99,
+    "display_name": "A Rancor in the Sewers"
+  },
+  {
+    "tag": "tar_rukilapprentice",
+    "target_value": 99,
+    "display_name": "Rukil's Apprentice"
+  },
+  {
+    "tag": "tar_selvenbounty",
+    "target_value": 99,
+    "display_name": "Selven's Bounty"
+  },
+  {
+    "tag": "tar_vulkarbase",
+    "target_value": 99,
+    "display_name": "Inside the Vulkar Base"
+  },
+  {
+    "tag": "tat17_starmap",
+    "target_value": 90,
+    "display_name": "Star Map: Tatooine"
+  },
+  {
+    "tag": "tat17aa_jawarescue",
+    "target_value": 80,
+    "display_name": "Fair Trade"
+  },
+  {
+    "tag": "tat17aa_middleman",
+    "target_value": 70,
+    "display_name": "Middleman"
+  },
+  {
+    "tag": "tat17ad_buyinghk47",
+    "target_value": 30,
+    "display_name": "Droid For Sale"
+  },
+  {
+    "tag": "tat17ae_signingnico",
+    "target_value": 70,
+    "display_name": "Signing Nico"
+  },
+  {
+    "tag": "tat17ae_swoopracing",
+    "target_value": 40,
+    "display_name": "Tatooine Swoop Racing"
+  },
+  {
+    "tag": "tat17ag_sandbounty",
+    "target_value": 150,
+    "display_name": "Sand People"
+  },
+  {
+    "tag": "tat18aa_tanistrapped",
+    "target_value": 90,
+    "display_name": "Tanis Trapped"
+  },
+  {
+    "tag": "tat18ac_dragonhunt",
+    "target_value": 70,
+    "display_name": "A Desert Hunt"
+  },
+  {
+    "tag": "tat_ambush",
+    "target_value": 40,
+    "display_name": "Desert Ambush"
+  },
+  {
+    "tag": "unk_invis",
+    "target_value": 30,
+    "display_name": "Invisible Mandalorians"
+  },
+  {
+    "tag": "unk_research",
+    "target_value": 30,
+    "display_name": "Rakatan Research"
+  },
+  {
+    "tag": "unk_trapped",
+    "target_value": 99,
+    "display_name": "Trapped on a Nameless World"
+  }
+]

@@ -1,0 +1,257 @@
+{
+  "danm13": [
+    "danm14aa",
+    "ebo_m12aa"
+  ],
+  "danm14aa": [
+    "danm13",
+    "danm14ab",
+    "danm15"
+  ],
+  "danm14ab": [
+    "danm14aa",
+    "danm14ac"
+  ],
+  "danm14ac": [
+    "danm14ab",
+    "danm14ad"
+  ],
+  "danm14ad": [
+    "danm14ac"
+  ],
+  "danm15": [
+    "danm14aa"
+  ],
+  "ebo_m12aa": [],
+  "ebo_m41aa": [],
+  "end_m01aa": [
+    "end_m01ab"
+  ],
+  "end_m01ab": [],
+  "kas_m22aa": [
+    "ebo_m12aa"
+  ],
+  "kas_m23aa": [],
+  "kas_m23ad": [
+    "kas_m23aa"
+  ],
+  "kas_m24aa": [],
+  "kas_m25aa": [
+    "kas_m24aa"
+  ],
+  "korr_m33aa": [
+    "ebo_m12aa",
+    "korr_m33ab"
+  ],
+  "korr_m33ab": [
+    "korr_m33aa",
+    "korr_m35aa"
+  ],
+  "korr_m34aa": [
+    "korr_m36aa"
+  ],
+  "korr_m35aa": [
+    "korr_m33ab",
+    "korr_m36aa"
+  ],
+  "korr_m36aa": [
+    "korr_m34aa",
+    "korr_m35aa",
+    "korr_m37aa",
+    "korr_m38ab",
+    "korr_m39aa"
+  ],
+  "korr_m37aa": [
+    "korr_m36aa"
+  ],
+  "korr_m38ab": [
+    "korr_m36aa"
+  ],
+  "korr_m39aa": [
+    "korr_m36aa"
+  ],
+  "lev_m40aa": [],
+  "lev_m40ab": [
+    "lev_m40ad"
+  ],
+  "lev_m40ac": [],
+  "lev_m40ad": [
+    "lev_m40ab"
+  ],
+  "liv_m99aa": [
+    "ebo_m12aa"
+  ],
+  "manm26aa": [
+    "manm26ac"
+  ],
+  "manm26ab": [
+    "manm26ae",
+    "manm27aa"
+  ],
+  "manm26ac": [
+    "manm26aa",
+    "manm26ad",
+    "manm26ae"
+  ],
+  "manm26ad": [
+    "ebo_m12aa",
+    "manm26ac"
+  ],
+  "manm26ae": [
+    "manm26ab",
+    "manm26ac"
+  ],
+  "manm27aa": [
+    "manm26ab"
+  ],
+  "manm28aa": [],
+  "manm28ab": [],
+  "manm28ac": [],
+  "manm28ad": [
+    "manm28aa"
+  ],
+  "sta_m45aa": [
+    "ebo_m12aa"
+  ],
+  "sta_m45ac": [
+    "sta_m45ad"
+  ],
+  "sta_m45ad": [
+    "sta_m45ac"
+  ],
+  "tar_m02aa": [
+    "tar_m02ac",
+    "tar_m02af"
+  ],
+  "tar_m02ab": [
+    "tar_m02ac",
+    "tar_m02ad",
+    "tar_m03aa"
+  ],
+  "tar_m02ac": [
+    "tar_m02aa",
+    "tar_m02ab",
+    "tar_m02ae"
+  ],
+  "tar_m02ad": [
+    "tar_m02ab"
+  ],
+  "tar_m02ae": [
+    "tar_m02ac"
+  ],
+  "tar_m02af": [
+    "tar_m02aa"
+  ],
+  "tar_m03aa": [
+    "tar_m02ab",
+    "tar_m03ab",
+    "tar_m03ad",
+    "tar_m03ae",
+    "tar_m04aa",
+    "tar_m10aa",
+    "tar_m11aa"
+  ],
+  "tar_m03ab": [
+    "tar_m03aa"
+  ],
+  "tar_m03ad": [
+    "tar_m03aa"
+  ],
+  "tar_m03ae": [
+    "tar_m03aa"
+  ],
+  "tar_m03af": [],
+  "tar_m04aa": [
+    "tar_m03aa",
+    "tar_m05aa"
+  ],
+  "tar_m05aa": [
+    "tar_m05ab"
+  ],
+  "tar_m05ab": [
+    "tar_m05aa",
+    "tar_m10aa"
+  ],
+  "tar_m08aa": [],
+  "tar_m09ab": [],
+  "tar_m10aa": [
+    "tar_m03aa",
+    "tar_m05ab",
+    "tar_m10ac"
+  ],
+  "tar_m10ab": [
+    "tar_m10aa"
+  ],
+  "tar_m10ac": [
+    "tar_m10aa"
+  ],
+  "tar_m11aa": [
+    "tar_m03aa",
+    "tar_m11ab"
+  ],
+  "tar_m11ab": [
+    "tar_m11aa"
+  ],
+  "tat_m17aa": [
+    "tat_m17ab",
+    "tat_m17ad",
+    "tat_m17ae"
+  ],
+  "tat_m17ab": [
+    "ebo_m12aa",
+    "tat_m17aa"
+  ],
+  "tat_m17ad": [
+    "tat_m17aa"
+  ],
+  "tat_m17ae": [
+    "tat_m17aa"
+  ],
+  "tat_m18aa": [
+    "tat_m17aa",
+    "tat_m18ab",
+    "tat_m18ac"
+  ],
+  "tat_m18ab": [
+    "tat_m18aa",
+    "tat_m18ac",
+    "tat_m20aa"
+  ],
+  "tat_m18ac": [
+    "tat_m18aa",
+    "tat_m18ab"
+  ],
+  "tat_m20aa": [
+    "tat_m18ab"
+  ],
+  "unk_m41aa": [
+    "unk_m41ac",
+    "unk_m41ad"
+  ],
+  "unk_m41ab": [
+    "unk_m41ad",
+    "unk_m42aa"
+  ],
+  "unk_m41ac": [
+    "unk_m41aa",
+    "unk_m43aa"
+  ],
+  "unk_m41ad": [
+    "unk_m41aa",
+    "unk_m41ab",
+    "unk_m44aa"
+  ],
+  "unk_m42aa": [
+    "unk_m41ab"
+  ],
+  "unk_m43aa": [
+    "unk_m41ac"
+  ],
+  "unk_m44aa": [
+    "unk_m41ad",
+    "unk_m44ac"
+  ],
+  "unk_m44ac": [
+    "unk_m44aa"
+  ]
+}

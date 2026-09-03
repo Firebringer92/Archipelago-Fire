@@ -1,0 +1,392 @@
+[
+  {
+    "base": "end_m01aa",
+    "idx": 0,
+    "display_name": "Endar Spire - Command Module"
+  },
+  {
+    "base": "end_m01ab",
+    "idx": 1,
+    "display_name": "Endar Spire - Starboard Section"
+  },
+  {
+    "base": "tar_m02aa",
+    "idx": 2,
+    "display_name": "Taris - South Apartments"
+  },
+  {
+    "base": "danm13",
+    "idx": 3,
+    "display_name": "Dantooine - Jedi Enclave"
+  },
+  {
+    "base": "danm14aa",
+    "idx": 4,
+    "display_name": "Dantooine - Courtyard"
+  },
+  {
+    "base": "danm14ab",
+    "idx": 5,
+    "display_name": "Dantooine - Matale Grounds"
+  },
+  {
+    "base": "danm14ac",
+    "idx": 6,
+    "display_name": "Dantooine - Grove"
+  },
+  {
+    "base": "danm14ad",
+    "idx": 7,
+    "display_name": "Dantooine - Sandral Grounds"
+  },
+  {
+    "base": "danm15",
+    "idx": 8,
+    "display_name": "Dantooine - Ruins"
+  },
+  {
+    "base": "ebo_m12aa",
+    "idx": 9,
+    "display_name": "Ebon Hawk"
+  },
+  {
+    "base": "ebo_m41aa",
+    "idx": 10,
+    "display_name": "Ebon Hawk"
+  },
+  {
+    "base": "kas_m22aa",
+    "idx": 11,
+    "display_name": "Kashyyyk - Czerka Landing Port"
+  },
+  {
+    "base": "kas_m23aa",
+    "idx": 12,
+    "display_name": "Kashyyyk - Village of Rwookrrorro"
+  },
+  {
+    "base": "kas_m23ad",
+    "idx": 13,
+    "display_name": "Kashyyyk - Hall of the Chieftain"
+  },
+  {
+    "base": "kas_m24aa",
+    "idx": 14,
+    "display_name": "Kashyyyk - Upper Shadowlands"
+  },
+  {
+    "base": "kas_m25aa",
+    "idx": 15,
+    "display_name": "Kashyyyk - Lower Shadowlands"
+  },
+  {
+    "base": "korr_m33aa",
+    "idx": 16,
+    "display_name": "Korriban - Dreshdae"
+  },
+  {
+    "base": "korr_m33ab",
+    "idx": 17,
+    "display_name": "Korriban - Sith Academy Entrance"
+  },
+  {
+    "base": "korr_m34aa",
+    "idx": 18,
+    "display_name": "Korriban - Shyrack Caves"
+  },
+  {
+    "base": "korr_m35aa",
+    "idx": 19,
+    "display_name": "Korriban - Sith Academy"
+  },
+  {
+    "base": "korr_m36aa",
+    "idx": 20,
+    "display_name": "Korriban - Valley of Dark Lords"
+  },
+  {
+    "base": "korr_m37aa",
+    "idx": 21,
+    "display_name": "Korriban - Tomb of Ajunta Pall"
+  },
+  {
+    "base": "korr_m38ab",
+    "idx": 22,
+    "display_name": "Korriban - Tomb of Tulak Hord"
+  },
+  {
+    "base": "korr_m39aa",
+    "idx": 23,
+    "display_name": "Korriban - Tomb of Naga Sadow"
+  },
+  {
+    "base": "lev_m40aa",
+    "idx": 24,
+    "display_name": "Leviathan - Prison Block"
+  },
+  {
+    "base": "lev_m40ab",
+    "idx": 25,
+    "display_name": "Leviathan - Command Deck"
+  },
+  {
+    "base": "lev_m40ac",
+    "idx": 26,
+    "display_name": "Leviathan - Hangar"
+  },
+  {
+    "base": "lev_m40ad",
+    "idx": 27,
+    "display_name": "Leviathan - Bridge"
+  },
+  {
+    "base": "liv_m99aa",
+    "idx": 28,
+    "display_name": "Yavin Station"
+  },
+  {
+    "base": "manm26aa",
+    "idx": 29,
+    "display_name": "Manaan - Ahto West"
+  },
+  {
+    "base": "manm26ab",
+    "idx": 30,
+    "display_name": "Manaan - Ahto East"
+  },
+  {
+    "base": "manm26ac",
+    "idx": 31,
+    "display_name": "Manaan - West Central"
+  },
+  {
+    "base": "manm26ad",
+    "idx": 32,
+    "display_name": "Manaan - Docking Bay"
+  },
+  {
+    "base": "manm26ae",
+    "idx": 33,
+    "display_name": "Manaan - East Central"
+  },
+  {
+    "base": "manm27aa",
+    "idx": 34,
+    "display_name": "Manaan - Sith Base"
+  },
+  {
+    "base": "manm28aa",
+    "idx": 35,
+    "display_name": "Manaan - Hrakert Station"
+  },
+  {
+    "base": "manm28ab",
+    "idx": 36,
+    "display_name": "Manaan - Sea Floor"
+  },
+  {
+    "base": "manm28ac",
+    "idx": 37,
+    "display_name": "Manaan - Kolto Control"
+  },
+  {
+    "base": "manm28ad",
+    "idx": 38,
+    "display_name": "Manaan - Hrakert Rift"
+  },
+  {
+    "base": "sta_m45aa",
+    "idx": 39,
+    "display_name": "Star Forge - Deck 1"
+  },
+  {
+    "base": "sta_m45ac",
+    "idx": 40,
+    "display_name": "Star Forge - Command Center"
+  },
+  {
+    "base": "sta_m45ad",
+    "idx": 41,
+    "display_name": "Star Forge - Viewing Platform"
+  },
+  {
+    "base": "tar_m02ab",
+    "idx": 42,
+    "display_name": "Taris - Upper City North"
+  },
+  {
+    "base": "tar_m02ac",
+    "idx": 43,
+    "display_name": "Taris - Upper City South"
+  },
+  {
+    "base": "tar_m02ad",
+    "idx": 44,
+    "display_name": "Taris - North Apartments"
+  },
+  {
+    "base": "tar_m02ae",
+    "idx": 45,
+    "display_name": "Taris - Upper City Cantina"
+  },
+  {
+    "base": "tar_m02af",
+    "idx": 46,
+    "display_name": "Taris - Hideout"
+  },
+  {
+    "base": "tar_m03aa",
+    "idx": 47,
+    "display_name": "Taris - Lower City"
+  },
+  {
+    "base": "tar_m03ab",
+    "idx": 48,
+    "display_name": "Taris - Lower City Apartments"
+  },
+  {
+    "base": "tar_m03ad",
+    "idx": 49,
+    "display_name": "Taris - Lower City Apartments"
+  },
+  {
+    "base": "tar_m03ae",
+    "idx": 50,
+    "display_name": "Taris - Javyar's Cantina"
+  },
+  {
+    "base": "tar_m03af",
+    "idx": 51,
+    "display_name": "Taris - Swoop Platform"
+  },
+  {
+    "base": "tar_m04aa",
+    "idx": 52,
+    "display_name": "Taris - Undercity"
+  },
+  {
+    "base": "tar_m05aa",
+    "idx": 53,
+    "display_name": "Taris - Lower Sewers"
+  },
+  {
+    "base": "tar_m05ab",
+    "idx": 54,
+    "display_name": "Taris - Upper Sewers"
+  },
+  {
+    "base": "tar_m08aa",
+    "idx": 55,
+    "display_name": "Taris - Davik's Estate"
+  },
+  {
+    "base": "tar_m09ab",
+    "idx": 56,
+    "display_name": "Taris - Sith Base"
+  },
+  {
+    "base": "tar_m10aa",
+    "idx": 57,
+    "display_name": "Taris - Black Vulkar Base"
+  },
+  {
+    "base": "tar_m10ab",
+    "idx": 58,
+    "display_name": "Taris - Black Vulkar Base"
+  },
+  {
+    "base": "tar_m10ac",
+    "idx": 59,
+    "display_name": "Taris - Black Vulkar Base"
+  },
+  {
+    "base": "tar_m11aa",
+    "idx": 60,
+    "display_name": "Taris - Hidden Bek Base"
+  },
+  {
+    "base": "tar_m11ab",
+    "idx": 61,
+    "display_name": "Taris - Hidden Bek Base"
+  },
+  {
+    "base": "tat_m17aa",
+    "idx": 62,
+    "display_name": "Tatooine - Anchorhead"
+  },
+  {
+    "base": "tat_m17ab",
+    "idx": 63,
+    "display_name": "Tatooine - Docking Bay"
+  },
+  {
+    "base": "tat_m17ad",
+    "idx": 64,
+    "display_name": "Tatooine - Hunting Lodge"
+  },
+  {
+    "base": "tat_m17ae",
+    "idx": 65,
+    "display_name": "Tatooine - Swoop Registration"
+  },
+  {
+    "base": "tat_m18aa",
+    "idx": 66,
+    "display_name": "Tatooine - Dune Sea"
+  },
+  {
+    "base": "tat_m18ab",
+    "idx": 67,
+    "display_name": "Tatooine - Sand People Territory"
+  },
+  {
+    "base": "tat_m18ac",
+    "idx": 68,
+    "display_name": "Tatooine - Eastern Dune Sea"
+  },
+  {
+    "base": "tat_m20aa",
+    "idx": 69,
+    "display_name": "Tatooine - Sand People Enclave"
+  },
+  {
+    "base": "unk_m41aa",
+    "idx": 70,
+    "display_name": "Unknown World - Central Beach"
+  },
+  {
+    "base": "unk_m41ab",
+    "idx": 71,
+    "display_name": "Unknown World - South Beach"
+  },
+  {
+    "base": "unk_m41ac",
+    "idx": 72,
+    "display_name": "Unknown World - North Beach"
+  },
+  {
+    "base": "unk_m41ad",
+    "idx": 73,
+    "display_name": "Unknown World - Temple Exterior"
+  },
+  {
+    "base": "unk_m42aa",
+    "idx": 74,
+    "display_name": "Unknown World - Elder Settlement"
+  },
+  {
+    "base": "unk_m43aa",
+    "idx": 75,
+    "display_name": "Unknown World - Rakatan Settlement"
+  },
+  {
+    "base": "unk_m44aa",
+    "idx": 76,
+    "display_name": "Unknown World - Temple Main Floor"
+  },
+  {
+    "base": "unk_m44ac",
+    "idx": 77,
+    "display_name": "Unknown World - Temple Summit"
+  }
+]

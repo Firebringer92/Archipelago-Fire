@@ -1,0 +1,1406 @@
+{
+  "danm13:Door List:3": {
+    "dest_module": "danm14aa",
+    "dest_waypoint": "from13",
+    "index": 3,
+    "kind": "door",
+    "list": "Door List",
+    "module": "danm13",
+    "tag": "dan13_door03"
+  },
+  "danm13:TriggerList:2": {
+    "dest_module": "ebo_m12aa",
+    "dest_waypoint": "K_EBN_RAMP_ENTRANCE",
+    "index": 2,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm13",
+    "tag": "dan13_tom12aa"
+  },
+  "danm14aa:Door List:2": {
+    "dest_module": "danm13",
+    "dest_waypoint": "from14a",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "danm14aa",
+    "tag": "man14aa_door03"
+  },
+  "danm14aa:Door List:4": {
+    "dest_module": "danm15",
+    "dest_waypoint": "from14a",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "danm14aa",
+    "tag": "man14aa_door04"
+  },
+  "danm14aa:TriggerList:0": {
+    "dest_module": "danm14ab",
+    "dest_waypoint": "from14aw",
+    "index": 0,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14aa",
+    "tag": "to14bw"
+  },
+  "danm14aa:TriggerList:2": {
+    "dest_module": "danm14ab",
+    "dest_waypoint": "from14ae",
+    "index": 2,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14aa",
+    "tag": "to14be"
+  },
+  "danm14ab:TriggerList:0": {
+    "dest_module": "danm14aa",
+    "dest_waypoint": "from14be",
+    "index": 0,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ab",
+    "tag": "to14ae"
+  },
+  "danm14ab:TriggerList:1": {
+    "dest_module": "danm14aa",
+    "dest_waypoint": "from14bw",
+    "index": 1,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ab",
+    "tag": "to14aw"
+  },
+  "danm14ab:TriggerList:2": {
+    "dest_module": "danm14ac",
+    "dest_waypoint": "from14bw",
+    "index": 2,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ab",
+    "tag": "to14cw"
+  },
+  "danm14ab:TriggerList:3": {
+    "dest_module": "danm14ac",
+    "dest_waypoint": "from14be",
+    "index": 3,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ab",
+    "tag": "to14ce"
+  },
+  "danm14ac:TriggerList:0": {
+    "dest_module": "danm14ab",
+    "dest_waypoint": "from14cw",
+    "index": 0,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ac",
+    "tag": "to14bw"
+  },
+  "danm14ac:TriggerList:3": {
+    "dest_module": "danm14ad",
+    "dest_waypoint": "from14ce",
+    "index": 3,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ac",
+    "tag": "to14de"
+  },
+  "danm14ac:TriggerList:4": {
+    "dest_module": "danm14ad",
+    "dest_waypoint": "from14cw",
+    "index": 4,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ac",
+    "tag": "to14dw"
+  },
+  "danm14ac:TriggerList:5": {
+    "dest_module": "danm14ab",
+    "dest_waypoint": "from14ce",
+    "index": 5,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ac",
+    "tag": "to14be"
+  },
+  "danm14ad:Door List:0": {
+    "dest_module": "danm16",
+    "dest_waypoint": "from14db",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "danm14ad",
+    "tag": "dan14ad_door02"
+  },
+  "danm14ad:Door List:1": {
+    "dest_module": "danm16",
+    "dest_waypoint": "from14df",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "danm14ad",
+    "tag": "dan14ad_door01"
+  },
+  "danm14ad:TriggerList:1": {
+    "dest_module": "danm14ac",
+    "dest_waypoint": "from14dw",
+    "index": 1,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ad",
+    "tag": "to14cw"
+  },
+  "danm14ad:TriggerList:2": {
+    "dest_module": "danm14ac",
+    "dest_waypoint": "from14de",
+    "index": 2,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ad",
+    "tag": "to14ce"
+  },
+  "danm14ad:TriggerList:3": {
+    "dest_module": "danm14ae",
+    "dest_waypoint": "from14d",
+    "index": 3,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ad",
+    "tag": "to14ae"
+  },
+  "danm14ae:TriggerList:0": {
+    "dest_module": "danm14ad",
+    "dest_waypoint": "from14e",
+    "index": 0,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "danm14ae",
+    "tag": "to14ad"
+  },
+  "danm15:Door List:2": {
+    "dest_module": "danm14aa",
+    "dest_waypoint": "from15",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "danm15",
+    "tag": "man15_door02"
+  },
+  "danm16:Door List:7": {
+    "dest_module": "danm14ad",
+    "dest_waypoint": "from16f",
+    "index": 7,
+    "kind": "door",
+    "list": "Door List",
+    "module": "danm16",
+    "tag": "dan16_door03"
+  },
+  "danm16:Door List:8": {
+    "dest_module": "danm14ad",
+    "dest_waypoint": "from16b",
+    "index": 8,
+    "kind": "door",
+    "list": "Door List",
+    "module": "danm16",
+    "tag": "dan16_door04"
+  },
+  "end_m01aa:Door List:8": {
+    "dest_module": "end_m01ab",
+    "dest_waypoint": "from_01a",
+    "index": 8,
+    "kind": "door",
+    "list": "Door List",
+    "module": "end_m01aa",
+    "tag": "end_door10"
+  },
+  "kas_m22aa:Door List:0": {
+    "dest_module": "kas_m22ab",
+    "dest_waypoint": "kas22aa_kas22ab",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "kas_m22aa",
+    "tag": "KashyyykDoor3"
+  },
+  "kas_m22aa:TriggerList:9": {
+    "dest_module": "ebo_m12aa",
+    "dest_waypoint": "K_EBN_RAMP_ENTRANCE",
+    "index": 9,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "kas_m22aa",
+    "tag": "EbonHawk"
+  },
+  "kas_m22ab:Door List:0": {
+    "dest_module": "kas_m22aa",
+    "dest_waypoint": "kas22ab_kas22aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "kas_m22ab",
+    "tag": "KashyyykDoor3"
+  },
+  "kas_m22ab:Door List:1": {
+    "dest_module": "kas_m23aa",
+    "dest_waypoint": "kas22ab_kas23aa",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "kas_m22ab",
+    "tag": "kas22_towndoor"
+  },
+  "kas_m23aa:Door List:1": {
+    "dest_module": "kas_m22ab",
+    "dest_waypoint": "kas23aa_kas22ab",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "kas_m23aa",
+    "tag": "KashyyykDoor3"
+  },
+  "kas_m23aa:Door List:2": {
+    "dest_module": "kas_m23ac",
+    "dest_waypoint": "kas23aa_kas23ac",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "kas_m23aa",
+    "tag": "KashyyykDoor1"
+  },
+  "kas_m23aa:Door List:3": {
+    "dest_module": "kas_m23ab",
+    "dest_waypoint": "kas23aa_kas23ab",
+    "index": 3,
+    "kind": "door",
+    "list": "Door List",
+    "module": "kas_m23aa",
+    "tag": "KashyyykDoor1"
+  },
+  "kas_m23ab:Door List:0": {
+    "dest_module": "kas_m23aa",
+    "dest_waypoint": "kas23ab_kas23aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "kas_m23ab",
+    "tag": "KashyyykDoor2"
+  },
+  "kas_m23ac:Door List:0": {
+    "dest_module": "kas_m23aa",
+    "dest_waypoint": "kas23ac_kas23aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "kas_m23ac",
+    "tag": "KashyyykDoor2"
+  },
+  "kas_m23ad:Door List:0": {
+    "dest_module": "kas_m23aa",
+    "dest_waypoint": "kas23ad_kas23aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "kas_m23ad",
+    "tag": "KashyyykDoor2"
+  },
+  "kas_m25aa:TriggerList:2": {
+    "dest_module": "kas_m24aa",
+    "dest_waypoint": "kas25aa_kas24aa",
+    "index": 2,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "kas_m25aa",
+    "tag": "Exit"
+  },
+  "korr_m33aa:Door List:0": {
+    "dest_module": "korr_m33ab",
+    "dest_waypoint": "K33B_WAY_K33A",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m33aa",
+    "tag": "kor33a_kor33b"
+  },
+  "korr_m33aa:TriggerList:9": {
+    "dest_module": "ebo_m12aa",
+    "dest_waypoint": "K_EBN_RAMP_ENTRANCE",
+    "index": 9,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "korr_m33aa",
+    "tag": "k33_trg_ebonhawk"
+  },
+  "korr_m33ab:Door List:0": {
+    "dest_module": "korr_m35aa",
+    "dest_waypoint": "k35_way_entrance",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m33ab",
+    "tag": "k33b_dor_academy"
+  },
+  "korr_m33ab:Door List:1": {
+    "dest_module": "korr_m33aa",
+    "dest_waypoint": "K33_WAY_K33B",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m33ab",
+    "tag": "kor33b_kor33a"
+  },
+  "korr_m34aa:TriggerList:0": {
+    "dest_module": "korr_m36aa",
+    "dest_waypoint": "K36_WAY_K34",
+    "index": 0,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "korr_m34aa",
+    "tag": "k34_trg_k36"
+  },
+  "korr_m35aa:Door List:4": {
+    "dest_module": "korr_m36aa",
+    "dest_waypoint": "K36_WAY_K35",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m35aa",
+    "tag": "kor35_kor36"
+  },
+  "korr_m35aa:Door List:5": {
+    "dest_module": "korr_m33ab",
+    "dest_waypoint": "K33B_WAY_K35",
+    "index": 5,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m35aa",
+    "tag": "kor35_kor33b"
+  },
+  "korr_m36aa:Door List:0": {
+    "dest_module": "korr_m38aa",
+    "dest_waypoint": "K38A_WAY_K36",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m36aa",
+    "tag": "kor36_kor38a"
+  },
+  "korr_m36aa:Door List:1": {
+    "dest_module": "korr_m38ab",
+    "dest_waypoint": "K38B_WAY_K36",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m36aa",
+    "tag": "kor36_kor38b"
+  },
+  "korr_m36aa:Door List:2": {
+    "dest_module": "korr_m39aa",
+    "dest_waypoint": "K39_WAY_K36",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m36aa",
+    "tag": "kor36_kor39"
+  },
+  "korr_m36aa:Door List:7": {
+    "dest_module": "korr_m35aa",
+    "dest_waypoint": "K35_WAY_K36",
+    "index": 7,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m36aa",
+    "tag": "kor36_kor35"
+  },
+  "korr_m36aa:Door List:9": {
+    "dest_module": "korr_m37aa",
+    "dest_waypoint": "K37_WAY_K36",
+    "index": 9,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m36aa",
+    "tag": "kor36_kor37"
+  },
+  "korr_m36aa:TriggerList:1": {
+    "dest_module": "korr_m34aa",
+    "dest_waypoint": "K34_WAY_K36",
+    "index": 1,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "korr_m36aa",
+    "tag": "k36_trg_k34"
+  },
+  "korr_m37aa:Door List:1": {
+    "dest_module": "korr_m36aa",
+    "dest_waypoint": "K36_WAY_K37",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m37aa",
+    "tag": "k37_door_valley"
+  },
+  "korr_m38aa:Door List:0": {
+    "dest_module": "korr_m36aa",
+    "dest_waypoint": "K36_WAY_K38A",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m38aa",
+    "tag": "kor38a_kor36"
+  },
+  "korr_m38ab:Door List:2": {
+    "dest_module": "korr_m36aa",
+    "dest_waypoint": "K36_WAY_K38B",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m38ab",
+    "tag": "kor38b_kor36"
+  },
+  "korr_m39aa:Door List:5": {
+    "dest_module": "korr_m36aa",
+    "dest_waypoint": "K36_WAY_K39",
+    "index": 5,
+    "kind": "door",
+    "list": "Door List",
+    "module": "korr_m39aa",
+    "tag": "kor39_kor36"
+  },
+  "lev_m40ab:Door List:14": {
+    "dest_module": "lev_m40ad",
+    "dest_waypoint": "lev40_sw40ad20",
+    "index": 14,
+    "kind": "door",
+    "list": "Door List",
+    "module": "lev_m40ab",
+    "tag": "lev40_storage"
+  },
+  "lev_m40ab:Door List:17": {
+    "dest_module": "lev_m40ad",
+    "dest_waypoint": "lev40_sw40ad24",
+    "index": 17,
+    "kind": "door",
+    "list": "Door List",
+    "module": "lev_m40ab",
+    "tag": "lev40_bridgedoor"
+  },
+  "lev_m40ac:Door List:16": {
+    "dest_module": "ebo_m40ad",
+    "dest_waypoint": "",
+    "index": 16,
+    "kind": "door",
+    "list": "Door List",
+    "module": "lev_m40ac",
+    "tag": "lev40_hangar"
+  },
+  "lev_m40ad:Door List:12": {
+    "dest_module": "lev_m40ab",
+    "dest_waypoint": "lev40_sw40ab24",
+    "index": 12,
+    "kind": "door",
+    "list": "Door List",
+    "module": "lev_m40ad",
+    "tag": "lev40_cmddoor"
+  },
+  "lev_m40ad:Door List:4": {
+    "dest_module": "lev_m40ab",
+    "dest_waypoint": "lev40_sw40ab21",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "lev_m40ad",
+    "tag": "lev40_stddoor"
+  },
+  "liv_m99aa:Door List:1": {
+    "dest_module": "ebo_m12aa",
+    "dest_waypoint": "K_EBN_RAMP_ENTRANCE",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "liv_m99aa",
+    "tag": "yavinarea"
+  },
+  "manm26aa:Door List:0": {
+    "dest_module": "manm26ac",
+    "dest_waypoint": "from26a",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "manm26aa",
+    "tag": "man26aa_door05"
+  },
+  "manm26ab:Door List:4": {
+    "dest_module": "manm26ae",
+    "dest_waypoint": "from26b",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "manm26ab",
+    "tag": "man26ab_door06"
+  },
+  "manm26ab:TriggerList:4": {
+    "dest_module": "manm27aa",
+    "dest_waypoint": "from26b",
+    "index": 4,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "manm26ab",
+    "tag": "to27a"
+  },
+  "manm26ac:Door List:3": {
+    "dest_module": "manm26ad",
+    "dest_waypoint": "from26c",
+    "index": 3,
+    "kind": "door",
+    "list": "Door List",
+    "module": "manm26ac",
+    "tag": "man26ac_to26ad"
+  },
+  "manm26ac:Door List:4": {
+    "dest_module": "manm26aa",
+    "dest_waypoint": "from26c",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "manm26ac",
+    "tag": "man26ac_to26aa"
+  },
+  "manm26ac:Door List:6": {
+    "dest_module": "manm26ae",
+    "dest_waypoint": "from26c",
+    "index": 6,
+    "kind": "door",
+    "list": "Door List",
+    "module": "manm26ac",
+    "tag": "man26ac_to26ae"
+  },
+  "manm26ad:Door List:0": {
+    "dest_module": "manm26ac",
+    "dest_waypoint": "from26d",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "manm26ad",
+    "tag": "man26ad_to26ac"
+  },
+  "manm26ad:TriggerList:0": {
+    "dest_module": "ebo_m12aa",
+    "dest_waypoint": "K_EBN_RAMP_ENTRANCE",
+    "index": 0,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "manm26ad",
+    "tag": "man26ad_to12aa"
+  },
+  "manm26ae:Door List:5": {
+    "dest_module": "manm26ac",
+    "dest_waypoint": "from26e",
+    "index": 5,
+    "kind": "door",
+    "list": "Door List",
+    "module": "manm26ae",
+    "tag": "man26ae_to26ac"
+  },
+  "manm26ae:Door List:6": {
+    "dest_module": "manm26ab",
+    "dest_waypoint": "from26e",
+    "index": 6,
+    "kind": "door",
+    "list": "Door List",
+    "module": "manm26ae",
+    "tag": "man26ae_to26ab"
+  },
+  "manm27aa:TriggerList:9": {
+    "dest_module": "manm26ab",
+    "dest_waypoint": "from27",
+    "index": 9,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "manm27aa",
+    "tag": "to26b"
+  },
+  "manm28ad:Door List:0": {
+    "dest_module": "manm28aa",
+    "dest_waypoint": "from28d",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "manm28ad",
+    "tag": "ManaanDoor2"
+  },
+  "sta_m45aa:Door List:4": {
+    "dest_module": "sta_m45ab",
+    "dest_waypoint": "STA_B_WAYWEST_A",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "sta_m45aa",
+    "tag": "sta45a_west_45b"
+  },
+  "sta_m45aa:Door List:7": {
+    "dest_module": "sta_m45ab",
+    "dest_waypoint": "STA_B_WAYEAST_A",
+    "index": 7,
+    "kind": "door",
+    "list": "Door List",
+    "module": "sta_m45aa",
+    "tag": "sta45a_east_45b"
+  },
+  "sta_m45aa:TriggerList:0": {
+    "dest_module": "ebo_m12aa",
+    "dest_waypoint": "K_EBN_RAMP_ENTRANCE",
+    "index": 0,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "sta_m45aa",
+    "tag": "k45_trg_ebonhawk"
+  },
+  "sta_m45ab:Door List:2": {
+    "dest_module": "sta_m45aa",
+    "dest_waypoint": "STA_A_WAYEAST_B",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "sta_m45ab",
+    "tag": "sta45b_east_45a"
+  },
+  "sta_m45ab:Door List:3": {
+    "dest_module": "sta_m45aa",
+    "dest_waypoint": "STA_A_WAYWEST_B",
+    "index": 3,
+    "kind": "door",
+    "list": "Door List",
+    "module": "sta_m45ab",
+    "tag": "sta45b_west_45a"
+  },
+  "sta_m45ab:Door List:4": {
+    "dest_module": "sta_m45ac",
+    "dest_waypoint": "STA45C_WAY_45B",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "sta_m45ab",
+    "tag": "sta45b_sta45c"
+  },
+  "sta_m45ac:Door List:0": {
+    "dest_module": "sta_m45ab",
+    "dest_waypoint": "STA45B_WAY_45C",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "sta_m45ac",
+    "tag": "sta45c_sta45b"
+  },
+  "sta_m45ac:Door List:1": {
+    "dest_module": "sta_m45ad",
+    "dest_waypoint": "STA45D_WAY_45C",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "sta_m45ac",
+    "tag": "sta45c_sta45d"
+  },
+  "sta_m45ad:Door List:1": {
+    "dest_module": "sta_m45ac",
+    "dest_waypoint": "STA45C_WAY_45D",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "sta_m45ad",
+    "tag": "sta45d_sta45c"
+  },
+  "tar_m02aa:Door List:4": {
+    "dest_module": "tar_m02af",
+    "dest_waypoint": "tar02_sw02af",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02aa",
+    "tag": "tar02_aprtdoor"
+  },
+  "tar_m02aa:Door List:5": {
+    "dest_module": "tar_m02ac",
+    "dest_waypoint": "tar02_sw02aca",
+    "index": 5,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02aa",
+    "tag": "ptar_stnddr"
+  },
+  "tar_m02ab:Door List:0": {
+    "dest_module": "tar_m09aa",
+    "dest_waypoint": "tar09_sw09aa01",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02ab",
+    "tag": "tar02_sithdoor"
+  },
+  "tar_m02ab:Door List:1": {
+    "dest_module": "tar_m03aa",
+    "dest_waypoint": "tar03_sw03aai",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02ab",
+    "tag": "tar02_lowdoor"
+  },
+  "tar_m02ab:Door List:2": {
+    "dest_module": "tar_m02ad",
+    "dest_waypoint": "tar02_sw02ad",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02ab",
+    "tag": "tar02_door02ad"
+  },
+  "tar_m02ab:Door List:3": {
+    "dest_module": "tar_m02ac",
+    "dest_waypoint": "tar02_sw02ac",
+    "index": 3,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02ab",
+    "tag": "UpperSouth"
+  },
+  "tar_m02ac:Door List:1": {
+    "dest_module": "tar_m02ae",
+    "dest_waypoint": "tar02_sw02ae",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02ac",
+    "tag": "tar02_cantdoor"
+  },
+  "tar_m02ac:Door List:2": {
+    "dest_module": "tar_m02ab",
+    "dest_waypoint": "tar02_sw02ab",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02ac",
+    "tag": "UpperNorth"
+  },
+  "tar_m02ac:Door List:3": {
+    "dest_module": "tar_m02aa",
+    "dest_waypoint": "tar02_sw02aa",
+    "index": 3,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02ac",
+    "tag": "Apartments"
+  },
+  "tar_m02ad:Door List:2": {
+    "dest_module": "tar_m02ab",
+    "dest_waypoint": "tar02_sw02abd",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02ad",
+    "tag": "ptar_stnddr"
+  },
+  "tar_m02ae:Door List:0": {
+    "dest_module": "tar_m02ac",
+    "dest_waypoint": "tar02_sw02acg",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02ae",
+    "tag": "ptar_stnddr"
+  },
+  "tar_m02af:Door List:1": {
+    "dest_module": "tar_m02aa",
+    "dest_waypoint": "tar02_sw02af",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m02af",
+    "tag": "tar02_aptdoor"
+  },
+  "tar_m03aa:Door List:0": {
+    "dest_module": "tar_m04aa",
+    "dest_waypoint": "tar04_sw04aaa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03aa",
+    "tag": "tar04_elevdoor"
+  },
+  "tar_m03aa:Door List:1": {
+    "dest_module": "tar_m02ab",
+    "dest_waypoint": "tar02_sw02abi",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03aa",
+    "tag": "tar04_elevdoor"
+  },
+  "tar_m03aa:Door List:2": {
+    "dest_module": "tar_m10aa",
+    "dest_waypoint": "tar10_sw10aa",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03aa",
+    "tag": "tar03_blkdoor"
+  },
+  "tar_m03aa:Door List:4": {
+    "dest_module": "tar_m11aa",
+    "dest_waypoint": "tar11_sw11aa02",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03aa",
+    "tag": "tar03_bekdoor"
+  },
+  "tar_m03aa:Door List:5": {
+    "dest_module": "tar_m03ad",
+    "dest_waypoint": "tar03_sw03ad",
+    "index": 5,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03aa",
+    "tag": "tar04_stddoor"
+  },
+  "tar_m03aa:Door List:6": {
+    "dest_module": "tar_m03ab",
+    "dest_waypoint": "tar03_sw03ab",
+    "index": 6,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03aa",
+    "tag": "tar04_stddoor"
+  },
+  "tar_m03aa:Door List:7": {
+    "dest_module": "tar_m03ae",
+    "dest_waypoint": "tar03_sw03ae",
+    "index": 7,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03aa",
+    "tag": "tar03_javydoor"
+  },
+  "tar_m03ab:Door List:0": {
+    "dest_module": "tar_m03aa",
+    "dest_waypoint": "tar03_sw03aab",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03ab",
+    "tag": "ptar_stnddr"
+  },
+  "tar_m03ad:Door List:0": {
+    "dest_module": "tar_m03aa",
+    "dest_waypoint": "tar03_sw03aad",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03ad",
+    "tag": "tar03_stddoor"
+  },
+  "tar_m03ae:Door List:0": {
+    "dest_module": "tar_m03aa",
+    "dest_waypoint": "tar03_sw03aae",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m03ae",
+    "tag": "TarisDoor2"
+  },
+  "tar_m04aa:Door List:0": {
+    "dest_module": "tar_m03aa",
+    "dest_waypoint": "tar03_sw03aaa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m04aa",
+    "tag": "tar04_elevdoor"
+  },
+  "tar_m04aa:Door List:3": {
+    "dest_module": "tar_m05aa",
+    "dest_waypoint": "tar05_sw05aa01",
+    "index": 3,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m04aa",
+    "tag": "TarisDoor3"
+  },
+  "tar_m04aa:TriggerList:23": {
+    "dest_module": "tar_m05aa",
+    "dest_waypoint": "tar05_sw05aa10",
+    "index": 23,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "tar_m04aa",
+    "tag": "tar04_goto05aa10"
+  },
+  "tar_m05aa:Door List:20": {
+    "dest_module": "tar_m05ab",
+    "dest_waypoint": "tar05_sw05ab11",
+    "index": 20,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m05aa",
+    "tag": "tar05_forcefield"
+  },
+  "tar_m05ab:Door List:0": {
+    "dest_module": "tar_m05aa",
+    "dest_waypoint": "tar05_sw05aa11",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m05ab",
+    "tag": "ptar_swrdoor"
+  },
+  "tar_m05ab:Door List:9": {
+    "dest_module": "tar_m10aa",
+    "dest_waypoint": "tar10_sw10aa08",
+    "index": 9,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m05ab",
+    "tag": "tar05_elevator"
+  },
+  "tar_m09aa:Door List:0": {
+    "dest_module": "tar_m02ab",
+    "dest_waypoint": "tar02_sw02abc",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m09aa",
+    "tag": "ptar_secdoor"
+  },
+  "tar_m09aa:Door List:12": {
+    "dest_module": "tar_m09ab",
+    "dest_waypoint": "",
+    "index": 12,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m09aa",
+    "tag": "ptar_elevdoor"
+  },
+  "tar_m09ab:Door List:1": {
+    "dest_module": "tar_m09aa",
+    "dest_waypoint": "tar09_sw09aa06",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m09ab",
+    "tag": "tar09_elevdoor"
+  },
+  "tar_m10aa:Door List:0": {
+    "dest_module": "tar_m03aa",
+    "dest_waypoint": "tar03_sw03aag",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m10aa",
+    "tag": "ptar_secdoor"
+  },
+  "tar_m10aa:Door List:15": {
+    "dest_module": "tar_m10ac",
+    "dest_waypoint": "tar10_sw10ac29",
+    "index": 15,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m10aa",
+    "tag": "tar10_elev02"
+  },
+  "tar_m10aa:Door List:16": {
+    "dest_module": "tar_m05ab",
+    "dest_waypoint": "tar05_sw05ab17",
+    "index": 16,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m10aa",
+    "tag": "tar10_elev03"
+  },
+  "tar_m10ab:Door List:12": {
+    "dest_module": "tar_m10aa",
+    "dest_waypoint": "tar10_sw10aa01",
+    "index": 12,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m10ab",
+    "tag": "tar10_elevator"
+  },
+  "tar_m10ac:Door List:10": {
+    "dest_module": "tar_m10aa",
+    "dest_waypoint": "tar10_sw10aa09",
+    "index": 10,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m10ac",
+    "tag": "tar10_elevator"
+  },
+  "tar_m11aa:Door List:0": {
+    "dest_module": "tar_m03aa",
+    "dest_waypoint": "tar03_sw03aac",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m11aa",
+    "tag": "ptar_secdoor"
+  },
+  "tar_m11aa:Door List:5": {
+    "dest_module": "tar_m11ab",
+    "dest_waypoint": "tar11_sw11ab",
+    "index": 5,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m11aa",
+    "tag": "ptar_secdoor"
+  },
+  "tar_m11ab:Door List:0": {
+    "dest_module": "tar_m11aa",
+    "dest_waypoint": "tar11_sw11aa08",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tar_m11ab",
+    "tag": "ptar_secdoor"
+  },
+  "tat_m17aa:Door List:1": {
+    "dest_module": "tat_m17ab",
+    "dest_waypoint": "tat17aa_tat17ab",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17aa",
+    "tag": "TatooineTransition"
+  },
+  "tat_m17aa:Door List:3": {
+    "dest_module": "tat_m17ad",
+    "dest_waypoint": "tat17aa_tat17ad",
+    "index": 3,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17aa",
+    "tag": "TatooineTransition"
+  },
+  "tat_m17aa:Door List:4": {
+    "dest_module": "tat_m17ag",
+    "dest_waypoint": "tat17aa_tat17ag",
+    "index": 4,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17aa",
+    "tag": "TatooineTransition"
+  },
+  "tat_m17aa:Door List:5": {
+    "dest_module": "tat_m17ae",
+    "dest_waypoint": "tat17aa_tat17ae",
+    "index": 5,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17aa",
+    "tag": "TatooineTransition"
+  },
+  "tat_m17aa:Door List:6": {
+    "dest_module": "tat_m17af",
+    "dest_waypoint": "tat17aa_tat17af",
+    "index": 6,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17aa",
+    "tag": "TatooineTransition"
+  },
+  "tat_m17aa:Door List:7": {
+    "dest_module": "tat_m17ac",
+    "dest_waypoint": "tat17aa_tat17ac",
+    "index": 7,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17aa",
+    "tag": "TatooineTransition"
+  },
+  "tat_m17ab:Door List:1": {
+    "dest_module": "tat_m17aa",
+    "dest_waypoint": "tat17ab_tat17aa",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17ab",
+    "tag": "TatooineDoor2"
+  },
+  "tat_m17ab:TriggerList:2": {
+    "dest_module": "ebo_m12aa",
+    "dest_waypoint": "K_EBN_RAMP_ENTRANCE",
+    "index": 2,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "tat_m17ab",
+    "tag": "EbonHawk"
+  },
+  "tat_m17ac:Door List:0": {
+    "dest_module": "tat_m17aa",
+    "dest_waypoint": "tat17ac_tat17aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17ac",
+    "tag": "TatooineDoor1"
+  },
+  "tat_m17ad:Door List:0": {
+    "dest_module": "tat_m17aa",
+    "dest_waypoint": "tat17ad_tat17aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17ad",
+    "tag": "TatooineDoor1"
+  },
+  "tat_m17ae:Door List:0": {
+    "dest_module": "tat_m17aa",
+    "dest_waypoint": "tat17ae_tat17aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17ae",
+    "tag": "TatooineDoor1"
+  },
+  "tat_m17af:Door List:0": {
+    "dest_module": "tat_m17aa",
+    "dest_waypoint": "tat17af_tat17aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17af",
+    "tag": "TatooineDoor1"
+  },
+  "tat_m17ag:Door List:0": {
+    "dest_module": "tat_m17aa",
+    "dest_waypoint": "tat17ag_tat17aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m17ag",
+    "tag": "TatooineDoor1"
+  },
+  "tat_m18aa:TriggerList:19": {
+    "dest_module": "tat_m18ab",
+    "dest_waypoint": "tat18aa_tat18ab",
+    "index": 19,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "tat_m18aa",
+    "tag": "AreaTransition"
+  },
+  "tat_m18aa:TriggerList:21": {
+    "dest_module": "tat_m18ac",
+    "dest_waypoint": "tat18aa_tat18ac",
+    "index": 21,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "tat_m18aa",
+    "tag": "AreaTransition"
+  },
+  "tat_m18aa:TriggerList:28": {
+    "dest_module": "tat_m17aa",
+    "dest_waypoint": "tat18aa_tat17aa",
+    "index": 28,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "tat_m18aa",
+    "tag": "AreaTransition"
+  },
+  "tat_m18ab:Door List:0": {
+    "dest_module": "tat_m20aa",
+    "dest_waypoint": "tat18ab_tat20aa",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m18ab",
+    "tag": "TatooineDoor3"
+  },
+  "tat_m18ab:TriggerList:14": {
+    "dest_module": "tat_m18aa",
+    "dest_waypoint": "tat18ab_tat18aa",
+    "index": 14,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "tat_m18ab",
+    "tag": "AreaTransition"
+  },
+  "tat_m18ab:TriggerList:16": {
+    "dest_module": "tat_m18ac",
+    "dest_waypoint": "tat18ab_tat18ac",
+    "index": 16,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "tat_m18ab",
+    "tag": "AreaTransition"
+  },
+  "tat_m18ac:TriggerList:2": {
+    "dest_module": "tat_m18aa",
+    "dest_waypoint": "tat18ac_tat18aa",
+    "index": 2,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "tat_m18ac",
+    "tag": "AreaTransition"
+  },
+  "tat_m18ac:TriggerList:3": {
+    "dest_module": "tat_m18ab",
+    "dest_waypoint": "tat18ac_tat18ab",
+    "index": 3,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "tat_m18ac",
+    "tag": "AreaTransition"
+  },
+  "tat_m20aa:Door List:5": {
+    "dest_module": "tat_m18ab",
+    "dest_waypoint": "tat20aa_tat18ab",
+    "index": 5,
+    "kind": "door",
+    "list": "Door List",
+    "module": "tat_m20aa",
+    "tag": "TatooineDoor3"
+  },
+  "unk_m41aa:TriggerList:2": {
+    "dest_module": "unk_m41ad",
+    "dest_waypoint": "unk41_sw41ada",
+    "index": 2,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "unk_m41aa",
+    "tag": "unk41_goto41ada"
+  },
+  "unk_m41aa:TriggerList:6": {
+    "dest_module": "unk_m41ac",
+    "dest_waypoint": "unk41_sw41ac09",
+    "index": 6,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "unk_m41aa",
+    "tag": "unk41_goto41ac"
+  },
+  "unk_m41ab:Door List:1": {
+    "dest_module": "unk_m42aa",
+    "dest_waypoint": "unk42_sw42aa01",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "unk_m41ab",
+    "tag": "RakataDoor2"
+  },
+  "unk_m41ab:TriggerList:0": {
+    "dest_module": "unk_m41ad",
+    "dest_waypoint": "unk41_sw41adb",
+    "index": 0,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "unk_m41ab",
+    "tag": "unk41_goto41aarc"
+  },
+  "unk_m41ac:Door List:0": {
+    "dest_module": "unk_m43aa",
+    "dest_waypoint": "unk43_sw43aa01",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "unk_m41ac",
+    "tag": "unk41_blkdoor"
+  },
+  "unk_m41ac:TriggerList:7": {
+    "dest_module": "unk_m41aa",
+    "dest_waypoint": "unk41_sw41aabr",
+    "index": 7,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "unk_m41ac",
+    "tag": "unk41_goto41aabr"
+  },
+  "unk_m41ad:TriggerList:0": {
+    "dest_module": "unk_m41ab",
+    "dest_waypoint": "unk41_sw41abd",
+    "index": 0,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "unk_m41ad",
+    "tag": "unk41_goto41abd"
+  },
+  "unk_m41ad:TriggerList:1": {
+    "dest_module": "unk_m44aa",
+    "dest_waypoint": "unk44_sw44aa01",
+    "index": 1,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "unk_m41ad",
+    "tag": "AreaTransition"
+  },
+  "unk_m41ad:TriggerList:2": {
+    "dest_module": "unk_m41aa",
+    "dest_waypoint": "unk41_sw41aad",
+    "index": 2,
+    "kind": "trigger",
+    "list": "TriggerList",
+    "module": "unk_m41ad",
+    "tag": "unk41_goto41aad"
+  },
+  "unk_m42aa:Door List:2": {
+    "dest_module": "unk_m41ab",
+    "dest_waypoint": "unk41_sw41ab04",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "unk_m42aa",
+    "tag": "RakataDoor2"
+  },
+  "unk_m43aa:Door List:1": {
+    "dest_module": "unk_m41ac",
+    "dest_waypoint": "unk41_sw41ac",
+    "index": 1,
+    "kind": "door",
+    "list": "Door List",
+    "module": "unk_m43aa",
+    "tag": "RakataDoor2"
+  },
+  "unk_m44aa:Door List:17": {
+    "dest_module": "unk_m41ad",
+    "dest_waypoint": "unk41_sw41ad03",
+    "index": 17,
+    "kind": "door",
+    "list": "Door List",
+    "module": "unk_m44aa",
+    "tag": "unk44_exitdoor"
+  },
+  "unk_m44aa:Door List:18": {
+    "dest_module": "unk_m44ab",
+    "dest_waypoint": "unk44_sw44ab26",
+    "index": 18,
+    "kind": "door",
+    "list": "Door List",
+    "module": "unk_m44aa",
+    "tag": "unk44_basedoor"
+  },
+  "unk_m44aa:Door List:19": {
+    "dest_module": "unk_m44ac",
+    "dest_waypoint": "unk44_sw44ac31",
+    "index": 19,
+    "kind": "door",
+    "list": "Door List",
+    "module": "unk_m44aa",
+    "tag": "unk44_basedoor"
+  },
+  "unk_m44ab:Door List:2": {
+    "dest_module": "unk_m44aa",
+    "dest_waypoint": "unk44_sw44aa23",
+    "index": 2,
+    "kind": "door",
+    "list": "Door List",
+    "module": "unk_m44ab",
+    "tag": "RakataDoor4"
+  },
+  "unk_m44ac:Door List:0": {
+    "dest_module": "unk_m44aa",
+    "dest_waypoint": "unk44_sw44aa24",
+    "index": 0,
+    "kind": "door",
+    "list": "Door List",
+    "module": "unk_m44ac",
+    "tag": "unk44_tpllckdoor"
+  }
+}

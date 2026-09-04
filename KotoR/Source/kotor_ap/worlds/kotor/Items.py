@@ -1,5 +1,5 @@
+import importlib.resources
 import json
-import os
 import typing
 
 from BaseClasses import Item, ItemClassification
@@ -140,15 +140,36 @@ item_table: typing.Dict[str, ItemData] = {
 # table. Only rows flagged included_as_item go in the pool; arm_name is the
 # give_item:<resref> sentinel KotorClient.py's _deliver_item recognizes and
 # routes to CreateItemOnObject via the extender.
-GEAR_JSON_PATH = os.path.join(os.path.dirname(__file__), "gear_items.json")
 gear_base_id = base_id + 100000  # clear of base_id+0..+30 above, room to grow
 
 
-def _load_gear_items() -> typing.Dict[str, ItemData]:
-    if not os.path.exists(GEAR_JSON_PATH):
+def read_gear_json() -> dict:
+    """Reads gear_items.json via importlib.resources rather than a plain
+    open(os.path.dirname(__file__)-relative path) -- found broken live
+    2026-09-04: this world ships for real distribution inside a zip-loaded
+    kotor.apworld, where __file__ resolves to a synthetic path that
+    doesn't exist on any real filesystem. A plain open()/os.path.exists()
+    check against that path always silently "fails to find" the file --
+    meaning EVERY seed generated through a packaged .apworld was silently
+    missing every gear item from the pool entirely, with no error printed
+    anywhere (each call site here used to treat "not found" as a normal,
+    quiet empty-result case, not a bug). importlib.resources.files() reads
+    package data correctly whether the package is a loose folder (this
+    dev checkout) or a real zip archive (what actually ships), so this
+    works in both without needing to know which. Returns {} only if the
+    file is genuinely missing from the package -- a real packaging error,
+    not the normal case."""
+    try:
+        raw = importlib.resources.files(__package__).joinpath("gear_items.json").read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError):
         return {}
-    with open(GEAR_JSON_PATH, encoding="utf-8") as f:
-        gear = json.load(f)
+    return json.loads(raw)
+
+
+def _load_gear_items() -> typing.Dict[str, ItemData]:
+    gear = read_gear_json()
+    if not gear:
+        return {}
 
     # sorted() by resref keeps codes stable across regens as long as the
     # underlying JSON's key set doesn't change.

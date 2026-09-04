@@ -1,12 +1,10 @@
-import json
-import os
 import typing
 
 from BaseClasses import Region
 from worlds.AutoWorld import World, WebWorld
 
 from . import EntranceRando
-from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, GEAR_JSON_PATH
+from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json
 from .Locations import KotorLocation, location_table, location_name_to_id
 from .Options import (
     KotorOptions, STARTING_ABILITY_ARMS, STARTING_SKILL_ARMS,
@@ -97,10 +95,7 @@ def _shop_pool() -> typing.List[str]:
     """resrefs flagged shop_randomize in gear_items.json, sorted for a
     deterministic sample() regardless of the JSON's own key order (which
     can shift as the user hand-edits it)."""
-    if not os.path.exists(GEAR_JSON_PATH):
-        return []
-    with open(GEAR_JSON_PATH, encoding="utf-8") as f:
-        gear = json.load(f)
+    gear = read_gear_json()
     return sorted(resref for resref, data in gear.items() if data.get("shop_randomize"))
 
 
@@ -282,10 +277,9 @@ class KotorWorld(World):
         real equipment_slot in gear_items.json. Used only by
         _distribute_items() below."""
         pools: typing.Dict[str, typing.List[str]] = {"weapon": [], "armor": [], "consumable": []}
-        if not os.path.exists(GEAR_JSON_PATH):
+        gear = read_gear_json()
+        if not gear:
             return pools
-        with open(GEAR_JSON_PATH, encoding="utf-8") as f:
-            gear = json.load(f)
         for name, data in item_table.items():
             if not data.arm_name.startswith("give_item:"):
                 continue

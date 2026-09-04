@@ -36,14 +36,13 @@ directly from Menu, OUTSIDE the randomization pool, matching every AP
 entrance randomizer's baseline shape: the player always has at least one
 place to go, by construction, not as a special-cased rule.
 """
+import importlib.resources
 import json
-import os
 import typing
 
 from BaseClasses import Region
 from entrance_rando import randomize_entrances, EntranceRandomizationError
 
-DOOR_GRAPH_PATH = os.path.join(os.path.dirname(__file__), "door_graph.json")
 STARTING_MODULE = "tar_m02aa"
 # The Endar Spire/Hideout sequence used to be the Menu-connected root, but
 # now that its own doors are excluded from randomization (see
@@ -138,8 +137,21 @@ NEVER_STEAL_DEST_MODULES = {"ebo_m12aa"}
 
 
 def _load_door_graph() -> dict:
-    with open(DOOR_GRAPH_PATH, encoding="utf-8") as f:
-        return json.load(f)
+    """Reads door_graph.json via importlib.resources rather than a plain
+    open(os.path.dirname(__file__)-relative path) -- found broken live
+    2026-09-04: this world ships for real distribution inside a zip-loaded
+    kotor.apworld, where __file__ resolves to a synthetic path that
+    doesn't exist on any real filesystem, so a plain open() call against
+    it raises FileNotFoundError immediately (confirmed live: this crashed
+    Generate.py outright for any area_randomizer=True seed run through a
+    packaged .apworld -- see Items.py's read_gear_json() for the same bug
+    hitting gear_items.json too, silently instead of loudly there).
+    importlib.resources.files() reads package data correctly whether the
+    package is a loose folder (this dev checkout) or a real zip archive
+    (what actually ships), so this works in both without needing to know
+    which."""
+    raw = importlib.resources.files(__package__).joinpath("door_graph.json").read_text(encoding="utf-8")
+    return json.loads(raw)
 
 
 def _is_excluded_both_ways(module: str) -> bool:

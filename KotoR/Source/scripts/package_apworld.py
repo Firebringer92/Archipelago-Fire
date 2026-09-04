@@ -48,7 +48,7 @@ DEFAULT_OUT = os.path.join(REPO_ROOT, "dist", "kotor.apworld")
 # player can compare to confirm they're running the same generation logic.
 # No existing version tracking anywhere in worlds/kotor/ before this
 # script -- starting fresh at 0.1.0 for the first packaged release.
-WORLD_VERSION = "0.1.1"
+WORLD_VERSION = "0.1.2"
 
 GAME_NAME = "KotOR"
 

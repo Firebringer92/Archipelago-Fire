@@ -150,7 +150,7 @@ APPLIES = {
     # feature is now the "companion_class" parameterized action (see
     # build_companion_class_block() and the companion_class: token
     # handling below), wired into the real AP flow via Options.py's
-    # RandomizeClass. Not reusing these IDs -- same reasoning as the other
+    # CompanionClass. Not reusing these IDs -- same reasoning as the other
     # retired-gap comments in this table (12, old-16).
     33: ("dump_statblock", [
         # TEMPORARY (2026-08-31): Force Powers offset research -- see
@@ -330,11 +330,11 @@ APPLIES = {
         'ApplyEffectToObject(DURATION_TYPE_INSTANT, EffectDeath(), oPC);',
         'KSE_Diag(63, "AP|APPLIED|force_death|wasDead=" + IntToString(nWasDead));',
     ]),
-    # JediStart=random_class (2026-09-02), base-class roll only -- a Jedi
+    # StartingClass=random_class (2026-09-02), base-class roll only -- a Jedi
     # roll reuses class_guardian/class_consular/class_sentinel above
     # (AddMultiClass) unchanged. AddMultiClass can't REPLACE an existing
     # base class, so a base-class roll needs the same direct-write
-    # mechanism RandomizeClass already uses for companions
+    # mechanism CompanionClass already uses for companions
     # (KSE_SetCreatureField) instead, targeting the PC. Deliberately
     # minimal -- no Force write (base classes aren't Force-sensitive, and
     # the companion recipe's Force=10 is Jedi-specific), no
@@ -357,6 +357,110 @@ APPLIES = {
         'object oPC = GetFirstPC();',
         'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SCOUNDREL);',
         'KSE_Diag(9, "AP|APPLIED|pc_class_scoundrel");',
+    ]),
+    37: ("dump_statblock_carth", [
+        # TEMPORARY (2026-09-03): comparative Force Powers hotbar-bug
+        # research -- same technique as arm 33's dump_statblock, but
+        # targeting a specific companion by tag instead of GetFirstPC(),
+        # to diff a class-switched companion's stat block against a
+        # natural/untouched Jedi's. See FutureDesign.md's "master flag"
+        # theory entry. Retire (leave the gap) once this research concludes.
+        'object oCompanion = GetObjectByTag("Carth");',
+        'if (GetIsObjectValid(oCompanion))',
+        '{',
+        '    KSE_DumpStatBlock(oCompanion, 0, 112);',
+        '    KSE_Diag(111, "AP|APPLIED|dump_statblock_carth|offset=0|length=112");',
+        '}',
+    ]),
+    38: ("dump_statblock_juhani", [
+        # TEMPORARY (2026-09-03) -- see dump_statblock_carth above, same
+        # technique, targeting the natural/untouched Jedi comparison side.
+        'object oCompanion = GetObjectByTag("Juhani");',
+        'if (GetIsObjectValid(oCompanion))',
+        '{',
+        '    KSE_DumpStatBlock(oCompanion, 0, 112);',
+        '    KSE_Diag(111, "AP|APPLIED|dump_statblock_juhani|offset=0|length=112");',
+        '}',
+    ]),
+    39: ("carth_addmulticlass_hybrid_test", [
+        # TEMPORARY (2026-09-03): hybrid hotbar-bug test. Theory: the
+        # documented Force-Powers-hotbar bug was only ever confirmed via
+        # companions converted with a raw KSE_SetCreatureField CLASS0_TYPE
+        # overwrite (see companion_class), which bypasses ALL of the
+        # engine's own class-change housekeeping. The PC's own Jedi
+        # transition uses the real AddMultiClass() native instead (same
+        # one the vanilla Dantooine trial calls) and has never actually
+        # been confirmed to have this bug. AddMultiClass() adds a class in
+        # the SECOND slot (Class1, not Class0) but is known to leave it at
+        # level 0 with no natural way to level a companion up -- so this
+        # test calls the real native for proper engine registration, then
+        # patches ONLY the level via KSE_SetCreatureField on CLASS1_LEVEL
+        # (not CLASS0_LEVEL -- that's the PRIMARY slot, untouched here).
+        # If Carth's hotbar works after this, the fix for the companion_class
+        # arm (CompanionClass option) is "use AddMultiClass + patch Class1's
+        # level" instead of overwriting Class0 directly. Retire (leave the gap)
+        # once this research concludes.
+        #
+        # Uses CLASS_TYPE_CONSULAR, not Guardian -- Carth is already
+        # Guardian in Class0 from the earlier raw-write test, and adding
+        # the SAME class twice via AddMultiClass is untested/likely
+        # invalid. Consular in the Class1 slot gives a clean, independent
+        # signal regardless of whatever state Class0 is already in.
+        'object oCompanion = GetObjectByTag("Carth");',
+        'if (GetIsObjectValid(oCompanion))',
+        '{',
+        '    AddMultiClass(CLASS_TYPE_JEDICONSULAR, oCompanion);',
+        '    KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS1_LEVEL(), 1);',
+        '    KSE_Diag(9, "AP|APPLIED|carth_addmulticlass_hybrid_test");',
+        '}',
+    ]),
+    40: ("juhani_addmulticlass_scoundrel_test", [
+        # TEMPORARY (2026-09-03) -- same hybrid AddMultiClass + Class1
+        # level patch as arm 39, but testing the OTHER direction: does the
+        # same fix also work for granting a BASE class (feats, e.g.
+        # Scoundrel's Luck/Sneak Attack) rather than a Jedi class (powers)?
+        # Run against a clean, untouched Jedi Juhani (natural Consular in
+        # Class0, Class1 empty) -- confirmed clean via a reloaded save.
+        'object oCompanion = GetObjectByTag("Juhani");',
+        'if (GetIsObjectValid(oCompanion))',
+        '{',
+        '    AddMultiClass(CLASS_TYPE_SCOUNDREL, oCompanion);',
+        '    KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS1_LEVEL(), 1);',
+        '    KSE_Diag(9, "AP|APPLIED|juhani_addmulticlass_scoundrel_test");',
+        '}',
+    ]),
+    41: ("juhani_grant_critical_strike_test", [
+        # TEMPORARY (2026-09-03): tests whether a direct KSE_GrantFeatArrayA
+        # write (already proven for the 4 PASSIVE Jedi feats) also works
+        # for an ACTIVE, hotbar-relevant combat feat -- Critical Strike
+        # (feat id 8), a level-1 Scoundrel entitlement per
+        # force_powers_and_feats.json. The earlier Jedi-feat precedent
+        # never actually proved this mechanism works for anything
+        # hotbar-relevant, since all 4 of those are passive bonuses.
+        'object oCompanion = GetObjectByTag("Juhani");',
+        'if (GetIsObjectValid(oCompanion))',
+        '{',
+        '    KSE_GrantFeatArrayA(8, oCompanion);',
+        '    KSE_Diag(9, "AP|APPLIED|juhani_grant_critical_strike_test");',
+        '}',
+    ]),
+    42: ("test_credits_chain", [
+        # TEMPORARY (2026-09-03): confirms/disproves the "front half" of the
+        # credits derivation chain (KSE_OBJ_ROOT_RVA -> seed ->
+        # KSE_OBJ_TABLE_GET_RVA(seed) -> pRes -> [pRes+0xFC]) end-to-end,
+        # natively, without a live snapshot-diff -- see FutureDesign.md's
+        # "CONFIRMED: credits offset" entry and its NEXT SESSION checklist.
+        # Compares the derived value against a real GetGold() read in the
+        # same script pass, so the result is self-contained in one log
+        # line -- no separate log correlation needed. No target object --
+        # not per-creature. Not a shipped feature -- retire this arm (leave
+        # the gap) once confirmed either way.
+        'object oPC = GetFirstPC();',
+        'int nDerived = KSE_TestCreditsChain();',
+        'int nReal = GetGold(oPC);',
+        'string sResult = "MISMATCH";',
+        'if (nDerived == nReal) sResult = "MATCH";',
+        'KSE_Diag(112, "AP|APPLIED|test_credits_chain|derived=" + IntToString(nDerived) + "|real=" + IntToString(nReal) + "|" + sResult);',
     ]),
 }
 
@@ -387,29 +491,20 @@ def build_set_xp_block(value):
 
 
 def build_set_credits_block(value):
-    # NWScript has no direct "set gold" call -- only relative
-    # GiveGoldToCreature/TakeGoldFromCreature -- so compute the delta at
-    # runtime and apply whichever direction closes it.
-    #
-    # CONFIRMED BROKEN: TakeGoldFromCreature is a complete no-op in this
-    # engine build (tested directly: before/after identical regardless of
-    # bDestroy TRUE or FALSE). GiveGoldToCreature works fine (used all
-    # session). This means the nDelta<0 branch below never actually
-    # reduces gold -- harmless under the current deficit-only reconciliation
-    # policy (only ever calls this when expected > current, so only the
-    # nDelta>0 branch is exercised), but a real blocker if this is ever
-    # extended to also correct overages (unlike set_xp, whose SetXP is a
-    # true absolute setter and works both directions fine).
-    # See build_set_xp_block for why the diag name is "set_credits", not
-    # "credits".
+    # Direct memory write via KSE_SetCredits (confirmed live 2026-09-03 --
+    # see FutureDesign.md's credits-chain entries): resolves pRes fresh via
+    # the confirmed native chain and writes the exact value to [pRes+0xFC].
+    # Replaces the old GiveGoldToCreature/TakeGoldFromCreature delta dance
+    # -- TakeGoldFromCreature was a confirmed no-op in this engine build,
+    # so that old mechanism could only ever top credits up, never reduce
+    # them (unlike set_xp's SetXP, a true absolute setter both directions).
+    # KSE_SetCredits returns the value read back immediately after the
+    # write, a genuine confirmation rather than an echo of the input --
+    # nAfter should equal {value} exactly if the write landed.
     return [
         "object oPC = GetFirstPC();",
         "int nBefore = GetGold(oPC);",
-        f"int nTarget = {value};",
-        "int nDelta = nTarget - nBefore;",
-        "if (nDelta > 0) { GiveGoldToCreature(oPC, nDelta); }",
-        "else if (nDelta < 0) { TakeGoldFromCreature(-nDelta, oPC, FALSE); }",
-        "int nAfter = GetGold(oPC);",
+        f"int nAfter = KSE_SetCredits(oPC, {value});",
         'KSE_Diag(39, "AP|APPLIED|set_credits|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]
 
@@ -484,7 +579,7 @@ _COMPANION_NPC_CONST = {
 
 
 def build_companion_class_block(name, class_name):
-    """Companion-class-randomization action (Options.py's RandomizeClass) --
+    """Companion-class-randomization action (Options.py's CompanionClass) --
     the one mechanism behind both no_jedi/randomize_all (queued by
     KotorClient.py right after a companion's recruit arm fires) and
     jedi_companion (queued as the arm_name of a real received AP item, see
@@ -573,16 +668,69 @@ def build_companion_class_block(name, class_name):
     can't-re-equip-but-stays-on-if-already-worn gap as lightsabers, now
     checked in INVENTORY_SLOT_BODY the same way. Real armor (non-robe) is
     deliberately left alone -- non-Jedi classes have no equip restriction
-    on it at all, nothing illegal to strip."""
+    on it at all, nothing illegal to strip.
+
+    2026-09-03 fix (promoted from temporary arm 39's proof-of-concept, see
+    FutureDesign.md's "FINAL CONFIRMED SCOPE, Force Powers hotbar bug"
+    entry): granting a companion a JEDI class they didn't already have
+    used to go through the same raw KSE_SetCreatureField(CLASS0_TYPE)
+    overwrite as every other direction -- confirmed live to leave newly-
+    granted Force Powers sheet-visible but never hotbar-usable, since a
+    direct field write skips the engine's own class-change housekeeping
+    entirely. Now branches at runtime on whether the companion is
+    CURRENTLY Jedi (checked via GetLevelByClass, not assumed from the
+    target class alone -- randomize_all can roll a class change for an
+    ALREADY-Jedi companion too): base-to-Jedi uses the real
+    AddMultiClass() native (always lands in Class1) + a
+    KSE_FIELD_CLASS1_LEVEL patch to 1 (AddMultiClass leaves it at 0, and
+    no companion-equivalent of ShowLevelUpGUI() exists to level it up
+    naturally) -- no separate Force-point write, since AddMultiClass's own
+    housekeeping is trusted to initialize that correctly, unlike the raw
+    field write. Every OTHER direction (already-Jedi or targeting a base
+    class) keeps the original CLASS0_TYPE/CLASS0_LEVEL/FORCE overwrite
+    unchanged -- confirmed NOT broken for Jedi-to-base (see the same
+    FutureDesign.md entry) and never shown broken for the Jedi-to-
+    different-Jedi case either, so left on the proven path rather than
+    risking an untested AddMultiClass-onto-an-already-Jedi-Class0
+    interaction. Feat grants/removals and the lightsaber/robe equip-swap
+    run unconditionally either way -- redundant-but-harmless if
+    AddMultiClass's own housekeeping already granted them (K1SE's adder is
+    the same one real level-up uses, confirmed safe to re-fire)."""
     tag = _COMPANION_TAGS[name]
     npc_const = _COMPANION_NPC_CONST[name]
     class_const = _CLASS_NAME_TO_CONST[class_name]
     is_jedi = class_name in ("guardian", "consular", "sentinel")
     _JEDI_FEATS = (55, 43, 116, 107)  # Jedi Defense, Lightsaber Proficiency, Force Sensitivity, Jedi Sense
-    feat_lines = [
-        f"    {'KSE_GrantFeatArrayA' if is_jedi else 'KSE_RemoveFeatArrayA'}({feat}, oCompanion);"
-        for feat in _JEDI_FEATS
-    ]
+    if is_jedi:
+        # 2026-09-03 fix, found live testing Canderous: granting these
+        # immediately after AddMultiClass() in the same script pass lost
+        # 2 of 4 feats (Jedi Sense/Force Sensitivity gone; Lightsaber
+        # Proficiency/Jedi Defense survived) -- confirmed live, reproduced.
+        # Read: AddMultiClass()'s own real class-init (the whole reason
+        # it's used over a raw field write) evidently does its own feat
+        # settling that isn't fully synchronous within the same tick, and
+        # it happens to include Lightsaber Prof/Jedi Defense as real
+        # per-class level-1 entitlements but NOT Sense/Force-Sensitive (no
+        # class grants those at level 1) -- so its later-settling rebuild
+        # silently overwrote our two "extra" grants that aren't part of
+        # any class's real entitlement table, while leaving the other two
+        # alone (either untouched or harmlessly re-granted). Delaying our
+        # grants lets them land AFTER that settling instead of racing it.
+        # CONFIRMED FIXED live (2026-09-03): Mission, a genuinely clean
+        # base-to-Jedi test subject (fresh save, never touched before this
+        # test), got all 4 feats via this delayed path -- Jedi Sense and
+        # Force Sensitivity both landed this time. The old
+        # (non-AddMultiClass) removal path below has no such race, so it
+        # stays immediate/unchanged.
+        feat_lines = [
+            f"    DelayCommand(1.0, KSE_GrantFeatArrayA({feat}, oCompanion));"
+            for feat in _JEDI_FEATS
+        ]
+    else:
+        feat_lines = [
+            f"    KSE_RemoveFeatArrayA({feat}, oCompanion);"
+            for feat in _JEDI_FEATS
+        ]
     _LIGHTSABER_CHECK = (
         "nBase{n} == BASE_ITEM_LIGHTSABER || nBase{n} == BASE_ITEM_SHORT_LIGHTSABER"
         " || nBase{n} == BASE_ITEM_DOUBLE_BLADED_LIGHTSABER"
@@ -616,13 +764,58 @@ def build_companion_class_block(name, class_name):
             "        }",
             "    }",
         ]
+    _OLD_PATH = [
+        f"        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_TYPE(), {class_const});",
+        "        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_LEVEL(), 1);",
+        "        KSE_SetCreatureField(oCompanion, KSE_FIELD_FORCE(), 10);",
+    ]
+    if is_jedi:
+        # Runtime branch: base-to-Jedi (the direction confirmed broken under
+        # the raw field write) uses AddMultiClass + a Class1 level patch --
+        # see this function's docstring's 2026-09-03 entry. An
+        # already-Jedi companion rolling a DIFFERENT Jedi class under
+        # randomize_all stays on the old, unmodified path (never shown
+        # broken, and AddMultiClass onto an already-Jedi Class0 is
+        # untested).
+        #
+        # 2026-09-03 addendum, found live testing Mission: the original
+        # recipe only patched Class1's level to 1 and left Class0's
+        # EXISTING level untouched (confirmed live: Scoundrel level 3 +
+        # Guardian level 1). KOTOR's own companion auto-level-sync compares
+        # TOTAL character level against the party's expected total to
+        # decide whether to add a level at all -- with Class0 already at 3,
+        # her total (4) may already read as "caught up," permanently
+        # starving Class1 of the level-ups that would grant more Force
+        # Powers. Reset Class0's level to 1 too, so both classes start
+        # even and have real room for the auto-sync to add levels to
+        # either side as the party progresses. Not yet confirmed this
+        # actually unblocks leveling -- a reasonable next step to try
+        # live, not a proven fix like the AddMultiClass call itself.
+        class_lines = [
+            "    int nWasJedi = GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oCompanion) > 0 ||",
+            "                   GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oCompanion) > 0 ||",
+            "                   GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oCompanion) > 0;",
+            "    if (!nWasJedi)",
+            "    {",
+            f"        AddMultiClass({class_const}, oCompanion);",
+            "        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS1_LEVEL(), 1);",
+            "        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_LEVEL(), 1);",
+            "    }",
+            "    else",
+            "    {",
+            *_OLD_PATH,
+            "    }",
+        ]
+    else:
+        # Target is a base class -- always the old path, unchanged
+        # regardless of the companion's current class (confirmed not
+        # broken for Jedi-to-base; see this function's docstring).
+        class_lines = [line[4:] for line in _OLD_PATH]  # de-indent by one level, no runtime branch needed
     return [
         f'object oCompanion = GetObjectByTag("{tag}");',
         f"if (IsNPCPartyMember({npc_const}) && GetIsObjectValid(oCompanion))",
         "{",
-        f"    KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_TYPE(), {class_const});",
-        "    KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_LEVEL(), 1);",
-        "    KSE_SetCreatureField(oCompanion, KSE_FIELD_FORCE(), 10);",
+        *class_lines,
         *feat_lines,
         *unequip_lines,
         f'    KSE_Diag(109, "AP|APPLIED|companion_class|name={name}|class={class_name}");',

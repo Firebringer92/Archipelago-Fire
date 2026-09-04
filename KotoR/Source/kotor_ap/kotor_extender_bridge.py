@@ -209,7 +209,7 @@ class ExtenderBridge:
 
     async def send_companion_class(self, name: str, class_name: str) -> bool:
         """Sends APPLYVALUE:companion_class:<name>:<class_name> -- the
-        RandomizeClass mechanism (Options.py), used both for a real
+        CompanionClass mechanism (Options.py), used both for a real
         jedi_companion AP item (arm_name is literally
         "companion_class:<name>:<class_name>", see Items.py) and as a
         client-initiated follow-up right after a companion recruit arm

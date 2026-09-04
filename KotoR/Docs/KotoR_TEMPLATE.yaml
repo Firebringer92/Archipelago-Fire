@@ -44,31 +44,31 @@ KotOR:
   # in jedi_class below.
   #   off (default): vanilla -- the normal Dantooine trials handle your
   #                  class change exactly like base KOTOR.
-  #   start:         the class picked in jedi_class is already in your
+  #   jedi_start:    the class picked in jedi_class is already in your
   #                  starting inventory, from the moment you connect.
-  #   granted:       the class picked in jedi_class is a real item placed
+  #   jedi_granted:  the class picked in jedi_class is a real item placed
   #                  somewhere in the shuffled pool instead -- you become
   #                  a Jedi partway through the game, whenever that item
   #                  reaches you through the archipelago items
   #   random_class:  ignores jedi_class entirely -- your OWN starting class
   #                  is independently rolled to any of all 6 classes
   #                  (Soldier/Scout/Scoundrel/Guardian/Consular/Sentinel),
-  #                  applied immediately like "start" above, not item-gated.
+  #                  applied immediately like "jedi_start" above, not item-gated.
   # Under any mode except "off", the real Dantooine trial completion is
   # suppressed so simply playing it through normally can't also grant (or
   # duplicate) a class outside this option's own control.
-  # Valid: off, start, granted, random_class
-  jedi_start: granted
+  # Valid: off, jedi_start, jedi_granted, random_class
+  starting_class: jedi_granted
 
-  # Which Jedi class you become. Only matters if jedi_start is start or
-  # granted -- ignored entirely by random_class, which rolls its own class.
+  # Which Jedi class you become. Only matters if starting_class is jedi_start
+  # or jedi_granted -- ignored entirely by random_class, which rolls its own class.
   # Valid: guardian, consular, sentinel
   jedi_class: guardian
 
   # Randomizes the class of the 7 non-droid companions (Bastila, Canderous,
   # Carth, Jolee, Juhani, Mission, Zaalbar -- HK-47/T3-M4 are droids and
-  # never affected). Independent of jedi_start/jedi_class above, which only
-  # ever control the PC's own class.
+  # never affected). Independent of starting_class/jedi_class above, which
+  # only ever control the PC's own class.
   #   off (default):    vanilla -- every companion keeps their normal class.
   #   no_jedi:          all 7 companions independently roll Soldier/Scout/
   #                     Scoundrel, including Bastila/Jolee/Juhani -- no
@@ -84,7 +84,7 @@ KotOR:
   #                     classes, applied automatically at recruit like
   #                     no_jedi.
   # Valid: off, no_jedi, jedi_companion, randomize_all
-  randomize_class: jedi_companion
+  companion_class: jedi_companion
 
   # How the 9 companions (Bastila, Carth, Canderous, HK-47, Jolee, Juhani,
   # Mission, T3-M4, Zaalbar) join your party.
@@ -119,23 +119,19 @@ KotOR:
 
   # --- Experience / leveling ----------------------------------------------
 
-  # Master switch for AP-driven XP.
-  #   false (default): pure vanilla XP, completely untouched -- no
-  #                     clamping, no items, normal combat/quest XP.
-  #   true:             experience_mode below controls how you level
-  #                     instead, and vanilla combat/quest XP gets clamped
-  #                     down to the expected total on every area transition.
-  receive_exp_granting: false
-
-  # Only matters if receive_exp_granting is true. Both ap_limited and ap_gated will limit vanilla
-  # combat/quest XP to the expected total -- this just changes how client calculates expected value of exp
-  #   ap_gated:   XP comes from "Experience Points" items received through
-  #               the Archipelago server. Each item is worth experience_item XP.
-  #               Your level depends on what other players/your items found 
-  #   ap_limited: no items involved -- your expected XP is computed
-  #               directly from how many of YOUR OWN checks you've
-  #               completed, times experience_limiter. Your level
-  #               tracks your own progress, independent of item flow.
+  # Controls how (and whether) you receive AP-driven XP. Both ap_limited and
+  # ap_gated clamp vanilla combat/quest XP down to an expected total on
+  # every area transition -- this just changes how that expected total is
+  # calculated.
+  #   off (default): pure vanilla XP, completely untouched -- no clamping,
+  #                  no items, normal combat/quest XP.
+  #   ap_limited:    no items involved -- your expected XP is computed
+  #                  directly from how many of YOUR OWN checks you've
+  #                  completed, times experience_limiter. Your level
+  #                  tracks your own progress, independent of item flow.
+  #   ap_gated:      XP comes from "Experience Points" items received through
+  #                  the Archipelago server. Each item is worth experience_item
+  #                  XP. Your level depends on what other players/your items found.
   experience_mode: ap_gated
 
   # XP granted per YOUR OWN completed check, when experience_mode is
@@ -158,11 +154,28 @@ KotOR:
 
   # --- Credits -------------------------------------------------------------
 
-  # Whether credits are randomized as AP items. Credits can
-  # only ever be topped up in-game, never reduced (a confirmed engine
-  # limitation), so false just leaves credits pure vanilla.
-  # Currently working on a way to force a total amount of credits to be exact.
-  grant_credits: false
+  # Controls how (and whether) you receive AP-driven credits. Mirrors
+  # experience_mode's shape exactly -- both ap_limited and ap_gated clamp
+  # vanilla credit gains (loot, quest rewards, selling items) down to an
+  # expected total, correcting continuously rather than only on area
+  # transitions. A real spend (credits going down) is never fought --
+  # detected and treated as legitimate, so buying gear is always safe.
+  #   off (default): pure vanilla credits, completely untouched.
+  #   ap_limited:    no items involved -- your expected credit total is
+  #                  computed directly from how many of YOUR OWN checks
+  #                  you've completed, times credit_limiter.
+  #   ap_gated:      credits come from "Republic Credits" items received
+  #                  through the Archipelago server. Each item is worth
+  #                  credit_item credits.
+  credit_mode: off
+
+  # Credits granted per YOUR OWN completed check, when credit_mode is
+  # ap_limited. Range: 1-20000.
+  credit_limiter: 100
+
+  # Credits granted per "Republic Credits" item received, when credit_mode
+  # is ap_gated. Range: 1-20000.
+  credit_item: 5000
 
 
   # --- Items, gear, and shops ----------------------------------------------
@@ -228,7 +241,7 @@ KotOR:
   # baseline internally). These do NOT need to add up to 100 -- they're
   # relative to each other, so doubling every value produces the same
   # distribution. A category with nothing real to draw from (e.g.
-  # exp_weight when receive_exp_granting is off) is skipped automatically
+  # exp_weight when experience_mode is off) is skipped automatically
   # and the rest renormalized. Range: 0-100 each. Skill/Ability default low
   # on purpose -- meant to show up occasionally, not dominate the pool.
   weapon_weight: 30

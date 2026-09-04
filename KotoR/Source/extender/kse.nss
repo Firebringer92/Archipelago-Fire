@@ -406,3 +406,42 @@ void KSE_DumpStatBlock(object oCreature, int nOffset, int nLength)
 {
     SWMG_SetGunBankTarget(oCreature, nOffset, nLength);
 }
+
+// -----------------------------------------------------------------------------
+// KOTOR AP ADDITION, TEMPORARY (research pass, credits offset confirmation --
+// see FutureDesign.md's "CONFIRMED: credits offset" entry, 2026-09-03).
+// Exercises the game's own credits-read chain end-to-end natively and
+// returns the derived value, so a caller can compare it directly against
+// GetGold(oPC) in the same script pass. Not a shipped feature -- remove
+// once confirmed either way, or promote into the real feature if it
+// matches.
+//
+// ACTION 606 -- SWMG_GetLastHPChange()'s zero-arg int-returning shape
+// carries it exactly. Confirmed zero real callers via scan_opcode_usage.py
+// (2026-09-03) and not claimed by any other KSE host (see offsets.h's
+// KSE_CREDITS_CHAIN_ID comment).
+int KSE_TestCreditsChain()
+{
+    return SWMG_GetLastHPChange();
+}
+
+// -----------------------------------------------------------------------------
+// KOTOR AP ADDITION (not part of upstream K1SE): SetCredits -- the real,
+// write-capable promotion of KSE_TestCreditsChain above (2026-09-03).
+// Resolves pRes via the same confirmed chain and writes nValue directly to
+// [pRes+0xFC] -- an exact, bidirectional set. Replaces the old
+// GiveGoldToCreature/TakeGoldFromCreature dance (TakeGoldFromCreature is a
+// confirmed no-op in this engine build, so that mechanism could only ever
+// top credits up, never reduce them). oPC is unused/discarded -- credits
+// aren't per-creature -- kept only because it's part of the hijacked
+// host's real signature. Returns the value read back immediately after
+// the write, a genuine confirmation rather than an echo of the input.
+//
+// ACTION 683 -- SWMG_GetSoundFrequency's (object,int)->int shape carries
+// it exactly. Confirmed zero real callers via scan_opcode_usage.py
+// (2026-09-03) and not claimed by any other KSE host (see offsets.h's
+// KSE_SET_CREDITS_ID comment).
+int KSE_SetCredits(object oPC, int nValue)
+{
+    return SWMG_GetSoundFrequency(oPC, nValue);
+}

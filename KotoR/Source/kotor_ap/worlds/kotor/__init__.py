@@ -18,7 +18,7 @@ JEDI_CLASS_ITEMS = {
     1: "Class Switch: Jedi Consular",
     2: "Class Switch: Jedi Sentinel",
 }
-# JediStart=random_class -- item name for each of all 6 classes, keyed by
+# StartingClass=random_class -- item name for each of all 6 classes, keyed by
 # class NAME (unlike JEDI_CLASS_ITEMS above, which is keyed by jedi_class's
 # own option index) since random_class ignores jedi_class and rolls a
 # class name directly via ALL_CLASS_NAMES below.
@@ -36,7 +36,7 @@ COMPANION_ITEM_NAMES = [
     "Companion: Mission Vao", "Companion: T3-M4", "Companion: Zaalbar",
 ]
 
-# RandomizeClass (Options.py) -- the 7 non-droid companions, and the 4 of
+# CompanionClass (Options.py) -- the 7 non-droid companions, and the 4 of
 # those who are NOT already Jedi in vanilla (jedi_companion mode only ever
 # touches these 4; Bastila/Jolee/Juhani keep their vanilla Jedi class in
 # that mode). Keys match KotorClient.py's COMPANION_IDX_TO_ARM suffix
@@ -190,44 +190,45 @@ class KotorWorld(World):
         return KotorItem(name, data.classification, data.code, self.player)
 
     def generate_early(self) -> None:
-        """Precollected (starting-inventory) items: the jedi_start class
-        choice (only when jedi_start is "start" -- "granted" places the
-        same item in the shuffled pool instead, see create_items()) and
+        """Precollected (starting-inventory) items: the starting_class
+        choice (only when starting_class is "jedi_start" -- "jedi_granted"
+        places the same item in the shuffled pool instead, see
+        create_items()) and
         any starting ability/skill boosts. These are handed to the player
         immediately rather than placed in the shuffled pool."""
-        if self.options.jedi_start == 1:  # start
+        if self.options.starting_class == 1:  # jedi_start
             class_name = JEDI_CLASS_ITEMS[self.options.jedi_class.value]
             self.multiworld.push_precollected(self.create_item(class_name))
-        elif self.options.jedi_start == 3:  # random_class
+        elif self.options.starting_class == 3:  # random_class
             # Independent of jedi_class entirely -- rolls all 6 classes,
             # applied immediately like "start" above (precollected, not
             # item-gated). Same seeded-RNG-in-generate_early() pattern as
-            # the RandomizeClass companion rolls just below.
+            # the CompanionClass companion rolls just below.
             rolled_class = self.random.choice(ALL_CLASS_NAMES)
             item_name = CLASS_NAME_TO_ITEM[rolled_class]
             self.multiworld.push_precollected(self.create_item(item_name))
 
-        # RandomizeClass companion rolls -- computed once, here, using this
+        # CompanionClass companion rolls -- computed once, here, using this
         # player's own seeded RNG, so both create_items() (jedi_companion's
         # guaranteed item placement) and fill_slot_data() (no_jedi/
-        # randomize_all's companion_classes map, applied automatically at
-        # recruit by KotorClient.py) see the same values. self.companion_classes
+        # randomize_all's companion_class_rolls map, applied automatically at
+        # recruit by KotorClient.py) see the same values. self.companion_class_rolls
         # is sent to the client as-is; self.jedi_companion_items is
         # consulted only by create_items() below (not sent directly -- the
         # class per companion is implicit in which of the 3 static items
         # gets placed).
-        self.companion_classes: typing.Dict[str, str] = {}
+        self.companion_class_rolls: typing.Dict[str, str] = {}
         self.jedi_companion_items: typing.Dict[str, str] = {}
-        mode = self.options.randomize_class.value
+        mode = self.options.companion_class.value
         if mode == 1:  # no_jedi
             for key in COMPANION_CLASS_KEYS:
-                self.companion_classes[key] = self.random.choice(BASE_CLASS_NAMES)
+                self.companion_class_rolls[key] = self.random.choice(BASE_CLASS_NAMES)
         elif mode == 2:  # jedi_companion
             for key in NON_JEDI_COMPANION_KEYS:
                 self.jedi_companion_items[key] = self.random.choice(JEDI_CLASS_NAMES)
         elif mode == 3:  # randomize_all
             for key in COMPANION_CLASS_KEYS:
-                self.companion_classes[key] = self.random.choice(ALL_CLASS_NAMES)
+                self.companion_class_rolls[key] = self.random.choice(ALL_CLASS_NAMES)
 
         for arm_name, option_name in STARTING_ABILITY_ARMS.items():
             points = getattr(self.options, option_name).value
@@ -249,23 +250,23 @@ class KotorWorld(World):
         # real number of fillable (non-event) location slots.
         active_count = len(self._active_locations()) - len(GOAL_EVENT_LOCATIONS)
 
-        # Companions (when companion_mode is ap_gated) and the jedi_start
-        # class item (when jedi_start is "granted") are the only things
-        # ever unconditionally guaranteed in the pool -- "granted" means
-        # the player WILL become a Jedi at some point, never a matter of
-        # luck, same guarantee companions get. When jedi_start is "start"
-        # the item is precollected in generate_early() instead (not part
-        # of this pool-sizing math at all); when "off" there's no class
-        # item anywhere. Everything else -- curated gear, Skills,
+        # Companions (when companion_mode is ap_gated) and the starting_class
+        # class item (when starting_class is "jedi_granted") are the only
+        # things ever unconditionally guaranteed in the pool -- "jedi_granted"
+        # means the player WILL become a Jedi at some point, never a matter of
+        # luck, same guarantee companions get. When starting_class is
+        # "jedi_start" the item is precollected in generate_early() instead
+        # (not part of this pool-sizing math at all); when "off" there's no
+        # class item anywhere. Everything else -- curated gear, Skills,
         # Abilities, EXP, Credits -- is drawn through the weighted
         # distribution in _distribute_items() instead. Feats are not an AP
         # item at all any more (see Items.py) -- left entirely to normal
         # in-game level-up choices.
         mandatory_names = COMPANION_ITEM_NAMES if self.options.companion_mode == 0 else []
-        if self.options.jedi_start == 2:  # granted
+        if self.options.starting_class == 2:  # jedi_granted
             mandatory_names = mandatory_names + [JEDI_CLASS_ITEMS[self.options.jedi_class.value]]
-        # RandomizeClass=jedi_companion: same guaranteed-placement guarantee
-        # as jedi_start=granted -- the roll already happened in
+        # CompanionClass=jedi_companion: same guaranteed-placement guarantee
+        # as starting_class=granted -- the roll already happened in
         # generate_early(), this just places whichever of the 3 static
         # per-companion items matches it.
         for key, class_name in self.jedi_companion_items.items():
@@ -319,7 +320,7 @@ class KotorWorld(World):
         reads the matching weight options instead; "randomized" rolls its
         own per-seed. Weights are relative, not required to sum to 100. A
         category with no real candidates given other options (e.g. EXP
-        when receive_exp_granting is off, or Weapons/Armor/Consumables
+        when experience_mode is off, or Weapons/Armor/Consumables
         when receive_inventory_items is off) is dropped and the rest
         renormalized automatically. See Options.py's ItemDistributionType
         docstring for the full design."""
@@ -333,9 +334,8 @@ class KotorWorld(World):
             "weapon": gear_pools["weapon"],
             "armor": gear_pools["armor"],
             "consumable": gear_pools["consumable"],
-            "exp": ["Experience Points"] if (self.options.receive_exp_granting and
-                                              self.options.experience_mode == 0) else [],
-            "credit": ["Credit Chit"] if self.options.grant_credits else [],
+            "exp": ["Experience Points"] if self.options.experience_mode == 2 else [],
+            "credit": ["Republic Credits"] if self.options.credit_mode == 2 else [],
             "skill": skill_pool,
             "ability": ability_pool,
         }
@@ -387,11 +387,13 @@ class KotorWorld(World):
         pool alone."""
         return {
             "companion_mode": self.options.companion_mode.value,
-            "receive_exp_granting": bool(self.options.receive_exp_granting),
+            "starting_class": self.options.starting_class.value,
             "experience_mode": self.options.experience_mode.value,
             "experience_limiter": self.options.experience_limiter.value,
             "experience_item": self.options.experience_item.value,
-            "grant_credits": bool(self.options.grant_credits),
+            "credit_mode": self.options.credit_mode.value,
+            "credit_limiter": self.options.credit_limiter.value,
+            "credit_item": self.options.credit_item.value,
             "death_link": bool(self.options.death_link),
             "receive_inventory_items": bool(self.options.receive_inventory_items),
             "consumable_stack_count": self.options.consumable_stack_count.value,
@@ -401,11 +403,11 @@ class KotorWorld(World):
             "door_mapping": getattr(self, "kotor_door_mapping", None),
             "goal": self.options.goal.value,
             "shop_stock": self._shop_stock(),
-            # RandomizeClass=no_jedi/randomize_all only -- jedi_companion's
+            # CompanionClass=no_jedi/randomize_all only -- jedi_companion's
             # assignments are implicit in which "Jedi Training: ..." item
             # got placed (see create_items()), not sent here. Empty dict
             # for off/jedi_companion.
-            "companion_classes": self.companion_classes,
+            "companion_class_rolls": self.companion_class_rolls,
         }
 
     def _shop_stock(self) -> typing.Dict[str, typing.List[str]]:

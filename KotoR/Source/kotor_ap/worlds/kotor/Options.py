@@ -26,17 +26,17 @@ class CompanionMode(Choice):
     default = 1
 
 
-class JediStart(Choice):
+class StartingClass(Choice):
     """Controls how (and whether) you become a Jedi, using the class
     chosen in jedi_class.
 
     off (default): vanilla -- no AP item at all, the normal Dantooine
     trials handle your class change exactly like stock KOTOR.
 
-    start: the class chosen in jedi_class is already in your starting
+    jedi_start: the class chosen in jedi_class is already in your starting
     inventory -- you have it from the moment you connect.
 
-    granted: the class chosen in jedi_class is a real item placed
+    jedi_granted: the class chosen in jedi_class is a real item placed
     somewhere in the shuffled pool instead of your starting inventory --
     you become a Jedi partway through the game, whenever that item
     reaches you through the multiworld, same as any other received item.
@@ -47,28 +47,28 @@ class JediStart(Choice):
     random_class: ignores jedi_class entirely -- your OWN starting class
     is independently rolled to any of all 6 classes (Soldier/Scout/
     Scoundrel/Guardian/Consular/Sentinel), applied immediately at the
-    start of the game like "start" above, not item-gated. A Jedi roll
-    becomes a real multiclass exactly like start/granted (AddMultiClass);
-    a base-class roll REPLACES your character-creation class instead,
-    using the same direct class-write mechanism RandomizeClass already
-    uses for companions.
+    start of the game like "jedi_start" above, not item-gated. A Jedi roll
+    becomes a real multiclass exactly like jedi_start/jedi_granted
+    (AddMultiClass); a base-class roll REPLACES your character-creation
+    class instead, using the same direct class-write mechanism
+    CompanionClass already uses for companions.
 
     Under any mode except "off", Dantooine's real trial-completion script
     is suppressed so simply playing through it normally can't ALSO grant
     (or duplicate) a class outside this option's own control.
     """
-    display_name = "Jedi Start"
+    display_name = "Starting Class"
     option_off = 0
-    option_start = 1
-    option_granted = 2
+    option_jedi_start = 1
+    option_jedi_granted = 2
     option_random_class = 3
     default = 0
 
 
 class JediClass(Choice):
-    """Which Jedi class you become. Only consulted when jedi_start is
-    start or granted -- ignored entirely by random_class, which rolls its
-    own class independently."""
+    """Which Jedi class you become. Only consulted when starting_class is
+    jedi_start or jedi_granted -- ignored entirely by random_class, which
+    rolls its own class independently."""
     display_name = "Jedi Class"
     option_guardian = 0
     option_consular = 1
@@ -76,10 +76,10 @@ class JediClass(Choice):
     default = 0
 
 
-class RandomizeClass(Choice):
+class CompanionClass(Choice):
     """Randomizes the class of the 7 non-droid companions (Bastila,
     Canderous, Carth, Jolee, Juhani, Mission, Zaalbar -- HK-47 and T3-M4
-    are droids and never affected). Independent of jedi_start/jedi_class,
+    are droids and never affected). Independent of starting_class/jedi_class,
     which only ever control the PC's own class.
 
     off (default): vanilla -- every companion keeps their normal class.
@@ -100,7 +100,7 @@ class RandomizeClass(Choice):
     classes (Soldier/Scout/Scoundrel/Guardian/Consular/Sentinel), applied
     automatically at recruit like no_jedi.
     """
-    display_name = "Randomize Companion Class"
+    display_name = "Companion Class"
     option_off = 0
     option_no_jedi = 1
     option_jedi_companion = 2
@@ -108,34 +108,28 @@ class RandomizeClass(Choice):
     default = 0
 
 
-class ReceiveExpGranting(Toggle):
-    """Master switch for AP-driven XP. Off (default): pure vanilla XP,
-    completely untouched -- no clamping, no items, combat/quest XP behaves
-    exactly like stock KOTOR. On: experience_mode controls how you level
-    instead, and vanilla combat/quest XP gets clamped down to the expected
-    total on every area transition regardless of which mode."""
-    display_name = "Receive EXP Granting"
-    default = False
-
-
 class ExperienceMode(Choice):
-    """Only consulted when receive_exp_granting is On. Controls what your
-    "expected" XP total is derived from -- either way, vanilla combat/quest
-    XP is clamped down to that total on every area transition.
+    """Controls how (and whether) you receive AP-driven XP. Either way
+    besides off, vanilla combat/quest XP is clamped down to an "expected"
+    total on every area transition.
 
-    ap_gated: XP comes from "Experience Points" items received through the
-    multiworld. Each item is worth experience_item XP. Your level is gated
-    on what other players send you, same as any other AP item.
+    off (default): pure vanilla XP, completely untouched -- no clamping,
+    no items, combat/quest XP behaves exactly like stock KOTOR.
 
     ap_limited: no items involved. Your expected XP is computed directly
     from how many of YOUR OWN locations you've checked off so far, times
     experience_limiter -- independent of what anyone sends you, so your
     level tracks your own progress through the game rather than the
     multiworld's item flow.
+
+    ap_gated: XP comes from "Experience Points" items received through the
+    multiworld. Each item is worth experience_item XP. Your level is gated
+    on what other players send you, same as any other AP item.
     """
     display_name = "EXP Mode"
-    option_ap_gated = 0
+    option_off = 0
     option_ap_limited = 1
+    option_ap_gated = 2
     default = 0
 
 
@@ -176,14 +170,62 @@ class ExperienceItem(Range):
     default = 4000
 
 
-class GrantCredits(Toggle):
-    """Whether credits are randomized as AP items ("Credit Chit"). Credits
-    can only ever be topped up in-game, never reduced (a confirmed KOTOR
-    engine limitation -- TakeGoldFromCreature is a no-op), so unlike XP
-    there's no clamp-down variant here: off just excludes Credit Chit from
-    the pool entirely and leaves credits pure vanilla."""
-    display_name = "Grant Credits"
-    default = False
+class CreditMode(Choice):
+    """Controls how (and whether) you receive AP-driven credits. Mirrors
+    experience_mode's shape exactly -- both ap_limited and ap_gated clamp
+    vanilla credit gains (loot, quest rewards, selling items) down to an
+    "expected" total, correcting once per poll rather than once per area
+    transition (spending is granular enough -- shop purchases especially --
+    that waiting for a transition would be too coarse). A real spend
+    (credits going down) is never fought -- detected and treated as
+    legitimate, lowering the expected total by the same amount instead of
+    trying to "restore" money you just spent. Confirmed live 2026-09-03:
+    credits can now be set to an exact value in either direction (not just
+    topped up -- see KSE_SetCredits), which is what makes this clamp-down
+    design possible at all; the old GiveGoldToCreature/TakeGoldFromCreature
+    mechanism could only ever increase credits.
+
+    off (default): pure vanilla credits, completely untouched -- no
+    clamping, no items, credits behave exactly like stock KOTOR.
+
+    ap_limited: no items involved -- your expected credit total is
+    computed directly from how many of YOUR OWN locations you've checked
+    off so far, times credit_limiter -- independent of what anyone sends
+    you, so your credits track your own progress through the game rather
+    than the multiworld's item flow.
+
+    ap_gated: credits come from "Republic Credits" items received through
+    the multiworld. Each item is worth credit_item credits. Your credit
+    total is gated on what other players send you, same as any other AP
+    item.
+    """
+    display_name = "Credit Mode"
+    option_off = 0
+    option_ap_limited = 1
+    option_ap_gated = 2
+    default = 0
+
+
+class CreditLimiter(Range):
+    """Credits granted per YOUR OWN completed check, when credit_mode is
+    "ap_limited". Total expected credits = (your own checks completed) x
+    this value, recalculated as you complete more checks. Mirrors
+    experience_limiter's shape exactly."""
+    display_name = "Credit Limiter"
+    range_start = 1
+    range_end = 20000
+    default = 100
+
+
+class CreditItem(Range):
+    """How many credits each "Republic Credits" item grants, when
+    credit_mode is "ap_gated". Mirrors experience_item's shape exactly.
+    Replaces the old fixed 5000-per-item amount with a configurable
+    value."""
+    display_name = "Credit Item"
+    range_start = 1
+    range_end = 20000
+    default = 5000
 
 
 # Starting ability/skill boosts -- each is an extra flat amount granted at
@@ -418,9 +460,9 @@ class ItemDistributionType(Choice):
     guaranteed in the pool -- everything else (curated gear, Skills,
     Abilities, EXP, Credits) is drawn proportionally from the 7 categories
     below, across whichever pool slots aren't taken by those guaranteed
-    companion items -- the jedi_start class item (when jedi_start is
-    "granted") is ALSO unconditionally guaranteed the same way, never
-    subject to this weighted draw. When jedi_start is "start" it's
+    companion items -- the starting_class class item (when starting_class
+    is "granted") is ALSO unconditionally guaranteed the same way, never
+    subject to this weighted draw. When starting_class is "start" it's
     precollected at game start instead, still never placed in the pool;
     when "off" there's no class item at all.
 
@@ -433,7 +475,7 @@ class ItemDistributionType(Choice):
     baseline. Weights are relative, not required to sum to 100 -- doubling
     every weight produces the same distribution. A category that isn't
     actually available given your other options (e.g. EXP when
-    receive_exp_granting is off, or ap_limited XP mode which doesn't use
+    experience_mode is off, or ap_limited XP mode which doesn't use
     items at all, or Weapons/Armor/Consumables when receive_inventory_items
     is off) is skipped and the remaining weights are renormalized
     automatically.
@@ -480,8 +522,8 @@ class ConsumableWeight(Range):
 class ExpWeight(Range):
     """Relative weight for Experience Points in the distributed pool. Only
     consulted when item_distribution_type is player_decided, and only has
-    any effect when receive_exp_granting is On and experience_mode is
-    ap_gated (Experience Points items don't exist at all otherwise)."""
+    any effect when experience_mode is ap_gated (Experience Points items
+    don't exist at all otherwise)."""
     display_name = "EXP Distribution Weight"
     range_start = 0
     range_end = 100
@@ -489,9 +531,10 @@ class ExpWeight(Range):
 
 
 class CreditWeight(Range):
-    """Relative weight for Credit Chits in the distributed pool. Only
-    consulted when item_distribution_type is player_decided, and only has
-    any effect when grant_credits is On."""
+    """Relative weight for Republic Credits items in the distributed pool.
+    Only consulted when item_distribution_type is player_decided, and
+    only has any effect when credit_mode is ap_gated (Republic Credits
+    items don't exist at all otherwise)."""
     display_name = "Credit Distribution Weight"
     range_start = 0
     range_end = 100
@@ -574,14 +617,15 @@ STARTING_SKILL_ARMS: typing.Dict[str, str] = {
 @dataclass
 class KotorOptions(PerGameCommonOptions):
     companion_mode: CompanionMode
-    jedi_start: JediStart
+    starting_class: StartingClass
     jedi_class: JediClass
-    randomize_class: RandomizeClass
-    receive_exp_granting: ReceiveExpGranting
+    companion_class: CompanionClass
     experience_mode: ExperienceMode
     experience_limiter: ExperienceLimiter
     experience_item: ExperienceItem
-    grant_credits: GrantCredits
+    credit_mode: CreditMode
+    credit_limiter: CreditLimiter
+    credit_item: CreditItem
     death_link: DeathLink
     starting_strength: StartingStrength
     starting_dexterity: StartingDexterity

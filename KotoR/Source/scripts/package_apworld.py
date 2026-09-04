@@ -58,6 +58,16 @@ def main():
     parser.add_argument("--out", default=DEFAULT_OUT, help="Where to write the .apworld file.")
     parser.add_argument("--version", default=WORLD_VERSION,
                          help=f"World version to stamp in the manifest (default: {WORLD_VERSION}).")
+    parser.add_argument("--min-ap-version", default=None,
+                         help="Override minimum_ap_version instead of auto-detecting this machine's own "
+                              "Archipelago core version. Use this to pin against a real tester's actual "
+                              "(possibly older) core -- e.g. 2026-09-04: this repo's own core was 0.6.8 "
+                              "but a tester's freshly-updated official Archipelago was only 0.6.7, so the "
+                              "apworld auto-rejected as 'too old' even though nothing KOTOR-specific "
+                              "actually needed 0.6.8. minimum_ap_version is purely a load-time gate, not a "
+                              "guarantee the code path was exercised on that exact core -- lowering it is "
+                              "low-risk (worst case: a real Python error instead of a clean rejection, if "
+                              "something genuinely new IS relied upon), not a correctness claim.")
     args = parser.parse_args()
 
     if not os.path.isdir(WORLD_DIR):
@@ -79,7 +89,8 @@ def main():
     # every time this repo's own Archipelago core gets updated, for no
     # real benefit -- the actual cross-machine risk this script exists to
     # solve is world_version skew, not core skew).
-    apworld.minimum_ap_version = tuplize_version(ap_core_version)
+    min_ap_version = args.min_ap_version if args.min_ap_version is not None else ap_core_version
+    apworld.minimum_ap_version = tuplize_version(min_ap_version)
     manifest = apworld.get_manifest()
 
     included = []
@@ -96,7 +107,8 @@ def main():
         zf.writestr("kotor/archipelago.json", json.dumps(manifest))
 
     print(f"Wrote {args.out}")
-    print(f"  game={GAME_NAME} world_version={args.version} minimum_ap_version={ap_core_version}")
+    print(f"  game={GAME_NAME} world_version={args.version} minimum_ap_version={min_ap_version}"
+          f"{' (this machine core is ' + ap_core_version + ')' if min_ap_version != ap_core_version else ''}")
     print(f"  {len(included)} files packaged:")
     for rel in sorted(included):
         print(f"    {rel}")

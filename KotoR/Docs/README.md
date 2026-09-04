@@ -20,10 +20,16 @@ optional — skipping either means the mod won't work.
   localized copies are not supported yet.
 - **Windows.** Everything here (the proxy DLL, the install script) is
   Windows-only.
-- **Python 3.12+** — used to generate your seed and run the setup scripts
-  that patch a couple of game files (item suppression, door randomization).
-  Get it from [python.org](https://www.python.org/) or via
-  `winget install Python.Python.3.12`.
+- **Python 3.12 or 3.13** — used to generate your seed, run the setup
+  scripts that patch a couple of game files (item suppression, door
+  randomization), and run `KotorClient.py` itself. Get it from
+  [python.org](https://www.python.org/) or via
+  `winget install Python.Python.3.12`. Avoid 3.14 for now if you want
+  `KotorClient.py`'s GUI mode (i.e. running it *without* `--nogui`) — Kivy
+  (the GUI library Archipelago's client uses) has no prebuilt wheel for
+  3.14 as of this writing, so installing it tries to compile from source
+  and fails without a full C build toolchain installed. `--nogui` mode is
+  unaffected either way.
 - **[KotOR Scripting Tool](https://github.com/KobaltBlu/KotOR-Scripting-Tool/releases/tag/v0.1.5)**
   (specifically its `nwnnsscomp.exe`, download and extract and ensure is moved into this location
   `C:\Program Files (x86)\KotOR Scripting Tool\nwnnsscomp.exe`) — a separate,
@@ -34,8 +40,22 @@ optional — skipping either means the mod won't work.
   suppressor) to match your seed's real options every time it connects
   (see `TESTING.md`). Not needed on a machine that's only generating seeds
   or hosting a server — see the hosting-only section below.
-**Archipelago** — Obviously... please ensure you have the latest version downloaded and installed on your local machine
-[See Here for latest releases](https://github.com/ArchipelagoMW/Archipelago/releases0). 
+- **Archipelago 0.6.7 or newer — as a full source checkout, not just the
+  official installer app.** Obviously... please ensure you have the
+  latest version downloaded
+  ([see here for latest releases](https://github.com/ArchipelagoMW/Archipelago/releases)).
+  One catch found during testing: if you installed Archipelago via its
+  Windows installer, that's a frozen/compiled build with no plain `.py`
+  files in it — fine for generating seeds and hosting through its own
+  launcher, but `KotorClient.py` needs to physically sit inside a real
+  Archipelago **source** tree to run (it imports `CommonClient`/`Utils`/etc.
+  directly from there, same as every other Archipelago game's client
+  script). Download the "Source code" zip for your version from that same
+  releases page, extract it, and run `pip install -r requirements.txt`
+  once inside it — see Step 4 below for exactly where the client files go.
+  `kotor.apworld` is also version-gated and will be rejected with a
+  generic "no functional world found" error on an Archipelago core older
+  than 0.6.7 — if you hit that error, check your version first.
 
 ## Just hosting a multiworld / generating a seed? You can skip almost all of this
 
@@ -97,15 +117,9 @@ and hosting.
 
 ## Step 1 — Get the release files
 
-Every release ships three zips together, version-pinned as a set — always
-get all three from the same release, never mix versions:
+Every release ships two zips together, version-pinned as a set — always
+get both from the same release, never mix versions:
 
-- **`KOTOR-AP-Extender-vX.Y.Z.zip`** → `extender\build_new\binkw32.dll`,
-  the compiled extender. Only needed if you're actually launching KOTOR on
-  this machine — skip it entirely if you're only generating seeds/hosting
-  (see "Just hosting..." above). No compiler needed — this is a
-  ready-to-use build of `extender\src_k1se\*` (this project's own extender
-  code plus K1SE's merged dispatcher-hook source) and MinHook.
 - **`KOTOR-AP-World-vX.Y.Z.zip`** → `kotor.apworld`, the Archipelago world
   implementation (item placement, location mapping, every player-facing
   option). Needed by anyone generating a seed AND anyone connecting with
@@ -114,18 +128,20 @@ get all three from the same release, never mix versions:
   same version, or items/locations can come out mismatched — the release
   version number is your guarantee of that, don't substitute a different
   copy.
-- **`KOTOR-AP-PlayerBundle-vX.Y.Z.zip`** → everything else needed to
-  install and play: `extender\install.ps1`, the setup/delivery scripts
-  under `scripts\`, the precompiled `dist\Override\` content, and a
-  `KotorClient\` folder with the client script and its 3 helper modules.
-  Skip it too if you're only generating seeds/hosting.
+- **`KOTOR-AP-PlayerBundle-vX.Y.Z.zip`** → everything needed to actually
+  install and play on this machine: `extender\build_new\binkw32.dll` (the
+  compiled extender — no compiler needed, a ready-to-use build of
+  `extender\src_k1se\*`, this project's own extender code plus K1SE's
+  merged dispatcher-hook source, and MinHook), `extender\install.ps1`,
+  the setup/delivery scripts under `scripts\`, the precompiled
+  `dist\Override\` content, and a `KotorClient\` folder with the client
+  script and its 3 helper modules. Skip this one entirely if you're only
+  generating seeds/hosting (see "Just hosting..." above) — you only need
+  the World zip for that.
 
 Download from **[the project's Releases page](https://github.com/Firebringer92/Archipelago-Fire/releases)**
-and extract **PlayerBundle and Extender into the same destination
-folder** — pick any folder, this becomes "your checkout" for the rest of
-these steps; the two zips are laid out to merge cleanly (both put
-`build_new\` and `install.ps1` under the same `extender\` folder). You
-should end up with:
+and extract **PlayerBundle** into any folder — that becomes "your
+checkout" for the rest of these steps. You should end up with:
 
 ```
 <your folder>\
@@ -182,11 +198,13 @@ scripts, so nothing needs to be rebuilt on your machine.
 ## Step 4 — Generate a seed and connect
 
 Before running `KotorClient.py`, it needs to live inside your own
-Archipelago checkout (it imports `CommonClient`/`NetUtils` from there,
-same as every other Archipelago world's client script) — copy all 4 files
-from the `KotorClient\` folder (from Step 1's PlayerBundle zip) into the
-root of your Archipelago checkout, alongside its `CommonClient.py`. Also
-place `kotor.apworld` (from Step 1's World zip) at
+Archipelago checkout — a full **source** checkout, not the official
+installer app (see "What you'll need" above) — since it imports
+`CommonClient`/`NetUtils` from there directly, same as every other
+Archipelago world's client script. Copy all 4 files from the
+`KotorClient\` folder (from Step 1's PlayerBundle zip) into the root of
+your Archipelago checkout, alongside its `CommonClient.py`. Also place
+`kotor.apworld` (from Step 1's World zip) at
 `Archipelago\custom_worlds\kotor.apworld` in that same checkout (create
 that folder if it doesn't exist yet).
 
@@ -202,7 +220,7 @@ generating/hosting for a group. `Generate.py` reads every `.yaml` file in
 `Archipelago\Players\` and builds one multiworld seed covering all of them
 (one file per player, even for a solo game). Start from
 **[`KotoR_TEMPLATE.yaml`](https://github.com/Firebringer92/Archipelago-Fire/blob/main/KotoR/Docs/KotoR_TEMPLATE.yaml)**
-(in this repo's `Docs\` folder, not inside any of the three zips) rather
+(in this repo's `Docs\` folder, not inside either zip) rather
 than writing one from scratch — it documents every available option
 inline, with its default and what it does. Download it into your
 Archipelago checkout's `Players\` folder, then copy it to your own name:
@@ -231,18 +249,40 @@ your own install (both accept `--game-dir` the same way `setup_game.py`
 does, and default to the same standard Steam path if you omit it):
 
 ```bash
-python scripts\patch_item_suppression.py --game-dir "C:\...\swkotor"
-python scripts\patch_door_randomizer.py --game-dir "C:\...\swkotor"
+python scripts\patch_item_suppression.py --game-dir "C:\...\swkotor" --archipelago-dir "C:\...\Archipelago"
+python scripts\patch_door_randomizer.py --game-dir "C:\...\swkotor" --archipelago-dir "C:\...\Archipelago"
 ```
 
-Neither needs the NWScript compiler — `patch_door_randomizer.py` only edits
+`--archipelago-dir` should point at the Archipelago checkout from Step 4
+above (the one with your generated seed's `output\` folder in it) — both
+scripts need to read your seed's actual options out of it, and since
+these scripts live in the PlayerBundle folder rather than inside that
+checkout, they can't find it without being told where it is. Neither
+needs the NWScript compiler — `patch_door_randomizer.py` only edits
 existing data fields, and `patch_item_suppression.py` uses a precompiled
-script already checked into `extender\scripts_src\` for the same reason
+script already shipped in `extender\scripts_src\` for the same reason
 `setup_game.py` doesn't need a compiler in Step 3.
 
 Then connect with `KotorClient.py`. See `TESTING.md` for the full
 walkthrough.
 
+## Building from source (optional — only if you're modifying the extender)
+
+Everyone else should use Step 1's prebuilt DLL instead. This needs
+**Visual Studio Build Tools (2022, with the C++ workload)**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "extender\build.ps1"
+```
+
+Compiles `extender\src_k1se\*` (this project's own extender code plus
+K1SE's merged dispatcher-hook source) together with MinHook into
+`extender\build_new\binkw32.dll` — the exact file Step 1 has you download
+instead. Needs the VS2022 Build Tools' C++ toolchain on `PATH` (or run
+from a "Developer PowerShell for VS 2022" prompt) — see the top of
+`build.ps1` if it can't find `vcvars32.bat`. Once built, Step 2's
+`install.ps1` works identically regardless of whether the DLL came from
+here or from the downloaded zip.
 
 ## Before you start: back up
 
@@ -261,7 +301,6 @@ This mod repacks real game files in place — `modules\*.rim` and
   restore any modified `modules\`/`Override\` content from scratch (this
   won't undo save-file changes, which is why saves need their own backup).
 
-
 ## How do checks/locations work in this mod?
 Due to nature of game, this mod has a specialized delivery/receipt pipeline to read and write to the game.
 When you first launch KotorClient.py and connect to server you will see an "extender" along with status. 
@@ -269,7 +308,6 @@ This extender is what is used to get information from the game to report on curr
 then use this information to determine "Did you achieve requirements for a known check". If you did, it will then send back to AP Server to mark it as completed and the attached item is then sent by client to be delivered to your game.
 You in game might not see the result check immediately. The delivery pipeline is designed to provide you items when you load into a new module (loading zone). Additionally because of how taxing some of the items are to the game client, there is a queuing system in place so you might not get all the items your supposed to get on your first transition. This is designed purposefully to prevent a game crash. A known issue where if more than 30 or so items being sent at once overwhelms the game. So if you see you should have gotten an item, it wsn't delivered ensure you check if its queued in the KotorClient status page or if it is marked as Completed/Received and you didn't get it that would be a bug. You will notice during playing that your KotorClient.py will get lots of messages, these are in game events that is being reported to client from game on current status and used to detect a check, this happens every 5 seconds. 
 For more technical details on how it all works refer to DESIGN.md
-
 
 ## Known alpha limitations
 
@@ -284,6 +322,16 @@ For more technical details on how it all works refer to DESIGN.md
   and travel to and from planets. Ebon-Hawk entrance/exit always leads to it.
   End game areas (leviathan/unknown world/star forge) are taken out of randomization on doors
 - Death link will not kill the player if he has party members due to having a companion still up. Known issue.
+- Companion class randomization (`companion_class` option): switching to a
+  base class writes the companion's class/level/Force directly and lets
+  KOTOR's own normal in-game leveling catch them up to the party over
+  subsequent play. Granting a companion a Jedi class they didn't already
+  have uses the real `AddMultiClass()` native instead (fixed 2026-09-03 --
+  the direct-write approach left newly-granted Force Powers sheet-visible
+  but never usable from the combat hotbar/quickbar, since it skipped the
+  engine's own class-change housekeeping). Either way, Jedi-only feats are
+  granted/removed and Jedi-exclusive gear (lightsabers, Jedi robes) is
+  force-unequipped when switching away from Jedi.
 - **Crash Confirmed In Game: opening a companion's Force Powers
   screen right after they've been granted a Jedi class, before they've
   reached level 2 in it.** A freshly-granted level-1 Jedi companion has

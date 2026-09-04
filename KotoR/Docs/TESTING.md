@@ -92,23 +92,8 @@ mismatch) needs fixing — use `/ap_regen_poll` below to retry once fixed.
   Jedi class outside `starting_class`'s gating), same idea as `/ap_regen_poll`.
 - `/received` — item receipt history (standard Archipelago client command).
 
-**Use `/`, not `!`, for the commands above** — despite older guidance in
-this doc, `/` is the ONLY real command marker: `CommandProcessor`'s base
-class (`Archipelago/MultiServer.py`'s `CommandProcessor.marker = "/"`)
-hardcodes it, and every command (built-ins like `/connect` AND this
-client's own custom `ap_*` commands, registered into the exact same
-`commands` dict) is only ever recognized through it. There is no separate
-`!`-prefix mechanism anywhere in the code. Typing `!ap_status` doesn't
-error locally -- it silently falls through to `default()`, which for a
-connected client means it gets sent to the AP **server** as a raw message,
-which then correctly reports "Could not find command ap_status" (a real
-`MultiServer.py` command list, nothing to do with this client at all).
-Confirmed live (2026-09-03): `!ap_apply`/`!ap_status` reliably produced
-exactly this silent-wrong-target failure, while `/ap_apply`/`/ap_status`
-worked correctly every time. If you're running the client from a
-bash-family shell, `!` also triggers bash's own history expansion
-(`event not found` errors) as a second, unrelated reason to avoid it --
-use `cmd.exe`/PowerShell, or `set +H` in bash to disable it if you must.
+**Use `/`, not `!`, for the commands above** — exclamation will not work in the client
+for commands. I don't need to go into why.
 
 ## New-character safeguard
 
@@ -175,8 +160,5 @@ crash bug — send these along with it:
   not a bug.
 - If an armed delivery shows "STAGED" in the log but never actually lands
   in-game, check `extender.log` for an `ap_run_orchestrator: FAILED`
-  block first — see [docs/history/PHASE13.md](docs/history/PHASE13.md)'s
-  "Silent orchestrator-crash bug" section for the story behind why that
-  check exists.
-- See [PHASE14.md](docs/history/PHASE14.md) for the current list of
-  what's been live-tested vs. still open, and any in-progress bugs.
+  block first
+- 

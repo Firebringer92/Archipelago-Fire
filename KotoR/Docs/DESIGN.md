@@ -2,24 +2,10 @@
 
 **Status: Alpha.** Core pipeline (delivery, detection, options, item
 distribution, goal detection) is built, wired, and generation-tested
-end-to-end. Live in-game testing has proven most of it; a few pieces (the
-new EXP model, the new Goal checks, `area_randomizer` after its recent bug
-fixes) are deployed but not yet live-tested. See
-[DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md) for the consolidated
-technical history (feature decisions, confirmed capabilities, and every
-engine limitation found) that this doc summarizes, or the individual
-phase-by-phase logs archived at
-[docs/history/](docs/history/PHASE02.md) (`PHASE02.md`-`PHASE14.md`) for
-the full blow-by-blow. [docs/history/SESSION_STATUS.md](docs/history/SESSION_STATUS.md)
-predates that consolidation and may be stale — prefer
-`DEVELOPMENT_HISTORY.md`/`PHASE14.md` for current status.
+end-to-end. Live in-game testing has proven that it is working.
 
 This document explains how the whole system fits together and what each
-Python file is for. It does not re-derive the engine-constraint discoveries
-that shaped this design — see
-[DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)'s engine-limitations
-section, or [docs/history/PHASE09.md](docs/history/PHASE09.md)-
-[PHASE11.md](docs/history/PHASE11.md) for the original research.
+Python file is for.
 
 ## 1. What this is
 
@@ -86,9 +72,8 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   area and its direct neighbors carry the pending batch — see
   `arm_orchestrator.py`. This keeps each individual trampoline small and
   avoids constantly touching all ~78 covered areas.
-- **Reconciliation is deficit-only**, except XP under
-  `experience_mode` (when not `off`), which is the one deliberately
-  bidirectional clamp (it has to suppress vanilla combat/quest XP, not
+- **Reconciliation is deficit-only**, except XP and Credits under specific restrictions
+  which is a bidirectional clamp (it has to suppress vanilla combat/quest XP, not
   just top up).
 - **Only ~10 items are ever unconditionally guaranteed** in the pool (the
   9 companions, when `companion_mode` is `ap_gated`) — everything else
@@ -140,10 +125,7 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   needs matched-by-name reverse entrance/exit pairs this flat
   156-transition data model doesn't have), so a shuffled door reliably
   has some way back without needing that bigger data-modeling effort. See
-  its own module docstring, [docs/history/PHASE12.md](docs/history/PHASE12.md)
-  for the exclusion-zone design and the module/dest_module mixup bug, and
-  [docs/history/PHASE13.md](docs/history/PHASE13.md) for the reciprocal
-  pairing feature and the stale-bookkeeping bug found while building it.
+  its own module docstring
 
 ### 4.2 The Python AP client (`Archipelago/` root)
 
@@ -212,7 +194,7 @@ Override; re-run after changing their inputs):
 - `generate_companion_suppressors.py` / `generate_store_suppressors.py`
   — preserve-and-chain wrapper pairs for companion recruitment and store
   markers.
-- `generate_makejedi_suppressor.py` (2026-09-02) — same preserve-and-chain
+- `generate_makejedi_suppressor.py`  — same preserve-and-chain
   pattern, for Dantooine's real "become a Jedi" trial-completion script
   (`k_pdan_makejedi`). Confirmed via `read_ncs()` that the vanilla script
   calls `AddMultiClass()` unconditionally on trial completion, completely
@@ -235,17 +217,11 @@ Override; re-run after changing their inputs):
   arming neighbors), and the full 156-transition door/trigger graph (used
   by `EntranceRando.py`).
 - `generate_kotor_locations.py` — generates `Locations.py` from
-  `questtagmapping.json`/`areatodisplaymap.json` (renamed by the user
-  2026-09-02 from `scratch_locations.json`/`scratch_areas.json`, built
+  `questtagmapping.json`/`areatodisplaymap.json`  built
   from the now-removed journal-scan scripts), a hardcoded companion list,
-  AND (2026-09-02) all 33 alignment/level/goal locations (10 alignment
+  AND all 33 alignment/level/goal locations (10 alignment
   thresholds, 3 alignment-bonus checks, 19 character levels, 1 Malak-
-  defeated) via fixed constants at the top of the file -- these used to
-  live in `Locations.py` some other way outside this generator's
-  knowledge, and a re-run silently wiped all 33 once, breaking every
-  seed's generation project-wide until caught and fixed same session (see
-  `FutureDesign.md`). Covers all 220 real locations now; re-running this
-  can't silently drop any of them again.
+  defeated) via fixed constants at the top of the file. Covers all 220 real locations
 
 **Live pipeline — runtime orchestration:**
 - `arm_orchestrator.py` — invoked by the extender's C code on every

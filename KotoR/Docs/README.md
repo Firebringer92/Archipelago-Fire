@@ -30,7 +30,7 @@ optional — skipping either means the mod won't work.
   already-compiled NWScript compiler, not something you build. Needed on
   the machine actually running the game/client: `KotorClient.py`
   automatically recompiles and redeploys two scripts (`ap_poll_shared.ncs`
-  and, if `jedi_start` isn't `off`, the Dantooine trial-completion
+  and, if `starting_class` isn't `off`, the Dantooine trial-completion
   suppressor) to match your seed's real options every time it connects
   (see `TESTING.md`). Not needed on a machine that's only generating seeds
   or hosting a server — see the hosting-only section below.
@@ -59,7 +59,7 @@ What you actually need:
   ```
   Reads every `.yaml` under `Players\` — see Step 4 below for how to set
   up player files (each player sends you their own filled-out `.yaml`
-  copied from `Archipelago\Players\kotor_test.yaml`; you don't need to
+  copied from `Archipelago\Players\KotoR_TEMPLATE.yaml`; you don't need to
   understand what any individual option does to generate for them). This
   produces one `AP_<seed>.zip` in `Archipelago\output\` covering every
   player file present.
@@ -119,8 +119,8 @@ get all three from the same release, never mix versions:
   `KotorClient\` folder with the client script and its 3 helper modules.
   Skip it too if you're only generating seeds/hosting.
 
-Download from **[the project's Releases page — link TBD, not published
-yet]** and extract **PlayerBundle and Extender into the same destination
+Download from **[the project's Releases page](https://github.com/Firebringer92/Archipelago-Fire/releases)**
+and extract **PlayerBundle and Extender into the same destination
 folder** — pick any folder, this becomes "your checkout" for the rest of
 these steps; the two zips are laid out to merge cleanly (both put
 `build_new\` and `install.ps1` under the same `extender\` folder). You
@@ -199,14 +199,15 @@ once they've told you their server address.
 The rest of this step is for a solo game, or for whoever is doing the
 generating/hosting for a group. `Generate.py` reads every `.yaml` file in
 `Archipelago\Players\` and builds one multiworld seed covering all of them
-(one file per player, even for a solo game). Start from **`kotor_test.yaml`
-on the Releases page** (a standalone file, not inside any of the three
-zips) rather than writing one from scratch — it documents every available
-option inline, with its default and what it does. Download it into your
+(one file per player, even for a solo game). Start from
+**[`KotoR_TEMPLATE.yaml`](https://github.com/Firebringer92/Archipelago-Fire/blob/main/KotoR/Docs/KotoR_TEMPLATE.yaml)**
+(in this repo's `Docs\` folder, not inside any of the three zips) rather
+than writing one from scratch — it documents every available option
+inline, with its default and what it does. Download it into your
 Archipelago checkout's `Players\` folder, then copy it to your own name:
 
 ```bash
-copy Archipelago\Players\kotor_test.yaml Archipelago\Players\my_game.yaml
+copy Archipelago\Players\KotoR_TEMPLATE.yaml Archipelago\Players\my_game.yaml
 ```
 
 Edit `my_game.yaml`: set `name:` to whatever slot name you want to connect
@@ -214,7 +215,7 @@ with (must be unique among the files in `Players\` if you're generating for
 more than one player at once), then adjust any options under the `KotOR:`
 block — leave `game:` itself alone, that's the fixed internal name
 Archipelago uses to find this world, not a display name. Delete or move
-`kotor_test.yaml` out of `Players\` first if you don't want its own
+`KotoR_TEMPLATE.yaml` out of `Players\` first if you don't want its own
 (non-default) options generated as a second, separate slot alongside yours.
 
 ```bash
@@ -282,12 +283,29 @@ This mod repacks real game files in place — `modules\*.rim` and
   files — see the backup section above before enabling either.
 - A handful of doors are structurally impossible to randomize and are left on their
   vanilla exit automatically. This is expected. Not a bug
-- Companion class randomization (`randomize_class` option) writes a
-  companion's class/level/Force directly and lets KOTOR's own normal
-  in-game leveling catch them up to the party over subsequent play. It
-  also grants/removes the Jedi-only feats and force-unequips Jedi-exclusive
-  gear (lightsabers, Jedi robes) a real class switch implies. A current known gap: newly-granted Force Powers show up
-  correctly on the character sheet but not in the combat hotbar/quickbar this means they cannot be used by characters who were not already force users.
+- Companion class randomization (`companion_class` option): switching to a
+  base class writes the companion's class/level/Force directly and lets
+  KOTOR's own normal in-game leveling catch them up to the party over
+  subsequent play. Granting a companion a Jedi class they didn't already
+  have uses the real `AddMultiClass()` native instead (fixed 2026-09-03 --
+  the direct-write approach left newly-granted Force Powers sheet-visible
+  but never usable from the combat hotbar/quickbar, since it skipped the
+  engine's own class-change housekeeping). Either way, Jedi-only feats are
+  granted/removed and Jedi-exclusive gear (lightsabers, Jedi robes) is
+  force-unequipped when switching away from Jedi.
+- **Crashes the game (confirmed): opening a companion's Force Powers
+  screen right after they've been granted a Jedi class, before they've
+  reached level 2 in it.** A freshly-granted level-1 Jedi companion has
+  zero known Force Powers yet (our grant mechanism doesn't run the normal
+  "learn initial powers" step a real level-up would), and the Force
+  Powers screen isn't built to render a completely empty list for a
+  character it considers Jedi. **Workaround: don't open that screen for a
+  companion who was just converted until they've leveled up at least
+  once** (companion leveling happens only through real combat XP —
+  confirmed no scriptable way to grant a companion levels or XP directly
+  in this engine build). No code fix yet; this is a real risk under
+  `companion_class`'s `jedi_companion`/`randomize_all` modes, not just
+  during testing.
 - Only tested against the Steam release of KOTOR 1.
 
 ## Credits

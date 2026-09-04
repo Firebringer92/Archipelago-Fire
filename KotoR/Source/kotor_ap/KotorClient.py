@@ -108,7 +108,7 @@ HEAVY_ARMS = {
     "companion_bastila", "companion_canderous", "companion_carth",
     "companion_hk47", "companion_jolee", "companion_juhani",
     "companion_mission", "companion_t3m4", "companion_zaalbar",
-    # JediStart=random_class's base-class roll (2026-09-02) -- a
+    # StartingClass=random_class's base-class roll (2026-09-02) -- a
     # KSE_SetCreatureField write on the PC, same heavy classification as
     # companion_class's write, same reasoning (see _queue_heavy).
     "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel",
@@ -133,6 +133,17 @@ KNOWN_ARM_NAMES = [
     "dump_statblock",  # TEMPORARY (2026-08-31): Force Powers offset research,
                        # see kotor_engine_constraints memory / PHASE14.md.
     "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel",
+    # Slots 37-41 backfilled 2026-09-03 -- existed in generate_trampoline_
+    # batch.py's APPLIES table and in ap_extender.c's AP_ARM_NAMES (after
+    # backfilling that too) but were missing here, so /ap_apply couldn't
+    # reach them by name -- only raw numeric queuing could. TEMPORARY
+    # research arms, same as dump_statblock above.
+    "dump_statblock_carth", "dump_statblock_juhani",
+    "carth_addmulticlass_hybrid_test", "juhani_addmulticlass_scoundrel_test",
+    "juhani_grant_critical_strike_test",
+    "test_credits_chain",  # TEMPORARY (2026-09-03): credits derivation
+                           # chain confirmation -- see offsets.h's
+                           # KSE_CREDITS_CHAIN_ID comment.
 ]
 
 # AP item display name -> extender arm name, derived directly from
@@ -202,19 +213,19 @@ def regenerate_poll_shared(area_randomizer: bool) -> tuple[bool, str]:
         return False, f"regenerate_poll_shared raised: {e}"
 
 
-def regenerate_makejedi_suppressor(jedi_start: int) -> tuple[bool, str]:
+def regenerate_makejedi_suppressor(starting_class: int) -> tuple[bool, str]:
     """Regenerates, compiles, and deploys the Dantooine k_pdan_makejedi
-    suppression wrapper for the ACTUAL connected seed's jedi_start value --
-    same reasoning and same pure-local-file-operation shape as
+    suppression wrapper for the ACTUAL connected seed's starting_class value
+    -- same reasoning and same pure-local-file-operation shape as
     regenerate_poll_shared above. See generate_makejedi_suppressor.py's
     module docstring for what this wrapper does and why it's needed
-    (jedi_start's item-gating is otherwise bypassed for free by simply
+    (starting_class's item-gating is otherwise bypassed for free by simply
     playing the Dantooine trials normally)."""
     try:
         result = subprocess.run(
             [sys.executable, GENERATE_MAKEJEDI_SUPPRESSOR,
              f"--game-dir={GAME_DIR}",
-             f"--jedi-start={jedi_start}"],
+             f"--starting-class={starting_class}"],
             capture_output=True, text=True, timeout=120,
         )
         if result.returncode != 0:
@@ -272,7 +283,7 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         !ap_apply give_item:g1_w_lghtsbr01:1 -- count defaults to 1.
         Companion class randomization uses companion_class:<name>:<class>,
         e.g. !ap_apply companion_class:carth:guardian -- see Options.py's
-        RandomizeClass and generate_trampoline_batch.py's
+        CompanionClass and generate_trampoline_batch.py's
         build_companion_class_block for the valid name/class values."""
         if not arm_name:
             self.output(f"Usage: !ap_apply <name>. Known names: {', '.join(KNOWN_ARM_NAMES)}, "
@@ -303,6 +314,25 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
             # class_guardian/companion_carth/etc. See _queue_heavy.
             self.ctx._queue_heavy(arm_name, f"(admin) companion_class:{parts[1]}:{parts[2]}")
             self.output(f"Admin: queued companion_class {parts[1]}:{parts[2]} (serialized, bypassing AP server).")
+            return True
+        if arm_name in ("xp", "credits"):
+            # Mirrors _do_deliver's real-item handling for these two exactly
+            # (2026-09-03 fix -- see FutureDesign.md): a real "xp"/"credits"
+            # AP item is bookkeeping-only, note_item_received() bumps the
+            # expected total and the reconciler's own bidirectional clamp
+            # (set_xp/set_credits) does the actual grant on its next
+            # transition/poll. The raw fixed-increment arm (GiveGoldToCreature
+            # / GiveXPToCreature) is NEVER reached for a real item any more.
+            # This admin command used to skip straight to that raw arm
+            # instead -- confirmed live to desync the reconciler entirely
+            # (the clamp doesn't know about a grant it didn't expect, and
+            # corrects the "extra" straight back out). Routing through the
+            # same note_item_received() call makes this a genuinely
+            # representative test of the real path, not a different one.
+            self.ctx.reconciler.note_item_received(arm_name)
+            self.output(f"Admin: recorded a {arm_name!r} receipt (bypassing AP server) -- "
+                        f"the reconciler will apply the correction on its own next poll/transition, "
+                        f"same as a real item.")
             return True
         if arm_name not in KNOWN_ARM_NAMES:
             self.output(f"Unknown arm name {arm_name!r}. Known names: {', '.join(KNOWN_ARM_NAMES)}")
@@ -337,14 +367,14 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
     def _cmd_ap_regen_makejedi(self) -> bool:
         """Manual fallback: force-regenerate/compile/deploy the Dantooine
         make-jedi suppression wrapper for this session's already-connected
-        jedi_start (normally done automatically on Connect -- see
+        starting_class (normally done automatically on Connect -- see
         on_package). Use this if the automatic regeneration failed (check
         the log for a "[makejedi] regeneration FAILED" line) or if you
         just want to re-sync after manually editing the game install's
         Override."""
         self.output(f"Admin: regenerating the Dantooine make-jedi suppressor for "
-                    f"jedi_start={self.ctx.jedi_start} ...")
-        ok, msg = regenerate_makejedi_suppressor(self.ctx.jedi_start)
+                    f"starting_class={self.ctx.starting_class} ...")
+        ok, msg = regenerate_makejedi_suppressor(self.ctx.starting_class)
         self.output(("OK: " if ok else "FAILED: ") + msg)
         return ok
 
@@ -506,10 +536,10 @@ class KotorContext(CommonContext):
         # 0=ap_gated, 1=normal, 2=none -- set from slot_data on Connect,
         # matching Options.py's CompanionMode default until then.
         self.companion_mode = 0
-        # RandomizeClass=no_jedi/randomize_all companion->class assignments
+        # CompanionClass=no_jedi/randomize_all companion->class assignments
         # (empty for off/jedi_companion) -- set from slot_data on Connect,
         # see __init__.py's fill_slot_data().
-        self.companion_classes: typing.Dict[str, str] = {}
+        self.companion_class_rolls: typing.Dict[str, str] = {}
         # Match Options.py's defaults until slot_data overrides them on Connect.
         self.consumable_stack_count = 3
         self.shop_item_count = 0
@@ -517,11 +547,11 @@ class KotorContext(CommonContext):
         # regenerate ap_poll_shared.ncs for the ACTUAL connected seed (see
         # regenerate_poll_shared() above and on_package's Connected handler).
         self.area_randomizer = False
-        # Options.py's JediStart value -- set from slot_data on Connect,
+        # Options.py's StartingClass value -- set from slot_data on Connect,
         # used to regenerate the Dantooine make-jedi suppression wrapper
         # for the ACTUAL connected seed (see
         # regenerate_makejedi_suppressor() above).
-        self.jedi_start = 0
+        self.starting_class = 0
         # 0=defeat_malak, 1=true_balance, 2=max_level -- matches Options.py's
         # Goal default until slot_data overrides it on Connect. See
         # _check_goal(): sets self.finished_game, which CommonClient's own
@@ -681,11 +711,13 @@ class KotorContext(CommonContext):
         if cmd == "Connected":
             slot_data = args.get("slot_data", {}) or {}
             self.companion_mode = slot_data.get("companion_mode", 0)
-            self.companion_classes = slot_data.get("companion_classes", {})
-            self.reconciler.receive_exp_granting = bool(slot_data.get("receive_exp_granting", False))
+            self.companion_class_rolls = slot_data.get("companion_class_rolls", {})
             self.reconciler.experience_mode = slot_data.get("experience_mode", 0)
             self.reconciler.experience_limiter = slot_data.get("experience_limiter", 600)
             self.reconciler.experience_item = slot_data.get("experience_item", 4000)
+            self.reconciler.credit_mode = slot_data.get("credit_mode", 0)
+            self.reconciler.credit_limiter = slot_data.get("credit_limiter", 100)
+            self.reconciler.credit_item = slot_data.get("credit_item", 5000)
             self.consumable_stack_count = slot_data.get("consumable_stack_count", 3)
             self.shop_item_count = slot_data.get("shop_item_count", 0)
             self.goal = slot_data.get("goal", 0)
@@ -695,9 +727,9 @@ class KotorContext(CommonContext):
             asyncio.get_event_loop().run_in_executor(
                 None, self._regenerate_poll_shared_and_log, self.area_randomizer)
 
-            self.jedi_start = slot_data.get("jedi_start", 0)
+            self.starting_class = slot_data.get("starting_class", 0)
             asyncio.get_event_loop().run_in_executor(
-                None, self._regenerate_makejedi_suppressor_and_log, self.jedi_start)
+                None, self._regenerate_makejedi_suppressor_and_log, self.starting_class)
 
             # Always sent, even when every planet's list is empty (a
             # shop_randomizer=off seed) -- 2026-08-29, fixing a real bug:
@@ -798,10 +830,11 @@ class KotorContext(CommonContext):
             # from note_item_received() calls. Gating this the same way as
             # real one-time arm sends left expected_scalar["xp"] at 0 on a
             # fresh process even though 6000 XP had legitimately been
-            # earned, and since the xp clamp is BIDIRECTIONAL (unlike
-            # credits, which can only top up), the very next area
-            # transition queued set_xp:0 -- a real, immediate risk of
-            # wiping out already-earned XP, not just a bookkeeping quirk.
+            # earned, and since both xp AND credits clamps are now
+            # BIDIRECTIONAL (2026-09-03), the very next area transition/
+            # poll queued a corrective set_xp/set_credits down to the
+            # stale expected value -- a real, immediate risk of wiping out
+            # already-earned XP or credits, not just a bookkeeping quirk.
             # Safe to always replay: this has no real one-time side effect,
             # just updates a counter.
             self.reconciler.note_item_received(arm_name)
@@ -870,16 +903,16 @@ class KotorContext(CommonContext):
         else:
             game_events_logger.warning(f"[poll_shared] regeneration FAILED (area_randomizer={area_randomizer}): {msg}")
 
-    def _regenerate_makejedi_suppressor_and_log(self, jedi_start: int) -> None:
+    def _regenerate_makejedi_suppressor_and_log(self, starting_class: int) -> None:
         """Same shape as _regenerate_poll_shared_and_log above, for the
         Dantooine make-jedi suppression wrapper -- see
         regenerate_makejedi_suppressor()'s docstring. Also callable
         directly from _cmd_ap_regen_makejedi as the manual fallback."""
-        ok, msg = regenerate_makejedi_suppressor(jedi_start)
+        ok, msg = regenerate_makejedi_suppressor(starting_class)
         if ok:
-            game_events_logger.info(f"[makejedi] regenerated for jedi_start={jedi_start}: {msg}")
+            game_events_logger.info(f"[makejedi] regenerated for starting_class={starting_class}: {msg}")
         else:
-            game_events_logger.warning(f"[makejedi] regeneration FAILED (jedi_start={jedi_start}): {msg}")
+            game_events_logger.warning(f"[makejedi] regeneration FAILED (starting_class={starting_class}): {msg}")
 
     def _queue_heavy(self, arm_name: str, label: str) -> None:
         """The ONE place any heavy send not already going through
@@ -989,11 +1022,11 @@ class KotorContext(CommonContext):
         game_events_logger.warning("=" * 70)
 
     def _maybe_queue_companion_class(self, arm_name: str) -> None:
-        """RandomizeClass=no_jedi/randomize_all: right after a companion
+        """CompanionClass=no_jedi/randomize_all: right after a companion
         recruit arm is sent (either path -- the ap_gated real-item flow via
         _do_deliver below, or the CompanionMode=normal self-grant branch in
         on_package above), also queue their assigned class if one exists.
-        A no-op for jedi_companion/off (self.companion_classes empty) and
+        A no-op for jedi_companion/off (self.companion_class_rolls empty) and
         for HK-47/T3-M4 (droids, never given an assignment). Routed through
         _queue_heavy (2026-09-02, was a direct send before) -- same crash
         class as any other companion_class send, see that method's
@@ -1006,7 +1039,7 @@ class KotorContext(CommonContext):
         if not arm_name.startswith("companion_"):
             return
         npc_key = arm_name[len("companion_"):]
-        class_name = self.companion_classes.get(npc_key)
+        class_name = self.companion_class_rolls.get(npc_key)
         if class_name:
             self._queue_heavy(f"companion_class:{npc_key}:{class_name}",
                                f"(auto-follow-up) companion_class:{npc_key}:{class_name}")
@@ -1028,7 +1061,7 @@ class KotorContext(CommonContext):
                 self._log_delivery(character, index, item_name, arm_name, "failed_extender_offline")
             return
         if arm_name.startswith("companion_class:"):
-            # RandomizeClass=jedi_companion's real AP item -- a fixed
+            # CompanionClass=jedi_companion's real AP item -- a fixed
             # (companion, class) pair already decided at generation time
             # (see Items.py's "Jedi Training: ..." entries), not something
             # that needs the CLASS_ARM_TO_KEY re-fire guard below: repeating

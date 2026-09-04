@@ -24,8 +24,8 @@ From `Archipelago\`:
 python Generate.py --player_files_path Players
 ```
 
-Reads every `.yaml` in `Players\` (start from `kotor_test.yaml` — copy it
-and edit your own, see `README.md` Step 4) and writes a zip into
+Reads every `.yaml` in `Players\` (start from `KotoR_TEMPLATE.yaml` — copy
+it and edit your own, see `README.md` Step 4) and writes a zip into
 `Archipelago\output\`, e.g. `AP_<seed>.zip`. That's the real multiworld
 data the server hosts.
 
@@ -77,7 +77,7 @@ mismatch) needs fixing — use `/ap_regen_poll` below to retry once fixed.
   argument to see the full list of known arm names. Special forms:
   `give_item:<resref>[:<count>]` for gear, `companion_class:<name>:<class>`
   for the companion class-randomization feature (see `Options.py`'s
-  `RandomizeClass`).
+  `CompanionClass`).
 - `/ap_check <location name>` — manually report a location check by name
   (bypasses the normal auto-detection).
 - `/ap_locations` — list every location and whether it's checked.
@@ -89,7 +89,7 @@ mismatch) needs fixing — use `/ap_regen_poll` below to retry once fixed.
   needed if you see a `[SAFEGUARD]` warning after connecting.
 - `/ap_regen_makejedi` — manual fallback for the Dantooine make-jedi
   suppression wrapper (prevents the vanilla trial from granting a free
-  Jedi class outside `jedi_start`'s gating), same idea as `/ap_regen_poll`.
+  Jedi class outside `starting_class`'s gating), same idea as `/ap_regen_poll`.
 - `/received` — item receipt history (standard Archipelago client command).
 
 **Use `/`, not `!`, for the commands above** — despite older guidance in
@@ -154,7 +154,7 @@ crash bug — send these along with it:
   character name the client has ever seen — relevant for both delivery
   bugs and anything involving the new-character safeguard below.
 - **Your player `.yaml`** — which options were actually active matters a
-  lot for reproducing anything, especially `jedi_start`/`randomize_class`/
+  lot for reproducing anything, especially `starting_class`/`companion_class`/
   `loot_mode`/`area_randomizer`.
 - **The client's terminal output** around the time it happened — this
   isn't saved to a file anywhere (neither `KotorClient.py` nor the

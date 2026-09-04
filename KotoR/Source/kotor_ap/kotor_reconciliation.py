@@ -7,22 +7,32 @@ whether that matches what the player should have based on AP items
 received so far, re-sending grants to close any deficit.
 
 Scope (deliberately not everything): only arm types whose effect is a
-plain, repeatable ADDITIVE increment are auto-corrected here -- credits,
-xp, and the 8 skill ranks (each grant is a fixed +N, safe to re-fire to
-close an exact gap), and the two companion adds (idempotent: re-adding an
-already-present companion is a safe no-op via IsAvailableCreature/
-AddPartyMember). Class switches and ability increases are NOT
-auto-corrected -- those are closer to one-shot state transitions than
-repeatable increments (unlike skills, which have no AP item cap and are
-meant to be received many times), and blindly
-re-firing them on a mismatch risks doing something the player didn't ask
-for (e.g. re-running AddMultiClass) rather than fixing a real deficit.
+plain, repeatable ADDITIVE increment are auto-corrected here -- the 8
+skill ranks (each grant is a fixed +N, safe to re-fire to close an exact
+gap) and the two companion adds (idempotent: re-adding an already-present
+companion is a safe no-op via IsAvailableCreature/AddPartyMember). Class
+switches and ability increases are NOT auto-corrected -- those are closer
+to one-shot state transitions than repeatable increments (unlike skills,
+which have no AP item cap and are meant to be received many times), and
+blindly re-firing them on a mismatch risks doing something the player
+didn't ask for (e.g. re-running AddMultiClass) rather than fixing a real
+deficit.
 
-Deficit-only, by design (see kotor_engine_constraints session decision):
-if the game reports MORE than expected (e.g. vanilla XP/credits from
-normal play), that's left alone -- no correction fires, since our arms
-are all fixed-increment grants, not "set to exact value" (that would need
-a parameterized action our current arm system doesn't support).
+Deficit-only for skills/companions specifically (see
+kotor_engine_constraints session decision): if the game reports MORE than
+expected there, that's left alone -- no correction fires, since those
+arms are fixed-increment grants only, not "set to exact value."
+
+XP and credits are DIFFERENT -- both are full bidirectional clamps under
+their respective non-off modes (experience_mode/credit_mode), correcting
+vanilla gains DOWN as well as topping deficits UP, via a true absolute
+setter (SetXP / KSE_SetCredits) rather than a fixed-increment arm. XP
+clamps once per real area transition (see handle_event()'s _AREA_RE
+branch); credits clamp every poll cycle instead, in _reconcile() below,
+since spending is granular enough (shop purchases) that waiting for a
+transition would be too coarse. Credits additionally detects real spends
+(a decrease) and treats them as legitimate rather than fighting them --
+see _reconcile()'s purchase-detection comment.
 """
 from __future__ import annotations
 
@@ -35,14 +45,16 @@ logger = logging.getLogger("Client")
 
 # arm_name -> reconciliation rule. Only additive, safely-repeatable arms are
 # listed -- see module docstring for what's deliberately excluded and why.
-# "xp" has no fixed amount here -- see note_item_received(), it uses the
-# seed's configured experience_item instead (when experience_mode is
-# ap_gated -- ap_limited doesn't use items at all, see handle_event()'s
-# _AREA_RE branch), and its correction is handled separately
-# (on_area_transition(), not the regular per-poll _reconcile()) since it
-# clamps down as well as up.
+# "xp" and "credits" have no fixed amount here -- see note_item_received(),
+# they use the seed's configured experience_item/credit_item instead (only
+# meaningful under their ap_gated mode -- ap_limited derives its expected
+# total from the player's own checked-location count instead). XP's
+# correction is handled separately (on_area_transition(), not the regular
+# per-poll _reconcile()) since it clamps down as well as up; credits'
+# clamp (2026-09-03, see CreditMode's docstring) runs in the regular
+# per-poll _reconcile() instead, since spending is granular enough that
+# waiting for a transition would be too coarse.
 ARM_EFFECT: typing.Dict[str, tuple] = {
-    "credits": ("scalar", "credits", 5000),
     "computer_use": ("skill", "computeruse", 2),
     "demolitions": ("skill", "demolitions", 2),
     "stealth": ("skill", "stealth", 2),
@@ -121,14 +133,33 @@ class ReconciliationTracker:
         # Set from slot_data once connected (see KotorContext.on_package) --
         # these defaults match Options.py's own defaults so behavior is
         # sane even before a "Connected" package has arrived.
-        self.receive_exp_granting = False  # master switch -- False = pure vanilla XP, no clamping at all
-        self.experience_mode = 0  # 0=ap_gated (items), 1=ap_limited (own check count)
+        self.experience_mode = 0  # 0=off (pure vanilla, no clamping), 1=ap_limited (own check count), 2=ap_gated (items)
         self.experience_limiter = 600
         self.experience_item = 4000
+        self.credit_mode = 0  # same 0/1/2 shape as experience_mode
+        self.credit_limiter = 100
+        self.credit_item = 5000
         # Kept fresh by KotorContext on every extender event (own checked-
-        # location count) -- only consulted when experience_mode is
-        # ap_limited, see handle_event()'s _AREA_RE branch below.
+        # location count) -- only consulted when experience_mode/credit_mode
+        # is ap_limited, see handle_event()'s _AREA_RE branch and
+        # _reconcile()'s credits section below.
         self.checked_location_count = 0
+
+        # Credits purchase-detection (2026-09-03, see CreditMode's
+        # docstring): _last_real_credits is None until the first real
+        # CREDITSREPORT arrives, so a fresh connection never computes a
+        # false "decrease" against a stale 0 default. Any REAL decrease
+        # between polls is treated as a legitimate spend (shops are the
+        # only way credits go down in vanilla KOTOR) and accumulated here,
+        # permanently, rather than fought -- _reconcile() subtracts this
+        # total from whatever credit_mode's raw formula says you should
+        # have, so a purchase is never "restored." Mode-agnostic by
+        # design: works the same whether the raw expected total comes from
+        # an accumulating item count (ap_gated) or a pure function of
+        # checked_location_count (ap_limited, which has no accumulator of
+        # its own to adjust).
+        self._last_real_credits: typing.Optional[int] = None
+        self._cumulative_credit_spend = 0
 
         self.expected_scalar: typing.Dict[str, int] = {"credits": 0, "xp": 0}
         self.expected_skills: typing.Dict[str, int] = {f: 0 for f in _SKILL_FIELDS}
@@ -198,10 +229,18 @@ class ReconciliationTracker:
             # Amount comes from the seed's experience_item option, not a
             # fixed ARM_EFFECT entry -- only meaningful when experience_mode
             # is ap_gated (ap_limited derives its expected total from the
-            # player's own checked-location count instead, see
-            # handle_event()'s _AREA_RE branch). Harmless to keep tracking
-            # this even in ap_limited mode -- it's just never read there.
+            # player's own checked-location count instead, and off doesn't
+            # touch XP at all -- see handle_event()'s _AREA_RE branch).
+            # Harmless to keep tracking this even when unused.
             self.expected_scalar["xp"] += self.experience_item
+            return
+        if arm_name == "credits":
+            # Amount comes from the seed's credit_item option, not a fixed
+            # ARM_EFFECT entry -- same reasoning as "xp" above. Only
+            # meaningful under credit_mode's ap_gated (ap_limited derives
+            # its expected total from checked_location_count instead, and
+            # off doesn't touch credits at all -- see _reconcile()).
+            self.expected_scalar["credits"] += self.credit_item
             return
         rule = ARM_EFFECT.get(arm_name)
         if rule is None:
@@ -251,7 +290,7 @@ class ReconciliationTracker:
             # OnEnter handler (see generate_area_trampolines.py) -- a true
             # one-shot transition edge, not a poll-cycle repeat, so no extra
             # dedup is needed here. This is the ONLY place XP gets corrected
-            # when receive_exp_granting is On: once per real area entry,
+            # when experience_mode isn't off: once per real area entry,
             # clamped to the exact expected total (both directions -- this
             # is what eliminates vanilla combat/quest XP, unlike credits
             # which can only ever be topped up), fired as a priority action
@@ -261,10 +300,10 @@ class ReconciliationTracker:
             # expected_scalar via note_item_received); ap_limited derives it
             # directly from the player's own progress (checked_location_count
             # x experience_limiter) instead, independent of anyone's item
-            # sends. receive_exp_granting off entirely means don't touch XP
-            # at all -- pure vanilla, matching the old "vanilla" mode.
-            if self.receive_exp_granting:
-                if self.experience_mode == 0:  # ap_gated
+            # sends. off entirely means don't touch XP at all -- pure
+            # vanilla.
+            if self.experience_mode != 0:  # off
+                if self.experience_mode == 2:  # ap_gated
                     expected = self.expected_scalar.get("xp", 0)
                 else:  # ap_limited
                     expected = self.checked_location_count * self.experience_limiter
@@ -301,14 +340,41 @@ class ReconciliationTracker:
         corrections: typing.List[str] = []
         value_corrections: typing.List[typing.Tuple[str, int]] = []
 
-        # Credits: exact-value top-up (never reduced -- TakeGoldFromCreature
-        # is a confirmed no-op). xp is deliberately NOT handled here -- see
-        # handle_event()'s _AREA_RE branch, which corrects it once per real
-        # area transition instead of every poll cycle.
-        expected_credits = self.expected_scalar.get("credits", 0)
+        # Credits (2026-09-03 redesign, see CreditMode's docstring): full
+        # bidirectional clamp under ap_limited/ap_gated, mirroring XP's
+        # clamp-down design -- but every poll cycle here, not gated to an
+        # area transition, since spending is granular enough (shop
+        # purchases especially) that waiting for a transition would be too
+        # coarse. xp is deliberately NOT handled here -- see
+        # handle_event()'s _AREA_RE branch instead.
+        #
+        # Purchase detection runs regardless of credit_mode (even "off"
+        # keeps the spend tracker current, harmless since it's never
+        # consulted there): a REAL decrease since the last poll is
+        # credits going down, which only happens via spending in vanilla
+        # KOTOR -- accumulate it into _cumulative_credit_spend rather than
+        # letting the clamp below try to "restore" money just spent.
         current_credits = self.current_scalar.get("credits", 0)
-        if expected_credits > current_credits:
-            value_corrections.append(("set_credits", expected_credits))
+        if self._last_real_credits is not None:
+            real_delta = current_credits - self._last_real_credits
+            if real_delta < 0:
+                self._cumulative_credit_spend += -real_delta
+        self._last_real_credits = current_credits
+
+        if self.credit_mode != 0:  # off means don't touch credits at all
+            if self.credit_mode == 2:  # ap_gated
+                raw_expected_credits = self.expected_scalar.get("credits", 0)
+            else:  # ap_limited
+                raw_expected_credits = self.checked_location_count * self.credit_limiter
+            # Subtracting total lifetime spend (not just this cycle's
+            # delta) keeps this correct under EITHER mode: ap_gated's raw
+            # total is a persistent accumulator that would otherwise
+            # "remember" pre-spend money forever, and ap_limited's raw
+            # total is a pure function of progress with no accumulator of
+            # its own to adjust -- both need the same permanent deduction.
+            expected_credits = max(0, raw_expected_credits - self._cumulative_credit_spend)
+            if expected_credits != current_credits:
+                value_corrections.append(("set_credits", expected_credits))
 
         for key, expected in self.expected_skills.items():
             current = self.current_skills.get(key, 0)

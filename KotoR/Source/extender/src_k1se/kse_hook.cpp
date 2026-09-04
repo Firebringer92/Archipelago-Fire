@@ -1669,6 +1669,125 @@ extern "C" int __stdcall KseDumpStatBlock(int argCount)
     return 0;
 }
 
+// -------- host 606: int SWMG_GetLastHPChange()->int -- TEMPORARY --
+// research diagnostic (see offsets.h's KSE_CREDITS_CHAIN_ID comment / this
+// project's FutureDesign.md "CONFIRMED: credits offset" entry, 2026-09-03).
+// Exercises the chain the game's own HUD-update code uses to read credits:
+// KSE_OBJ_ROOT_RVA -> seed -> <call>(seed) -> pRes -> [pRes+0xFC]. Never
+// dereferences a null -- returns a distinct negative sentinel for each
+// possible failure point instead.
+//
+// TWO CANDIDATES for <call>, tried in the same pass (round 2, 2026-09-03):
+// round 1 called KSE_OBJ_TABLE_GET_RVA directly and got back a non-null,
+// non-crashing but WRONG pointer (derived=-2013026816 against a real 9540)
+// -- confirmed live. KSE_OBJ_TABLE_GET_RVA returns a TABLE that needs a
+// further KSE_OBJ_RESOLVE_RVA(table, objectId, &obj) step with an explicit
+// id (see KSE_FEAT_ID's chain above), but the raw disassembly of the
+// credits HUD code showed only ONE call whose return went straight to
+// pRes, no id, no second call -- consistent with a DIFFERENT, dedicated
+// "get the one party/campaign resource" accessor at KSE_OBJ_TABLE_GET_ALT_RVA
+// (0x4AEE70, the original manual decode's target, 0x100 off from
+// KSE_OBJ_TABLE_GET_RVA) rather than the general per-object table getter.
+// Both are computed and logged for comparison; the ALT candidate is
+// returned to the calling script since it's this round's primary
+// hypothesis.
+extern "C" int __stdcall KseTestCreditsChain(int argCount)
+{
+    if (argCount != 0) { Log("K1SE ANOMALY creditschain: argCount=%d (declared 0)", argCount); return -1; }
+    BYTE* base = KseImageBase();
+    KseSetIntFn setRetInt = reinterpret_cast<KseSetIntFn>(base + KSE_SETRET_INT_RVA);
+
+    void* objRoot = *reinterpret_cast<void**>(base + KSE_OBJ_ROOT_RVA);
+    if (!objRoot) {
+        Log("K1SE creditschain: objRoot null; chain not resolvable yet");
+        setRetInt(KseVM(), nullptr, -1);
+        return 0;
+    }
+    void* seed = *reinterpret_cast<void**>(reinterpret_cast<BYTE*>(objRoot) + 8);
+    if (!seed) {
+        Log("K1SE creditschain: seed null (objRoot=%p)", objRoot);
+        setRetInt(KseVM(), nullptr, -2);
+        return 0;
+    }
+
+    typedef void* (__fastcall *KseObjTableGetFn)(void* thisptr, void* edx);
+
+    KseObjTableGetFn getResOld = reinterpret_cast<KseObjTableGetFn>(base + KSE_OBJ_TABLE_GET_RVA);
+    void* pResOld = getResOld(seed, nullptr);
+    int creditsOld = pResOld ? *reinterpret_cast<int*>(reinterpret_cast<BYTE*>(pResOld) + 0xFC) : -3;
+
+    KseObjTableGetFn getResAlt = reinterpret_cast<KseObjTableGetFn>(base + KSE_OBJ_TABLE_GET_ALT_RVA);
+    void* pResAlt = getResAlt(seed, nullptr);
+    if (!pResAlt) {
+        Log("K1SE creditschain: pResAlt null (objRoot=%p seed=%p) -- old candidate: pRes=%p derived=%d",
+            objRoot, seed, pResOld, creditsOld);
+        setRetInt(KseVM(), nullptr, -4);
+        return 0;
+    }
+    int creditsAlt = *reinterpret_cast<int*>(reinterpret_cast<BYTE*>(pResAlt) + 0xFC);
+
+    Log("K1SE TESTCREDITSCHAIN objRoot=%p seed=%p | OLD(OBJ_TABLE_GET) pRes=%p derived=%d | ALT(0x4AEE70) pRes=%p derived=%d",
+        objRoot, seed, pResOld, creditsOld, pResAlt, creditsAlt);
+    setRetInt(KseVM(), nullptr, creditsAlt);
+    return 0;
+}
+
+// Shared resolver for the confirmed credits chain -- KSE_OBJ_ROOT_RVA ->
+// seed -> KSE_OBJ_TABLE_GET_ALT_RVA(seed) -> pRes. Used by both
+// KseTestCreditsChain's read-only diagnostic (above, still calls it
+// inline) and KseSetCredits's real write (below). Returns nullptr and
+// sets *why on any failure; never dereferences a null.
+static void* KseResolveCreditsRes(const char** why)
+{
+    BYTE* base = KseImageBase();
+    void* objRoot = *reinterpret_cast<void**>(base + KSE_OBJ_ROOT_RVA);
+    if (!objRoot) { *why = "objRoot null"; return nullptr; }
+    void* seed = *reinterpret_cast<void**>(reinterpret_cast<BYTE*>(objRoot) + 8);
+    if (!seed) { *why = "seed null"; return nullptr; }
+    typedef void* (__fastcall *KseObjTableGetFn)(void* thisptr, void* edx);
+    KseObjTableGetFn getRes = reinterpret_cast<KseObjTableGetFn>(base + KSE_OBJ_TABLE_GET_ALT_RVA);
+    void* pRes = getRes(seed, nullptr);
+    if (!pRes) { *why = "pRes null"; return nullptr; }
+    return pRes;
+}
+
+// -------- host 683: int SWMG_GetSoundFrequency(object,int)->int --------
+// The real, write-capable credits native (see offsets.h's
+// KSE_SET_CREDITS_ID comment). Resolves pRes via the confirmed chain and
+// writes nValue directly to [pRes+0xFC], returning the value read back
+// from that same address immediately after the write -- a genuine
+// confirmation the write landed, not just an echo of the input. Returns a
+// distinct negative sentinel on any failure along the chain.
+extern "C" int __stdcall KseSetCredits(int argCount)
+{
+    if (argCount != 2) { Log("K1SE ANOMALY setcredits: argCount=%d (declared 2)", argCount); return -1; }
+    BYTE* base = KseImageBase();
+    KseGetFn    getObject = reinterpret_cast<KseGetFn>(base + KSE_GET_OBJECT_RVA);
+    KseGetFn    getInt    = reinterpret_cast<KseGetFn>(base + KSE_GET_INT_RVA);
+    KseSetIntFn setRetInt = reinterpret_cast<KseSetIntFn>(base + KSE_SETRET_INT_RVA);
+
+    int discard = 0, nValue = 0;
+    if (!getObject(KseVM(), nullptr, &discard)) { Log("K1SE ANOMALY setcredits: get.object failed"); return -1; }
+    if (!getInt(KseVM(), nullptr, &nValue))     { Log("K1SE ANOMALY setcredits: get.int (value) failed"); return -1; }
+
+    const char* why = "";
+    void* pRes = KseResolveCreditsRes(&why);
+    if (!pRes) {
+        Log("K1SE setcredits: %s; no write performed", why);
+        setRetInt(KseVM(), nullptr, -1);
+        return 0;
+    }
+
+    int* slot = reinterpret_cast<int*>(reinterpret_cast<BYTE*>(pRes) + 0xFC);
+    int before = *slot;
+    *slot = nValue;
+    int after = *slot;
+    Log("K1SE SETCREDITS pRes=%p %d -> %d (requested %d) [write #%ld]",
+        pRes, before, after, nValue, (long)InterlockedIncrement(&g_fieldWrites));
+    setRetInt(KseVM(), nullptr, after);
+    return 0;
+}
+
 #endif
 
 #if KSE_STAGE == 17 || KSE_STAGE == 18 || KSE_STAGE == 19
@@ -2345,6 +2464,12 @@ __declspec(naked) static void Kse19_Detour()
         // KOTOR AP ADDITION, TEMPORARY (research pass) -- host 638.
         cmp  dword ptr [esp + 4], KSE_DUMPSB_ID
         je   k19_dumpsb
+        // KOTOR AP ADDITION, TEMPORARY (credits chain confirm) -- host 606.
+        cmp  dword ptr [esp + 4], KSE_CREDITS_CHAIN_ID
+        je   k19_creditschain
+        // KOTOR AP ADDITION (real credits write) -- host 683.
+        cmp  dword ptr [esp + 4], KSE_SET_CREDITS_ID
+        je   k19_setcredits
 
         jmp  dword ptr [g_trampoline]
 
@@ -2353,6 +2478,12 @@ __declspec(naked) static void Kse19_Detour()
                    ret  8
     k19_dumpsb:    push dword ptr [esp + 8]
                    call KseDumpStatBlock
+                   ret  8
+    k19_creditschain: push dword ptr [esp + 8]
+                   call KseTestCreditsChain
+                   ret  8
+    k19_setcredits: push dword ptr [esp + 8]
+                   call KseSetCredits
                    ret  8
     k19_featread:  push dword ptr [esp + 8]
                    call KseFeatRead

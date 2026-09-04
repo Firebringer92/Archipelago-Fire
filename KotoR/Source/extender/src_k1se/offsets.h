@@ -122,6 +122,20 @@ static const uintptr_t KSE_CEXOSTR_GETLEN_RVA = 0x005e5790u - 0x00400000u; // 0x
 
 static const uintptr_t KSE_OBJ_ROOT_RVA     = 0x007a39fcu - 0x00400000u; // 0x003a39fc
 static const uintptr_t KSE_OBJ_TABLE_GET_RVA= 0x004aed70u - 0x00400000u; // 0x000aed70
+// KOTOR AP ADDITION, TEMPORARY (credits chain confirmation, 2026-09-03):
+// second candidate for the credits HUD code's call target, tried after
+// KSE_OBJ_TABLE_GET_RVA was confirmed NOT to be it (live test returned
+// garbage -- see FutureDesign.md). KSE_OBJ_TABLE_GET_RVA returns a TABLE
+// that needs a further KSE_OBJ_RESOLVE_RVA(table, objectId, &obj) step
+// with an explicit object id (see KSE_FEAT_ID's chain above) -- but the
+// raw disassembly of the credits HUD code showed only ONE call whose
+// return value was used directly as pRes, no id argument, no second call.
+// That's consistent with this being a DIFFERENT, dedicated "get the one
+// party/campaign resource" accessor (no id needed, only one such resource
+// exists) rather than the general per-object table getter -- which would
+// also explain the original manual decode's 0x100 discrepancy as a real
+// distinct function, not an arithmetic slip.
+static const uintptr_t KSE_OBJ_TABLE_GET_ALT_RVA = 0x004aee70u - 0x00400000u; // 0x000aee70
 static const uintptr_t KSE_OBJ_RESOLVE_RVA  = 0x004d8230u - 0x00400000u; // 0x000d8230
 static const uintptr_t KSE_RESOLVE_OK_RVA   = 0x0074666cu - 0x00400000u; // 0x0034666c
 static const uintptr_t KSE_FEAT_QUERY_RVA   = 0x005a6630u - 0x00400000u; // 0x001a6630
@@ -316,6 +330,37 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
                            // 0 real callers via scan_opcode_usage.py, not
                            // claimed by any other KSE_*_ID in this file --
                            // used as (object oCreature, int nOffset, int nLength).
+
+// KOTOR AP ADDITION, TEMPORARY (research pass, credits offset confirmation,
+// 2026-09-03): exercises the chain the game's own HUD-update code uses to
+// read credits. CONFIRMED LIVE, exact match against real GetGold():
+//   seed    = *(void**)(*(void**)KSE_OBJ_ROOT_RVA + 8)          (below)
+//   pRes    = <call at KSE_OBJ_TABLE_GET_ALT_RVA>(seed) -- __thiscall, no stack args
+//   credits = *(int*)((BYTE*)pRes + 0xFC)
+// (KSE_OBJ_TABLE_GET_RVA itself was tried first and confirmed NOT to be the
+// right call target -- see KSE_OBJ_TABLE_GET_ALT_RVA's own comment above.)
+// Superseded by the real KSE_SET_CREDITS_ID native below, which reuses this
+// same read chain plus a write -- kept only as a standalone read-only
+// diagnostic. Not a shipped feature -- retire once KSE_SET_CREDITS_ID has
+// had its own live soak.
+#define KSE_CREDITS_CHAIN_ID 606  // int SWMG_GetLastHPChange()->int; confirmed
+                           // 0 real callers via scan_opcode_usage.py
+                           // (2026-09-03), not claimed by any other
+                           // KSE_*_ID in this file -- takes no arguments.
+
+// KOTOR AP ADDITION (not part of upstream K1SE): SetCredits -- the real,
+// write-capable promotion of KSE_CREDITS_CHAIN_ID above (2026-09-03).
+// Resolves pRes via the SAME confirmed chain, then writes the caller's
+// value directly to [pRes+0xFC] -- an exact, bidirectional set, unlike the
+// old GiveGoldToCreature/TakeGoldFromCreature dance (TakeGoldFromCreature
+// is a confirmed no-op in this engine build, so that old mechanism could
+// only ever top credits up, never reduce them). See
+// generate_trampoline_batch.py's build_set_credits_block().
+#define KSE_SET_CREDITS_ID 683  // int SWMG_GetSoundFrequency(object,int)->int;
+                           // confirmed 0 real callers via scan_opcode_usage.py
+                           // (2026-09-03), not claimed by any other KSE_*_ID
+                           // in this file -- used as (object oPC [unused,
+                           // discarded for stack balance], int nValue).
 
 #define KSE_FIELD_ID 688   // void SWMG_SetSoundVolume(object,int,int); confirmed
                            // zero real callers in every vanilla/mod script in the

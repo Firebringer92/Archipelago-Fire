@@ -64,7 +64,7 @@ edit or a second launch.
 **K1SE (KOTOR Script Extender)'s real, MIT-licensed source is merged
 directly into this project's own compiled extender** (`extender/src_k1se/`)
 rather than installed as a separate third-party mod. This project's own native additions 
-(like`KSE_SetCreatureField`, used by the `randomize_class` companion feature)
+(like`KSE_SetCreatureField`, used by the `companion_class` companion feature)
 sit alongside K1SE's original dispatcher-hook code in the same build,
 using the same hijacked-opcode mechanism K1SE itself pioneered.
 
@@ -87,8 +87,9 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   `arm_orchestrator.py`. This keeps each individual trampoline small and
   avoids constantly touching all ~78 covered areas.
 - **Reconciliation is deficit-only**, except XP under
-  `receive_exp_granting`, which is the one deliberately bidirectional
-  clamp (it has to suppress vanilla combat/quest XP, not just top up).
+  `experience_mode` (when not `off`), which is the one deliberately
+  bidirectional clamp (it has to suppress vanilla combat/quest XP, not
+  just top up).
 - **Only ~10 items are ever unconditionally guaranteed** in the pool (the
   9 companions, when `companion_mode` is `ap_gated`) — everything else
   (gear, Skills, Abilities, EXP, Credits) is drawn through a weighted
@@ -166,7 +167,7 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   (see 4.3's packaging note). `!ap_regen_poll` is the manual fallback.
   Same pattern, same call site, for the Dantooine make-jedi suppression
   wrapper (`regenerate_makejedi_suppressor()`, with the connected seed's
-  `jedi_start`; `!ap_regen_makejedi` is its manual fallback) -- see 4.3's
+  `starting_class`; `!ap_regen_makejedi` is its manual fallback) -- see 4.3's
   `generate_makejedi_suppressor.py` entry.
   New-character safeguard (`_evaluate_character_safety`, 2026-09-02):
   pauses every delivery/reconciliation action if the connected
@@ -215,18 +216,19 @@ Override; re-run after changing their inputs):
   pattern, for Dantooine's real "become a Jedi" trial-completion script
   (`k_pdan_makejedi`). Confirmed via `read_ncs()` that the vanilla script
   calls `AddMultiClass()` unconditionally on trial completion, completely
-  bypassing `JediStart`'s item-gating (`granted` mode) if left unsuppressed
-  -- a player who simply plays Dantooine normally would get the Jedi class
-  for free. Skips the vanilla script entirely whenever `jedi_start != off`
-  (the real grant comes from `class_guardian`/`class_consular`/
-  `class_sentinel` instead); confirmed safe to skip wholesale by tracing
-  every global it touches (`DAN_EXTRA`/`DAN_EXTRA_XP`/`DAN_EXTRA_XP2` are
-  used nowhere else in the game; `DAN_PATH_STATE` is only ever READ here,
-  never written, so nothing downstream can be corrupted) and confirming
-  its Bastila/Carth/lightsaber-resref/`dan_wanderhound` block is cosmetic
-  cutscene setup, not an item grant (no `CreateItemOnObject` anywhere near
-  it). `KotorClient.py` regenerates/redeploys this on every `Connected`
-  with the real connected seed's `jedi_start` (`!ap_regen_makejedi` is the
+  bypassing `StartingClass`'s item-gating (`jedi_granted` mode) if left
+  unsuppressed -- a player who simply plays Dantooine normally would get
+  the Jedi class for free. Skips the vanilla script entirely whenever
+  `starting_class != off` (the real grant comes from `class_guardian`/
+  `class_consular`/`class_sentinel` instead); confirmed safe to skip
+  wholesale by tracing every global it touches (`DAN_EXTRA`/
+  `DAN_EXTRA_XP`/`DAN_EXTRA_XP2` are used nowhere else in the game;
+  `DAN_PATH_STATE` is only ever READ here, never written, so nothing
+  downstream can be corrupted) and confirming its Bastila/Carth/
+  lightsaber-resref/`dan_wanderhound` block is cosmetic cutscene setup,
+  not an item grant (no `CreateItemOnObject` anywhere near it).
+  `KotorClient.py` regenerates/redeploys this on every `Connected` with
+  the real connected seed's `starting_class` (`!ap_regen_makejedi` is the
   manual fallback), same pattern as `ap_poll_shared.ncs`.
 - `build_area_graph.py` / `build_door_graph.py` — static connectivity
   data: which covered areas are directly reachable from which (used for

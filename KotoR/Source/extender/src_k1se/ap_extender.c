@@ -290,9 +290,24 @@ static const char *AP_ARM_NAMES[] = {
     "dump_statblock", /* TEMPORARY (2026-08-31): Force Powers offset research,
                         * see kotor_engine_constraints memory / PHASE14.md.
                         * Retire (leave the gap) once the research pass is done. */
-    "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel", /* JediStart=
+    "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel", /* StartingClass=
                         * random_class (2026-09-02), base-class roll only --
                         * see generate_trampoline_batch.py's APPLIES table. */
+    /* Slots 37-41 backfilled 2026-09-03 -- this session's Carth/Juhani
+     * hotbar-bug research arms existed in generate_trampoline_batch.py's
+     * APPLIES table but were never added here, so they were only ever
+     * reachable via raw numeric queuing (arm_orchestrator.py
+     * --queue-add=<id>), never by name via /ap_apply. Backfilled to close
+     * the sync gap and make room for slot 42 below. TEMPORARY research
+     * arms, same as dump_statblock above -- retire (leave the gaps) once
+     * confirmed done. */
+    "dump_statblock_carth", "dump_statblock_juhani",
+    "carth_addmulticlass_hybrid_test", "juhani_addmulticlass_scoundrel_test",
+    "juhani_grant_critical_strike_test",
+    "test_credits_chain", /* TEMPORARY (2026-09-03): credits derivation
+                        * chain confirmation -- see offsets.h's
+                        * KSE_CREDITS_CHAIN_ID comment. Retire (leave the
+                        * gap) once confirmed either way. */
 };
 /* IDs must match AP_ARM_NAMES position (1-indexed). scripts/generate_trampoline_batch.py's
  * APPLIES table is the single source of truth this array is kept in sync
@@ -876,7 +891,7 @@ static void ap_dispatch_command(char *buf, char *reply, size_t reply_size) {
                     reply[reply_size - 1] = '\0';
                 }
             } else if (_stricmp(action, "companion_class") == 0) {
-                /* companion_class:<name>:<class_name> -- RandomizeClass
+                /* companion_class:<name>:<class_name> -- CompanionClass
                  * (Options.py). Both fields are short fixed vocab (companion
                  * keys / class names, see generate_trampoline_batch.py's
                  * _COMPANION_TAGS / _CLASS_NAME_TO_CONST), so a generous
@@ -984,6 +999,29 @@ static void ap_dispatch_command(char *buf, char *reply, size_t reply_size) {
             ap_read_byte(addr, reply, reply_size);
         } else {
             _snprintf(reply, reply_size - 1, "ERROR:expected READBYTE:<hexaddr>\n");
+            reply[reply_size - 1] = '\0';
+        }
+    } else if (_strnicmp(buf, "RVADUMP:", 8) == 0) {
+        /* Same hex-dump as DUMPMEM, but the address is resolved as
+         * moduleBase + rva at call time, instead of taken as an absolute
+         * address directly. For testing whether a STABLE, RVA-anchored
+         * global (e.g. offsets.h's KSE_RULES_MGR_RVA/KSE_OBJ_ROOT_RVA --
+         * fixed relative to this project's own module, unlike every
+         * heap-derived address SNAPSHOT/SCANBYTES finds) leads, via a
+         * short manual pointer-chase (read here, DUMPMEM the pointer it
+         * reveals, repeat), to a heap address already confirmed to hold
+         * something real -- e.g. the credits value found via SNAPSHOT
+         * diffing. The dump file is still named by the RESOLVED absolute
+         * address (see ap_dump_mem), so the mapping is visible either way. */
+        unsigned __int32 rva = 0;
+        unsigned int size = 0;
+        if (sscanf(buf + 8, "%x:%u", &rva, &size) == 2) {
+            UINT_PTR module_base = (UINT_PTR)GetModuleHandleW(NULL);
+            unsigned __int32 addr = (unsigned __int32)(module_base + rva);
+            ap_log("RVADUMP: moduleBase=0x%p + rva=0x%X -> 0x%08X", (void *)module_base, rva, addr);
+            ap_dump_mem(addr, size, reply, reply_size);
+        } else {
+            _snprintf(reply, reply_size - 1, "ERROR:expected RVADUMP:<hexrva>:<size>\n");
             reply[reply_size - 1] = '\0';
         }
     } else {

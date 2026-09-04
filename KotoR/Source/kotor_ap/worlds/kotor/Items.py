@@ -56,7 +56,7 @@ item_table: typing.Dict[str, ItemData] = {
     # a live seed's item pool depends on.
     "Ability: Charisma Increase": ItemData(base_id + 15, ItemClassification.useful, "grant_test_ability"),
     "Experience Points": ItemData(base_id + 16, ItemClassification.filler, "xp"),
-    "Credit Chit": ItemData(base_id + 17, ItemClassification.filler, "credits"),
+    "Republic Credits": ItemData(base_id + 17, ItemClassification.filler, "credits"),
     "Companion: Carth Onasi": ItemData(base_id + 18, ItemClassification.progression, "companion_carth"),
     "Companion: HK-47": ItemData(base_id + 19, ItemClassification.progression, "companion_hk47"),
     "Companion: Jolee Bindo": ItemData(base_id + 20, ItemClassification.progression, "companion_jolee"),
@@ -99,12 +99,12 @@ item_table: typing.Dict[str, ItemData] = {
     # see Rules.py for the exact reasoning.
     "Reached Dark Side 0": ItemData(base_id + 33, ItemClassification.progression, "goal_marker"),
     "Reached Light Side 100": ItemData(base_id + 34, ItemClassification.progression, "goal_marker"),
-    # RandomizeClass=jedi_companion (2026-08-30): one guaranteed-placement
+    # CompanionClass=jedi_companion (2026-08-30): one guaranteed-placement
     # item per (non-Jedi companion x possible Jedi class) -- 4 companions x
     # 3 classes = 12 static entries here, but __init__.py's create_items()
     # only ever actually places ONE of the 3 per companion each seed (the
     # class was already decided by that seed's roll, same guaranteed-
-    # placement pattern as jedi_start=granted). arm_name is the
+    # placement pattern as starting_class=jedi_granted). arm_name is the
     # "companion_class:<name>:<class>" parameterized action -- see
     # generate_trampoline_batch.py's build_companion_class_block() and
     # KotorClient.py's companion_class dispatch. Order/grouping matches
@@ -121,14 +121,14 @@ item_table: typing.Dict[str, ItemData] = {
     "Jedi Training: Mission (Guardian)": ItemData(base_id + 44, ItemClassification.progression, "companion_class:mission:guardian"),
     "Jedi Training: Mission (Consular)": ItemData(base_id + 45, ItemClassification.progression, "companion_class:mission:consular"),
     "Jedi Training: Mission (Sentinel)": ItemData(base_id + 46, ItemClassification.progression, "companion_class:mission:sentinel"),
-    # JediStart=random_class (2026-09-02): the PC's own starting class,
+    # StartingClass=random_class (2026-09-02): the PC's own starting class,
     # rerolled to one of all 6 classes. A Jedi roll reuses the existing
-    # Class Switch items above (AddMultiClass, same as jedi_start=start/
-    # granted); a base-class roll needs these 3 new items instead, since
-    # AddMultiClass can't replace an existing base class -- these use
-    # KSE_SetCreatureField directly (see generate_trampoline_batch.py's
+    # Class Switch items above (AddMultiClass, same as starting_class=
+    # jedi_start/jedi_granted); a base-class roll needs these 3 new items
+    # instead, since AddMultiClass can't replace an existing base class --
+    # these use KSE_SetCreatureField directly (see generate_trampoline_batch.py's
     # pc_class_soldier/scout/scoundrel arms), the same mechanism
-    # RandomizeClass already uses for companions.
+    # CompanionClass already uses for companions.
     "PC Class: Soldier": ItemData(base_id + 47, ItemClassification.progression, "pc_class_soldier"),
     "PC Class: Scout": ItemData(base_id + 48, ItemClassification.progression, "pc_class_scout"),
     "PC Class: Scoundrel": ItemData(base_id + 49, ItemClassification.progression, "pc_class_scoundrel"),
@@ -184,4 +184,4 @@ arm_name_to_item: typing.Dict[str, str] = {data.arm_name: name for name, data in
 # Filler items are the ones that pad the pool out to match location count --
 # both are safely repeatable with no upper bound concern (skills cap at 127
 # via KSE, xp/credits have no meaningful ceiling).
-filler_items = ["Experience Points", "Credit Chit"]
+filler_items = ["Experience Points", "Republic Credits"]

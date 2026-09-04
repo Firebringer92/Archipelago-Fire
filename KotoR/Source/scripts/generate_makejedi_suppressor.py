@@ -1,10 +1,10 @@
 r"""
 Suppresses Dantooine's real "become a Jedi" trial-completion script
 (danm13's k_pdan_makejedi) whenever this project is managing the PC's own
-class itself (Options.py's JediStart != off) -- otherwise a player who
+class itself (Options.py's StartingClass != off) -- otherwise a player who
 simply plays through the Dantooine trials normally gets a full,
 unconditional Jedi class for free via the vanilla AddMultiClass() call
-baked into that script, completely bypassing jedi_start's item-gating
+baked into that script, completely bypassing starting_class's item-gating
 (granted mode) or double-granting on top of a class they may not have
 gotten yet at all.
 
@@ -32,12 +32,12 @@ not an empty Mod_OnAcquirItem-style slot):
     GiveXPToCreature + ShowLevelUpGUI) is what's being replaced by this
     project's own class_guardian/class_consular/class_sentinel arms (or
     any future PC-class-randomize mechanism) -- the vanilla XP grant is
-    also superseded by this project's own XP system when
-    receive_exp_granting is on.
+    also superseded by this project's own XP system when experience_mode
+    isn't off.
 
 Usage:
-  python generate_makejedi_suppressor.py                          -- read jedi_start from the latest generated seed
-  python generate_makejedi_suppressor.py --jedi-start=2            -- use this value directly (0=off/1=start/2=granted/3+=any future managed mode)
+  python generate_makejedi_suppressor.py                          -- read starting_class from the latest generated seed
+  python generate_makejedi_suppressor.py --starting-class=2        -- use this value directly (0=off/1=start/2=granted/3+=any future managed mode)
   python generate_makejedi_suppressor.py --game-dir "C:\...\swkotor"
 """
 import argparse
@@ -63,10 +63,10 @@ RESREF = "k_pdan_makejedi"
 PRESERVED_RESREF = "apo_makejedi_orig"
 
 
-def _latest_seed_jedi_start() -> int:
+def _latest_seed_starting_class() -> int:
     """Same zip-reading pattern as generate_poll_shared.py's
     _latest_seed_wants_area_randomizer() -- only used as a fallback for
-    someone running this by hand; KotorClient.py passes --jedi-start=
+    someone running this by hand; KotorClient.py passes --starting-class=
     explicitly from the actual connected seed's slot_data, same reasoning
     as why that file stopped guessing loot_mode from the newest zip."""
     zips = sorted(glob.glob(os.path.join(OUTPUT_DIR, "AP_*.zip")), key=os.path.getmtime, reverse=True)
@@ -81,18 +81,18 @@ def _latest_seed_jedi_start() -> int:
                 raw = f.read()
         data = restricted_loads(zlib.decompress(raw[1:]))
         for slot_data in data.get("slot_data", {}).values():
-            if "jedi_start" in slot_data:
-                return int(slot_data["jedi_start"])
+            if "starting_class" in slot_data:
+                return int(slot_data["starting_class"])
         return 0
     except Exception as e:
-        print(f"  (couldn't read latest seed's slot_data for jedi_start: {e})")
+        print(f"  (couldn't read latest seed's slot_data for starting_class: {e})")
         return 0
 
 
 WRAPPER_TEMPLATE_VANILLA = f"""// Suppression wrapper for Dantooine's real "become a Jedi" trial-completion
 // script (originally danm13's {RESREF}, preserved as {PRESERVED_RESREF}).
 //
-// jedi_start is "off" this seed -- runs the real vanilla script unchanged.
+// starting_class is "off" this seed -- runs the real vanilla script unchanged.
 #include "kse"
 
 void main()
@@ -104,7 +104,7 @@ void main()
 WRAPPER_TEMPLATE_SUPPRESSED = f"""// Suppression wrapper for Dantooine's real "become a Jedi" trial-completion
 // script (originally danm13's {RESREF}, preserved as {PRESERVED_RESREF}).
 //
-// jedi_start is project-managed this seed (not "off") -- the vanilla
+// starting_class is project-managed this seed (not "off") -- the vanilla
 // AddMultiClass()/XP grant/cutscene-polish is skipped entirely here. The
 // real class grant comes from this project's own class_guardian/
 // class_consular/class_sentinel arms (or any future PC-class-randomize
@@ -125,12 +125,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--game-dir", default=DEFAULT_GAME_DIR,
                          help=r"Your KOTOR install folder, the one with swkotor.exe (default: the standard Steam location).")
-    parser.add_argument("--jedi-start", type=int, default=None,
-                         help="Options.py's JediStart value to use directly (0=off, anything else=project-managed), "
+    parser.add_argument("--starting-class", type=int, default=None,
+                         help="Options.py's StartingClass value to use directly (0=off, anything else=project-managed), "
                               "instead of guessing from the latest AP_*.zip in Archipelago/output/.")
     args = parser.parse_args()
 
-    jedi_start = args.jedi_start if args.jedi_start is not None else _latest_seed_jedi_start()
+    starting_class = args.starting_class if args.starting_class is not None else _latest_seed_starting_class()
     game_dir = args.game_dir
     mod_dir = os.path.join(game_dir, "modules")
     override_dir = os.path.join(game_dir, "Override")
@@ -152,11 +152,11 @@ def main():
     else:
         print(f"Preserved original already present -> {preserved_path}")
 
-    body = WRAPPER_TEMPLATE_VANILLA if jedi_start == 0 else WRAPPER_TEMPLATE_SUPPRESSED
+    body = WRAPPER_TEMPLATE_VANILLA if starting_class == 0 else WRAPPER_TEMPLATE_SUPPRESSED
     nss_path = os.path.join(SRC_DIR, f"{RESREF}.nss")
     with open(nss_path, "w") as f:
         f.write(body)
-    print(f"Wrote {nss_path} (jedi_start={jedi_start}, {'vanilla' if jedi_start == 0 else 'suppressed'})")
+    print(f"Wrote {nss_path} (starting_class={starting_class}, {'vanilla' if starting_class == 0 else 'suppressed'})")
 
     ncs_path = os.path.join(SRC_DIR, f"{RESREF}.ncs")
     result = subprocess.run([NWNNSSCOMP, "-c", nss_path, "-o", ncs_path], capture_output=True, text=True, cwd=SRC_DIR)

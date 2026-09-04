@@ -171,9 +171,94 @@ DELIVERY_LOG_PATH = "kotor_delivery_log.jsonl"
 # file for it yet, so this stays consistent with that convention rather
 # than inventing a new one just for this call site.
 GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _sys_argv_value(flag, default):
+    """Same lightweight sys.argv scan patch_item_suppression.py/
+    patch_door_randomizer.py use for --archipelago-dir -- reads a flag's
+    value before get_base_parser()'s real argparse pass runs, since
+    REPO_ROOT below is computed at module-import time (before launch()
+    parses args)."""
+    for i, a in enumerate(sys.argv):
+        if a == flag and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if a.startswith(flag + "="):
+            return a.split("=", 1)[1]
+    return default
+
+
+def _detect_repo_root() -> str:
+    """Auto-detects the PlayerBundle folder (the one with scripts\\ and
+    extender\\ in it) by actually checking for scripts/generate_poll_shared.py
+    rather than assuming a fixed folder depth -- found broken live
+    2026-09-04, twice, when a hardcoded dirname(dirname(__file__)) guess
+    (correct ONLY for the dev machine's own layout, KotorClient.py nested
+    one level inside an Archipelago\\ subfolder of the project root) was
+    asked of a tester's real, differently-shaped setup and silently missed.
+    Not something a tester should have to reason about folder-nesting
+    depth to work around -- checks both layouts this project's docs and
+    real troubleshooting have produced:
+      - KotorClient.py copied directly into an Archipelago checkout root
+        that ALSO has scripts\\/extender\\ merged into it (one level up)
+      - KotorClient.py nested inside an Archipelago\\ subfolder of a
+        separate PlayerBundle-style folder (two levels up, the original
+        dev-machine layout)
+    --repo-root below still exists as an explicit override for a
+    genuinely unusual layout neither guess can find."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (here, os.path.dirname(here)):
+        if os.path.isfile(os.path.join(candidate, "scripts", "generate_poll_shared.py")):
+            return candidate
+    return os.path.dirname(here)  # last-resort default, same guess as before this fix
+
+
+REPO_ROOT = _sys_argv_value("--repo-root", _detect_repo_root())
 GENERATE_POLL_SHARED = os.path.join(REPO_ROOT, "scripts", "generate_poll_shared.py")
 GENERATE_MAKEJEDI_SUPPRESSOR = os.path.join(REPO_ROOT, "scripts", "generate_makejedi_suppressor.py")
+
+# Found broken live (2026-09-04): patch_item_suppression.py/patch_door_randomizer.py
+# used to read loot_mode/door_mapping straight out of a locally generated
+# AP_<seed>.zip's embedded slot_data -- which only exists on whichever
+# machine ran Generate.py. A player joining someone ELSE's hosted
+# multiworld never has that file at all, so those two scripts had no way
+# to work for them, ever. Both values are already part of the real
+# slot_data THIS client receives over the network on every Connect (see
+# on_package below) -- the actual fix is writing them out locally right
+# here, so both patch scripts can read this file instead of hunting for
+# a seed zip that may not exist. Also fixes a second bug the zip-reading
+# approach had: it grabbed the FIRST slot in the whole multiworld with a
+# matching field, not specifically this player's own slot -- this file
+# only ever reflects the current connection's own real slot_data.
+SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_data.json")
+
+
+def write_slot_data_for_patch_scripts(
+        loot_mode: int, door_mapping: dict | None, area_randomizer: bool, starting_class: int) -> None:
+    """Called on every successful Connect -- see SLOT_DATA_PATH above for
+    why this exists. A plain JSON write (not restricted_loads/pickle --
+    this project controls both ends, unlike the raw .archipelago format),
+    so patch_item_suppression.py/patch_door_randomizer.py no longer need
+    to import Utils from a real Archipelago checkout at all for this.
+
+    Also covers area_randomizer/starting_class (2026-09-04) -- swept for
+    every other place reading seed data out of a locally generated zip
+    after fixing the two patch scripts above, and found the exact same
+    latent bug in generate_poll_shared.py/generate_makejedi_suppressor.py's
+    OWN standalone-invocation fallback (never hit through this client,
+    which always passes --area-randomizer/--starting-class explicitly,
+    but both scripts' own Usage docstrings advertise running them by hand
+    with neither flag as a real supported mode -- worth fixing rather
+    than leaving a known-fragile fallback in place for whoever eventually
+    does that)."""
+    try:
+        os.makedirs(os.path.dirname(SLOT_DATA_PATH), exist_ok=True)
+        with open(SLOT_DATA_PATH, "w", encoding="utf-8") as f:
+            json.dump({
+                "loot_mode": loot_mode, "door_mapping": door_mapping,
+                "area_randomizer": area_randomizer, "starting_class": starting_class,
+            }, f)
+    except Exception as e:
+        logger.warning(f"Could not write {SLOT_DATA_PATH} for the patch scripts: {e}")
 
 
 def regenerate_poll_shared(area_randomizer: bool) -> tuple[bool, str]:
@@ -710,6 +795,9 @@ class KotorContext(CommonContext):
         super().on_package(cmd, args)
         if cmd == "Connected":
             slot_data = args.get("slot_data", {}) or {}
+            write_slot_data_for_patch_scripts(
+                slot_data.get("loot_mode", 0), slot_data.get("door_mapping"),
+                bool(slot_data.get("area_randomizer", False)), slot_data.get("starting_class", 0))
             self.companion_mode = slot_data.get("companion_mode", 0)
             self.companion_class_rolls = slot_data.get("companion_class_rolls", {})
             self.reconciler.experience_mode = slot_data.get("experience_mode", 0)
@@ -1246,6 +1334,13 @@ def launch():
 
     parser = get_base_parser(description="KotOR Archipelago client (Phase 1: real extender bridge).")
     parser.add_argument("--name", default=None, help="Slot name to connect as (skips the interactive prompt).")
+    parser.add_argument("--repo-root", default=None,
+                         help="Path to your PlayerBundle folder (the one with scripts\\generate_poll_shared.py "
+                              "and scripts\\generate_makejedi_suppressor.py in it). Auto-detected in the two common "
+                              "layouts (see _detect_repo_root above) -- only pass this if auto-detection can't find "
+                              "it, e.g. scripts\\ living somewhere unrelated to this file entirely. Read via an "
+                              "early sys.argv scan (see REPO_ROOT above), not through this parser value directly "
+                              "-- listed here so --help/argparse still recognize it.")
     args, rest = parser.parse_known_args()
 
     colorama.init()

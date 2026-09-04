@@ -14,37 +14,53 @@ additions (e.g. a credits-given check) -- the 97 area trampolines never
 need to change again once generated.
 """
 import argparse
-import glob
+import json
 import os
 import subprocess
 import sys
-import zipfile
-import zlib
 
 from pykotor.extract.installation import Installation
 from pykotor.resource.type import ResourceType
 from pykotor.resource.formats.twoda import read_2da
 from pykotor.resource.formats.gff import read_gff
 
+
+def _arg_value(flag, default):
+    for i, a in enumerate(sys.argv):
+        if a == flag and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if a.startswith(flag + "="):
+            return a.split("=", 1)[1]
+    return default
+
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-ARCHIPELAGO_ROOT = os.path.join(REPO_ROOT, "Archipelago")
-OUTPUT_DIR = os.path.join(ARCHIPELAGO_ROOT, "output")
 NWNNSSCOMP = r"C:\Program Files (x86)\KotOR Scripting Tool\nwnnsscomp.exe"
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
+# Written by KotorClient.py on every successful Connect -- see its own
+# SLOT_DATA_PATH/write_slot_data_for_patch_scripts() for why. Only read
+# here when --area-randomizer isn't passed (KotorClient.py's automatic
+# on-connect call always passes it explicitly, so this only affects
+# someone running this script by hand without it -- a real, documented
+# use case per this file's own Usage below, not hypothetical).
+SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_data.json")
 
 # 2026-08-31: this file used to be dev-only -- GAME_DIR was a hardcoded
 # constant, area_randomizer was always guessed from whichever AP_*.zip
 # happened to be newest in Archipelago/output/ (fine on a single dev
 # machine generating one seed at a time, wrong the moment a tester's own
-# machine/seed differs from that), and the script only ever wrote the
-# .nss source -- compiling and deploying to a live Override was always a
-# separate manual step. Real fix: KotorClient.py now calls this script
-# directly, every Connected, passing the ACTUAL connected slot_data's
-# area_randomizer explicitly via --area-randomizer -- no guessing
-# involved for that path. The old zip-scanning heuristic (now only used
-# when the override flag isn't passed, i.e. someone running this by hand
-# from the terminal) stays as a fallback for that case only.
+# machine/seed differs from that -- and broken entirely, found 2026-09-04,
+# for a player joining someone ELSE's multiworld, who never has that zip
+# at all), and the script only ever wrote the .nss source -- compiling
+# and deploying to a live Override was always a separate manual step.
+# Real fix: KotorClient.py now calls this script directly, every
+# Connected, passing the ACTUAL connected slot_data's area_randomizer
+# explicitly via --area-randomizer -- no guessing involved for that path.
+# The fallback (now only used when the override flag isn't passed, i.e.
+# someone running this by hand from the terminal) reads the same
+# SLOT_DATA_PATH file KotorClient.py already writes, rather than
+# re-deriving it from a seed zip that may not even exist.
 #
 # loot_mode used to also flow through here (bonus mode's grant logic
 # lived in this file as CheckPickupCount()) -- moved entirely into
@@ -57,7 +73,7 @@ parser.add_argument("--game-dir", default=DEFAULT_GAME_DIR,
                      help=r"Your KOTOR install folder, the one with swkotor.exe (default: the standard Steam location).")
 parser.add_argument("--area-randomizer", type=int, default=None, choices=[0, 1],
                      help="1 if the seed has area_randomizer=True, 0 otherwise, to use directly instead of "
-                          "guessing from the latest AP_*.zip in Archipelago/output/.")
+                          "reading it from _slot_data.json (see SLOT_DATA_PATH above).")
 parser.add_argument("--no-deploy", action="store_true",
                      help="Only write the .nss source -- skip compiling and deploying to --game-dir's Override "
                           "(matches this script's old dev-only behavior).")
@@ -65,32 +81,25 @@ cli_args = parser.parse_args()
 GAME_DIR = cli_args.game_dir
 
 
-def _latest_seed_wants_area_randomizer() -> bool:
-    """True if the most recently generated seed has area_randomizer=True.
-    Same zip-reading pattern as patch_door_randomizer.py's
-    _latest_seed_door_mapping() -- this file is normally seed-independent
-    (every CheckX() function above fires unconditionally regardless of
-    options), but planet-availability forcing is the one exception: it's
-    only correct when doors are actually shuffled (see the CheckGoal-
-    adjacent block below for why), so it needs to know the latest seed's
-    real option value rather than always firing."""
-    zips = sorted(glob.glob(os.path.join(OUTPUT_DIR, "AP_*.zip")), key=os.path.getmtime, reverse=True)
-    if not zips:
+def _connected_wants_area_randomizer() -> bool:
+    """True if _slot_data.json (written by KotorClient.py on the last
+    successful Connect) has area_randomizer=True. This file is normally
+    seed-independent (every CheckX() function above fires unconditionally
+    regardless of options), but planet-availability forcing is the one
+    exception: it's only correct when doors are actually shuffled (see
+    the CheckGoal-adjacent block below for why), so it needs to know the
+    real option value rather than always firing. Returns False (the safe
+    default) if that file doesn't exist yet or doesn't parse -- connect
+    once with KotorClient.py first if you want this to reflect a real
+    seed instead."""
+    if not os.path.isfile(SLOT_DATA_PATH):
         return False
     try:
-        sys.path.insert(0, ARCHIPELAGO_ROOT)
-        from Utils import restricted_loads
-        with zipfile.ZipFile(zips[0]) as z:
-            name = next(n for n in z.namelist() if n.endswith(".archipelago"))
-            with z.open(name) as f:
-                raw = f.read()
-        data = restricted_loads(zlib.decompress(raw[1:]))
-        for slot_data in data.get("slot_data", {}).values():
-            if "area_randomizer" in slot_data:
-                return bool(slot_data["area_randomizer"])
-        return False
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return bool(data.get("area_randomizer", False))
     except Exception as e:
-        print(f"  (couldn't read latest seed's slot_data for area_randomizer: {e})")
+        print(f"  (couldn't read {SLOT_DATA_PATH}: {e})")
         return False
 
 installation = Installation(GAME_DIR)
@@ -391,7 +400,7 @@ lines.append("    object oPC = GetFirstPC();")
 lines.append('    KSE_Diag(85, "AP|LEVELREPORT|" + IntToString(GetHitDice(oPC)));')
 lines.append("}")
 lines.append("")
-wants_area_randomizer = bool(cli_args.area_randomizer) if cli_args.area_randomizer is not None else _latest_seed_wants_area_randomizer()
+wants_area_randomizer = bool(cli_args.area_randomizer) if cli_args.area_randomizer is not None else _connected_wants_area_randomizer()
 if wants_area_randomizer:
     lines.append("// Forces every real, non-scripted-cutscene planet available/selectable")
     lines.append("// on the Galaxy Map from the very start -- ONLY generated when the latest")

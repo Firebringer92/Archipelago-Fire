@@ -4,9 +4,19 @@ during world generation (see worlds/kotor/EntranceRando.py) to the real
 game files -- rewriting each transition's LinkedToModule/LinkedTo GIT
 fields to point at its shuffled destination instead of the vanilla one.
 
-Reads the mapping straight out of the most recently generated seed's
-slot_data (same pattern as patch_item_suppression.py's mode-resolution
-check) rather than needing a separate export step.
+Reads the mapping out of extender/area_trampolines/_slot_data.json --
+written by KotorClient.py on every successful Connect, straight from the
+real slot_data the AP server sent THIS player for THEIR OWN slot (see
+KotorClient.py's SLOT_DATA_PATH/write_slot_data_for_patch_scripts()).
+You must connect once with KotorClient.py before running this (see
+README.md Step 6). This works identically whether you're hosting or
+joining someone else's multiworld -- neither needs local access to a
+generated AP_<seed>.zip at all (found broken 2026-09-04: the previous
+approach read the zip directly, which only ever existed on whichever
+machine ran Generate.py -- a joining player never has it, so this
+literally couldn't work for them before; it also didn't filter for THIS
+player's own slot, grabbing whichever slot's data happened to be read
+first in a multiworld with more than one KOTOR player).
 
 Shares the same backup directory as patch_item_suppression.py
 (extender/backup/modules/) -- both scripts repack the same underlying
@@ -16,19 +26,17 @@ patch_item_suppression.py --restore to undo either or both.
 
 Usage:
   python patch_door_randomizer.py                          -- apply (backs up first)
-  python patch_door_randomizer.py --force                  -- apply without checking the option
+  python patch_door_randomizer.py --force                  -- skip the area_randomizer check, apply anyway
   python patch_door_randomizer.py --game-dir "D:\...\swkotor" -- apply against a non-default install
-  python patch_door_randomizer.py --seed=AP_123...          -- pin a specific output/ zip instead of newest-by-mtime
 
 Needs pykotor only -- no NWScript compiler involved at all, this only
 rewrites existing LinkedToModule/LinkedTo GFF fields, never generates or
 compiles a script.
 """
+import json
 import os
 import shutil
 import sys
-import zipfile
-import zlib
 
 from pykotor.common.misc import ResRef
 from pykotor.resource.formats.rim import read_rim, write_rim
@@ -51,63 +59,38 @@ def _arg_value(flag, default):
 GAME_DIR = _arg_value("--game-dir", DEFAULT_GAME_DIR)
 MOD_DIR = os.path.join(GAME_DIR, "modules")
 BACKUP_DIR = os.path.join(REPO_ROOT, "extender", "backup", "modules")
-OUTPUT_DIR = os.path.join(REPO_ROOT, "Archipelago", "output")
-ARCHIPELAGO_ROOT = os.path.join(REPO_ROOT, "Archipelago")
+# Same path patch_item_suppression.py reads -- see its own copy of this
+# constant/comment for the full reasoning.
+SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_data.json")
 
 
-def _latest_seed_door_mapping(seed_override=None):
-    """Returns (mapping_dict, seed_path) or (None, None) if no seed with
-    area_randomizer=True can be found/read.
-
-    Same "which zip?" ambiguity as patch_item_suppression.py's
-    _latest_seed_mode() -- see its docstring. Loud by default when more
-    than one candidate exists; --seed=<substring> pins a specific one."""
-    import glob
-    zips = sorted(glob.glob(os.path.join(OUTPUT_DIR, "AP_*.zip")), key=os.path.getmtime, reverse=True)
-    if not zips:
-        return None, None
-    if seed_override:
-        matches = [z for z in zips if seed_override in os.path.basename(z)]
-        if not matches:
-            print(f"  --seed={seed_override!r} matched no file in {OUTPUT_DIR}")
-            return None, None
-        zips = matches
-    elif len(zips) > 1:
-        print(f"  NOTE: {len(zips)} seed zips in {OUTPUT_DIR}, picking newest by mtime:")
-        for z in zips:
-            print(f"    {os.path.basename(z)}  ({os.path.getmtime(z):.0f})")
-        print(f"  -> using {os.path.basename(zips[0])}. Pass --seed=<name substring> to pick a different one.")
+def _connected_door_mapping():
+    """Returns the door_mapping dict from _slot_data.json, or None if that
+    file doesn't exist yet (never connected), area_randomizer wasn't
+    actually on for this seed, or the file doesn't parse."""
+    if not os.path.isfile(SLOT_DATA_PATH):
+        return None
     try:
-        sys.path.insert(0, ARCHIPELAGO_ROOT)
-        from Utils import restricted_loads
-        with zipfile.ZipFile(zips[0]) as z:
-            name = next(n for n in z.namelist() if n.endswith(".archipelago"))
-            with z.open(name) as f:
-                raw = f.read()
-        data = restricted_loads(zlib.decompress(raw[1:]))
-        for slot_data in data.get("slot_data", {}).values():
-            if slot_data.get("area_randomizer") and slot_data.get("door_mapping"):
-                return slot_data["door_mapping"], zips[0]
-        return None, zips[0]
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("door_mapping") or None
     except Exception as e:
-        print(f"  (couldn't read latest seed's slot_data: {e})")
-        return None, None
+        print(f"  (couldn't read {SLOT_DATA_PATH}: {e})")
+        return None
 
 
 def main():
-    seed_override = _arg_value("--seed", None)
-    if "--force" not in sys.argv:
-        mapping, seed_path = _latest_seed_door_mapping(seed_override)
-        if mapping is None:
-            print("No generated seed with area_randomizer=True found -- "
-                  "pass --force with a manually-set mapping, or generate a seed with the option set first.")
-            return
-        print(f"Seed ({os.path.basename(seed_path)}) has area_randomizer=True -- applying.")
-    else:
-        mapping, seed_path = _latest_seed_door_mapping(seed_override)
-        if mapping is None:
-            print("--force given but no seed output could be read at all -- nothing to apply.")
-            return
+    mapping = _connected_door_mapping()
+    if mapping is None:
+        if "--force" not in sys.argv:
+            print(f"No usable door_mapping at {SLOT_DATA_PATH} -- connect once with KotorClient.py "
+                  "first (see README.md Step 6), which writes your seed's real door_mapping there on "
+                  "every successful Connect (only present at all if area_randomizer is actually on for "
+                  "your seed). Pass --force to bypass this check if you believe that's wrong.")
+        else:
+            print("--force given but no usable door_mapping could be read at all -- nothing to apply.")
+        return
+    print("Connected seed has a real door_mapping -- applying.")
 
     # Group by module so each module's RIM is only opened/backed-up/written once.
     by_module: dict = {}

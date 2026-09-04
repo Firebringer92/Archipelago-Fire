@@ -48,7 +48,19 @@ Usage:
   python patch_item_suppression.py                          -- apply (backs up first)
   python patch_item_suppression.py --restore                -- restore all patched modules from backup
   python patch_item_suppression.py --game-dir "D:\...\swkotor" -- apply against a non-default install
-  python patch_item_suppression.py --seed=AP_123...          -- pin a specific output/ zip instead of newest-by-mtime
+  python patch_item_suppression.py --force --mode=<destroy|bonus|replace|skip> -- skip reading real
+    seed data entirely, apply a manually-chosen mode instead
+
+You must connect once with KotorClient.py before running this (see
+README.md Step 6) -- loot_mode comes from your seed's real slot_data,
+which KotorClient.py receives over the network on every Connect and
+writes to extender/area_trampolines/_slot_data.json for this script to
+read (see KotorClient.py's SLOT_DATA_PATH). This works identically
+whether you're hosting or joining someone else's multiworld -- neither
+needs local access to a generated AP_<seed>.zip at all (found broken
+2026-09-04: the previous approach read the zip directly, which only ever
+existed on whichever machine ran Generate.py -- a joining player never
+has it, so this literally couldn't work for them before).
 
 Doesn't need nwnnsscomp.exe (the NWScript compiler) on a tester's machine:
 each mode's shared suppressor and all 11 wrapper scripts are deterministic
@@ -88,7 +100,26 @@ OVERRIDE = os.path.join(GAME_DIR, "Override")
 NWNNSSCOMP = r"C:\Program Files (x86)\KotOR Scripting Tool\nwnnsscomp.exe"
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 BACKUP_DIR = os.path.join(REPO_ROOT, "extender", "backup", "modules")
-GEAR_JSON = os.path.join(REPO_ROOT, "Archipelago", "worlds", "kotor", "gear_items.json")
+# Written by KotorClient.py on every successful Connect -- see its own
+# SLOT_DATA_PATH/write_slot_data_for_patch_scripts() for why this replaced
+# reading a locally generated AP_<seed>.zip directly (found broken
+# 2026-09-04: that file never exists at all for a player joining someone
+# ELSE's multiworld, and the old code didn't even filter for THIS
+# player's own slot). Same path both scripts must agree on -- kept as a
+# plain module-level constant rather than a flag, since there's no
+# reason it would ever need to be anywhere else: both this script and
+# KotorClient.py compute REPO_ROOT the same way, and the whole point of
+# README.md Step 1 is that they live in the same Client folder.
+SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_data.json")
+# NOT read from anywhere near ARCHIPELAGO or a checkout (found broken
+# 2026-09-04): a real tester's checkout only ever has kotor.apworld as a
+# zip in custom_worlds/ -- there is no loose worlds/kotor/gear_items.json
+# file to find on disk there at all, since the apworld's contents are
+# never extracted. This whitelist is a fixed classification tied to the
+# apworld's own version, not per-seed data, so package_playerbundle.py
+# ships a static copy of it directly alongside this script instead -- no
+# cross-checkout dependency needed.
+GEAR_JSON = os.path.join(REPO_ROOT, "scripts", "gear_items.json")
 
 # Fixed deploy name every empty-slot module's Mod_OnAcquirItem field points
 # at -- never changes across modes, so the RIM edit only ever needs to
@@ -462,58 +493,22 @@ def restore():
     print(f"Restored {restored} module RIM(s) from backup.")
 
 
-def _latest_seed_mode(seed_override=None):
-    """Reads randomize_loot/allow_normal_loot out of the most recently
-    generated seed's slot_data and resolves them to a mode name. This
-    patch is a standalone, seed-independent file operation (not something
-    the live AP client can toggle), so respecting the option means
-    checking whatever was most recently generated. Returns (None, None) if
-    no seed output can be found or read, so the caller can decide how to
-    handle that rather than silently defaulting either way.
-
-    Real risk found live (2026-08-29, alongside the analogous dist/Override
-    shop-stock bug): output/ accumulates one AP_*.zip per generation, and
-    picking "newest by mtime" with zero visibility means a stray zip from
-    unrelated same-day testing (4 were sitting there the day this was
-    found) can silently get applied instead of the seed actually being
-    played, with nothing printed to catch it. Now loud by default when
-    there's more than one candidate, and --seed=<substring> lets the
-    operator pin a specific one instead of trusting mtime at all."""
-    import glob
-    import zlib
-    output_dir = os.path.join(REPO_ROOT, "Archipelago", "output")
-    zips = sorted(glob.glob(os.path.join(output_dir, "AP_*.zip")), key=os.path.getmtime, reverse=True)
-    if not zips:
-        return None, None
-    if seed_override:
-        matches = [z for z in zips if seed_override in os.path.basename(z)]
-        if not matches:
-            print(f"  --seed={seed_override!r} matched no file in {output_dir}")
-            return None, None
-        zips = matches
-    elif len(zips) > 1:
-        print(f"  NOTE: {len(zips)} seed zips in {output_dir}, picking newest by mtime:")
-        for z in zips:
-            print(f"    {os.path.basename(z)}  ({os.path.getmtime(z):.0f})")
-        print(f"  -> using {os.path.basename(zips[0])}. Pass --seed=<name substring> to pick a different one.")
+def _connected_seed_mode():
+    """Reads loot_mode out of _slot_data.json -- written by KotorClient.py
+    on every successful Connect, straight from the real slot_data the AP
+    server sent THIS player for THEIR OWN slot (see SLOT_DATA_PATH above
+    for the full reasoning). Returns None if that file doesn't exist yet
+    (never connected) or doesn't parse, so the caller can print a clear
+    "connect first" message rather than silently defaulting either way."""
+    if not os.path.isfile(SLOT_DATA_PATH):
+        return None
     try:
-        sys.path.insert(0, os.path.join(REPO_ROOT, "Archipelago"))
-        from Utils import restricted_loads
-        import zipfile
-        with zipfile.ZipFile(zips[0]) as z:
-            archipelago_name = next(n for n in z.namelist() if n.endswith(".archipelago"))
-            with z.open(archipelago_name) as f:
-                raw = f.read()
-        data = restricted_loads(zlib.decompress(raw[1:]))
-        for slot_data in data.get("slot_data", {}).values():
-            if "loot_mode" in slot_data:
-                mode = _LOOT_MODE_NAMES.get(slot_data["loot_mode"])
-                if mode is not None:
-                    return mode, zips[0]
-        return None, None
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return _LOOT_MODE_NAMES.get(data.get("loot_mode"))
     except Exception as e:
-        print(f"  (couldn't read latest seed's slot_data: {e})")
-        return None, None
+        print(f"  (couldn't read {SLOT_DATA_PATH}: {e})")
+        return None
 
 
 def main():
@@ -522,12 +517,13 @@ def main():
         return
 
     if "--force" not in sys.argv:
-        mode, seed_path = _latest_seed_mode(_arg_value("--seed", None))
+        mode = _connected_seed_mode()
         if mode is None:
-            print("Could not determine loot_mode from any generated seed -- "
-                  "pass --force with a manually-set mode, or generate a seed with the option set first.")
+            print(f"No usable data at {SLOT_DATA_PATH} -- connect once with KotorClient.py first "
+                  "(see README.md Step 6), which writes your seed's real loot_mode there on every "
+                  "successful Connect. Otherwise, pass --force with a manually-set mode.")
             return
-        print(f"Latest seed ({os.path.basename(seed_path)}) resolves to mode={mode!r} -- applying.")
+        print(f"Connected seed resolves to mode={mode!r} -- applying.")
     else:
         mode = _arg_value("--mode", None)
         if mode == "normal":

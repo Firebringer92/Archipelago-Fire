@@ -25,7 +25,7 @@ python Generate.py --player_files_path Players
 ```
 
 Reads every `.yaml` in `Players\` (start from `KotoR_TEMPLATE.yaml` — copy
-it and edit your own, see `README.md` Step 4) and writes a zip into
+it and edit your own, see `README.md` Step 5) and writes a zip into
 `Archipelago\output\`, e.g. `AP_<seed>.zip`. That's the real multiworld
 data the server hosts.
 
@@ -40,23 +40,39 @@ and sits there. State (checked locations, received items) lives in memory
 only — restart the server for a clean slate, or leave it running to pick
 up where a previous session left off.
 
-## 3. Launch the game and connect the client
+## 3. Connect the client, THEN launch the game
 
-Launch KOTOR normally (with the merged extender DLL installed per
-`README.md`) and get into a save. Then, in a **real terminal** (not a
-piped/non-interactive shell — the client's stdin reader doesn't behave
-the same over a non-TTY pipe), from `Archipelago\`:
+**Connect before launching KOTOR, not after.** `KotorClient.py` writes
+your seed's real options to a local file the moment it connects to the
+AP server — whether or not KOTOR is even running yet — and both
+`patch_item_suppression.py`/`patch_door_randomizer.py` (step 3b below)
+and the automatic `ap_poll_shared.ncs`/Dantooine-suppressor regeneration
+need that file to exist before the game starts reading its own Override/
+modules. Connecting first means everything's correctly in place from the
+game's very first load, instead of needing a mid-session restart.
+
+In a **real terminal** (not a piped/non-interactive shell — the client's
+stdin reader doesn't behave the same over a non-TTY pipe), from
+`Archipelago\`:
 
 ```bash
 python KotorClient.py --connect localhost:38281 --nogui
 ```
 
+`KotorClient.py` auto-detects where `scripts\generate_poll_shared.py`/
+`scripts\generate_makejedi_suppressor.py` live (checking both the merged
+single-folder layout README.md Step 1 sets up and a nested `Archipelago\`
+subfolder, matching this repo's own dev layout). If it still can't find
+them — a genuinely unusual folder layout neither guess matches — pass
+`--repo-root` pointing at the folder that actually has `scripts\` in it:
+
+```bash
+python KotorClient.py --connect localhost:38281 --nogui --repo-root "C:\...\your-playerbundle-folder"
+```
+
 Enter your slot name when prompted (must match the `name:` field in your
-player yaml). Once connected, the extender bridge should pick up the
-already-running game automatically — `/ap_status` should show
-`Extender: CONNECTED`. If it says not connected, confirm `swkotor.exe` is
-actually running and the DLL loaded (check `kse.log` for `KSE DIAG` lines
-arriving) before troubleshooting further.
+player yaml). `/ap_status` will say the extender isn't connected yet —
+that's expected, since KOTOR isn't running. Leave this window open.
 
 On every successful connect, the client also automatically regenerates,
 compiles, and deploys `ap_poll_shared.ncs` to your game's live Override,
@@ -68,7 +84,36 @@ connecting; a `[poll_shared] regeneration FAILED` line instead means
 something (usually a stale `nwnnsscomp.exe` path or `--game-dir`
 mismatch) needs fixing — use `/ap_regen_poll` below to retry once fixed.
 
-## 4. Useful client commands
+## 3b. Apply item suppression / door randomization (if enabled)
+
+Only if you enabled these options in your player YAML, in a second
+terminal (leave the client from step 3 running):
+
+```bash
+python scripts\patch_item_suppression.py --game-dir "C:\...\swkotor"
+python scripts\patch_door_randomizer.py --game-dir "C:\...\swkotor"
+```
+
+Both read `extender\area_trampolines\_slot_data.json` — written by
+`KotorClient.py` on the connect you just did in step 3 — instead of
+hunting for a locally generated seed zip. This is what makes step 3's
+"connect before launching" order load-bearing rather than just a
+suggestion: skip straight to running these without connecting first and
+you'll get a clear "connect first" message instead of a patch. It also
+means this now works identically whether you generated/hosted the seed
+yourself or are joining someone ELSE's multiworld — neither case needs
+local access to their `AP_<seed>.zip` at all.
+
+## 4. Launch the game
+
+Launch KOTOR normally and load into a save. The client from step 3
+(still running) picks up the extender automatically once the game is
+up — `/ap_status` should switch to showing `Extender: CONNECTED`. If it
+doesn't, confirm `swkotor.exe` is actually running and the DLL loaded
+(check `kse.log` for `KSE DIAG` lines arriving) before troubleshooting
+further.
+
+## 5. Useful client commands
 
 - `/ap_status` — extender connection state, pending/recent deliveries.
 - `/ap_apply <arm_name>` — admin/testing safety valve: directly queue an

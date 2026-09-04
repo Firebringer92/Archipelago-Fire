@@ -36,56 +36,64 @@ not an empty Mod_OnAcquirItem-style slot):
     isn't off.
 
 Usage:
-  python generate_makejedi_suppressor.py                          -- read starting_class from the latest generated seed
+  python generate_makejedi_suppressor.py                          -- read starting_class from _slot_data.json
   python generate_makejedi_suppressor.py --starting-class=2        -- use this value directly (0=off/1=start/2=granted/3+=any future managed mode)
   python generate_makejedi_suppressor.py --game-dir "C:\...\swkotor"
+
+The --starting-class-omitted fallback reads extender/area_trampolines/_slot_data.json
+(see SLOT_DATA_PATH below) -- written by KotorClient.py on your last successful
+Connect. Connect once with KotorClient.py first if you want this to reflect a
+real seed instead of defaulting to 0 (off).
 """
 import argparse
-import glob
+import json
 import os
 import subprocess
 import sys
-import zipfile
-import zlib
 
 from pykotor.resource.formats.rim import read_rim
 from pykotor.resource.type import ResourceType
 
+
+def _arg_value(flag, default):
+    for i, a in enumerate(sys.argv):
+        if a == flag and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if a.startswith(flag + "="):
+            return a.split("=", 1)[1]
+    return default
+
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-ARCHIPELAGO_ROOT = os.path.join(REPO_ROOT, "Archipelago")
-OUTPUT_DIR = os.path.join(ARCHIPELAGO_ROOT, "output")
 NWNNSSCOMP = r"C:\Program Files (x86)\KotOR Scripting Tool\nwnnsscomp.exe"
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
+# Same path generate_poll_shared.py/the two patch_*.py scripts read --
+# see patch_item_suppression.py's copy of this same constant/comment for
+# the full reasoning (found broken 2026-09-04: the old zip-reading
+# fallback never worked for a player joining someone ELSE's multiworld).
+SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_data.json")
 
 MODULE = "danm13_s.rim"
 RESREF = "k_pdan_makejedi"
 PRESERVED_RESREF = "apo_makejedi_orig"
 
 
-def _latest_seed_starting_class() -> int:
-    """Same zip-reading pattern as generate_poll_shared.py's
-    _latest_seed_wants_area_randomizer() -- only used as a fallback for
-    someone running this by hand; KotorClient.py passes --starting-class=
-    explicitly from the actual connected seed's slot_data, same reasoning
-    as why that file stopped guessing loot_mode from the newest zip."""
-    zips = sorted(glob.glob(os.path.join(OUTPUT_DIR, "AP_*.zip")), key=os.path.getmtime, reverse=True)
-    if not zips:
+def _connected_starting_class() -> int:
+    """Reads starting_class from _slot_data.json -- written by
+    KotorClient.py on the last successful Connect, straight from the real
+    slot_data the AP server sent. Only used as a fallback for someone
+    running this by hand; KotorClient.py itself passes --starting-class=
+    explicitly. Returns 0 (off, the safe default) if that file doesn't
+    exist yet or doesn't parse."""
+    if not os.path.isfile(SLOT_DATA_PATH):
         return 0
     try:
-        sys.path.insert(0, ARCHIPELAGO_ROOT)
-        from Utils import restricted_loads
-        with zipfile.ZipFile(zips[0]) as z:
-            name = next(n for n in z.namelist() if n.endswith(".archipelago"))
-            with z.open(name) as f:
-                raw = f.read()
-        data = restricted_loads(zlib.decompress(raw[1:]))
-        for slot_data in data.get("slot_data", {}).values():
-            if "starting_class" in slot_data:
-                return int(slot_data["starting_class"])
-        return 0
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return int(data.get("starting_class", 0))
     except Exception as e:
-        print(f"  (couldn't read latest seed's slot_data for starting_class: {e})")
+        print(f"  (couldn't read {SLOT_DATA_PATH}: {e})")
         return 0
 
 
@@ -127,10 +135,10 @@ def main():
                          help=r"Your KOTOR install folder, the one with swkotor.exe (default: the standard Steam location).")
     parser.add_argument("--starting-class", type=int, default=None,
                          help="Options.py's StartingClass value to use directly (0=off, anything else=project-managed), "
-                              "instead of guessing from the latest AP_*.zip in Archipelago/output/.")
+                              "instead of reading it from _slot_data.json (see SLOT_DATA_PATH above).")
     args = parser.parse_args()
 
-    starting_class = args.starting_class if args.starting_class is not None else _latest_seed_starting_class()
+    starting_class = args.starting_class if args.starting_class is not None else _connected_starting_class()
     game_dir = args.game_dir
     mod_dir = os.path.join(game_dir, "modules")
     override_dir = os.path.join(game_dir, "Override")

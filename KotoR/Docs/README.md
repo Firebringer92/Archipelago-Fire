@@ -59,11 +59,12 @@ To remove everything later, double-click **`Uninstall.bat`** the same way.
    3 — send them your yaml instead.
 2. In the Archipelago Launcher: click **Generate** and select your yaml,
    then click **Host** and select the seed zip it just made.
-3. Launch KOTOR and load into a save, then click **"KOTOR Client"** in
-   the Archipelago Launcher to connect (Step 2's installer registers this
+3. click **"KOTOR Client"** in the Archipelago Launcher to connect (Step 2's installer registers this
    button — it's the same client as running `KotorClient.py` directly,
-   just no terminal needed). `/ap_status` should switch to
-   `Extender: CONNECTED` once the game is up.
+   just no terminal needed). Then connect to server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes.
+4. Open the actual game. You should see on the client.py it switch status to `Extender: CONNECTED`  otherwise type   command  `/ap_status` to see if your client is talking to game. If it shows connected and your in the server. You are  good to go!
+
+Note: If Kotor doesn't launch from archipelago launcher try launching it from your client folder instead.
 
 Door randomization, item suppression, and additional enemies (whichever
 you enabled) apply themselves automatically the moment you connect — no
@@ -86,6 +87,15 @@ This mod repacks real game files in place — `modules\*.rim` and
 - If all else fails, Steam's **Verify integrity of game files** will
   restore any modified `modules\`/`Override\` content from scratch (this
   won't undo save-file changes, which is why saves need their own backup).
+
+
+## Other Notes
+Kotor on steam defaults to a windowed mode that is horrible. I suggest all players modify their settings text file that is stored in the swtor folder at "C:\Program Files (x86)\Steam\steamapps\common\swkotor". Find section for graphics and change the settings for FullScreen Mode to 0 and also add the following:
+AllowWindowedMode=1
+Width=1680
+Height=1050
+
+
 
 ## How do checks/locations work in this mod?
 Due to nature of game, this mod has a specialized delivery/receipt pipeline to read and write to the game.

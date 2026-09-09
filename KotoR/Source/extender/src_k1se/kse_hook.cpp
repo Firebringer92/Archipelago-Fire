@@ -1541,7 +1541,15 @@ extern "C" int __stdcall KseSaveRead(int argCount)
 // ===========================================================================
 static volatile LONG g_fieldWrites = 0;
 
-static void* KseField_StatBlock(int objId, const char** why)
+// KseResolveObj -- the FIRST half of the object-resolution chain: turns an
+// NWScript object id into the raw, resolved engine object ("obj" in this
+// project's own research notes -- see FutureDesign.md's HP research entry).
+// This is NOT the creature's stat block yet -- KseField_Obj/KseField_StatBlock
+// below each take it one step further, to whichever destination they need.
+// Split out 2026-09-06 so Current HP (which lives on "obj" itself, at
+// +0xDC -- confirmed live, see FutureDesign.md) has its own real resolver,
+// not just a comment fragment of KseField_StatBlock's.
+static void* KseResolveObj(int objId, const char** why)
 {
     BYTE* base = KseImageBase();
     void* root = *reinterpret_cast<void**>(base + KSE_OBJ_ROOT_RVA);
@@ -1556,8 +1564,25 @@ static void* KseField_StatBlock(int objId, const char** why)
     unsigned char rc = resolve(table, nullptr, objId, &obj);
     unsigned char okByte = *reinterpret_cast<unsigned char*>(base + KSE_RESOLVE_OK_RVA);
     if (rc != okByte || !obj) { *why = "object not found"; return nullptr; }
+    return obj;
+}
+
+// KseField_Obj -- the raw resolved object itself, no further dereferencing.
+// Current HP lives here directly at +0xDC (confirmed live, 2026-09-06 --
+// see FutureDesign.md's HP research entry: definitively NOT on statBlock,
+// NOT computed like Max HP, a real static field on THIS object).
+static void* KseField_Obj(int objId, const char** why)
+{
+    return KseResolveObj(objId, why);
+}
+
+static void* KseField_StatBlock(int objId, const char** why)
+{
+    void* obj = KseResolveObj(objId, why);
+    if (!obj) return nullptr;
     void** vtbl = *reinterpret_cast<void***>(obj);
     if (!vtbl) { *why = "vtable null"; return nullptr; }
+    BYTE* base = KseImageBase();
     KseVFn getStats = reinterpret_cast<KseVFn>(vtbl[KSE_VT_GETSTATS_OFF / 4]);
     if (!getStats) { *why = "stats vslot null"; return nullptr; }
     void* stats = getStats(obj, nullptr);
@@ -1613,6 +1638,62 @@ static void KseField_Core(void* statBlock, int nFieldType, int nValue)
     }
 }
 
+// KOTOR AP ADDITION (2026-09-06): Add/Remove Force Power, sharing host 688
+// rather than claiming a new opcode -- see offsets.h's KSE_FIELD_ADD_FORCE_POWER
+// / KSE_FIELD_REMOVE_FORCE_POWER comments for the field-type contract. Operates
+// on the confirmed known-powers array record (statBlock+0x8C+category*40).
+// Add does its own search-before-append (skip if already known -- a real
+// duplicate-grant test on 2026-09-06 confirmed this would otherwise be
+// harmless anyway, but skipping keeps count/capacity honest). Remove
+// safely no-ops if the id isn't found, as explicitly required.
+static void KseForcePowerOp(void* statBlock, int nFieldType, int spellId)
+{
+    BYTE* record = reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CATEGORY_TABLE_OFF
+                 + KSE_FORCE_POWER_CATEGORY * KSE_STATS_CATEGORY_STRIDE;
+    int* arrayPtr   = *reinterpret_cast<int**>(record + KSE_CATEGORY_PTR_OFF);
+    int* countPtr   = reinterpret_cast<int*>(record + KSE_CATEGORY_COUNT_OFF);
+    int  capacity   = *reinterpret_cast<int*>(record + KSE_CATEGORY_CAP_OFF);
+    int  count      = *countPtr;
+
+    if (!arrayPtr) {
+        Log("K1SE ANOMALY forcepowerop: known-powers array ptr null; no write");
+        return;
+    }
+
+    int foundIndex = -1;
+    for (int i = 0; i < count; i++) {
+        if (arrayPtr[i] == spellId) { foundIndex = i; break; }
+    }
+
+    if (nFieldType == KSE_FIELD_ADD_FORCE_POWER) {
+        if (foundIndex >= 0) {
+            Log("K1SE SetCreatureField ADD_FORCE_POWER: spell %d already known at index %d; no-op",
+                spellId, foundIndex);
+            return;
+        }
+        if (count >= capacity) {
+            Log("K1SE ANOMALY forcepowerop: known-powers list full (count=%d cap=%d); cannot add spell %d",
+                count, capacity, spellId);
+            return;
+        }
+        arrayPtr[count] = spellId;
+        *countPtr = count + 1;
+        Log("K1SE SetCreatureField ADD_FORCE_POWER: spell %d added at index %d, count %d -> %d [write #%ld]",
+            spellId, count, count, count + 1, (long)InterlockedIncrement(&g_fieldWrites));
+    } else { // KSE_FIELD_REMOVE_FORCE_POWER
+        if (foundIndex < 0) {
+            Log("K1SE SetCreatureField REMOVE_FORCE_POWER: spell %d not known; no-op", spellId);
+            return;
+        }
+        for (int i = foundIndex; i < count - 1; i++) {
+            arrayPtr[i] = arrayPtr[i + 1];
+        }
+        *countPtr = count - 1;
+        Log("K1SE SetCreatureField REMOVE_FORCE_POWER: spell %d removed from index %d, count %d -> %d [write #%ld]",
+            spellId, foundIndex, count, count - 1, (long)InterlockedIncrement(&g_fieldWrites));
+    }
+}
+
 // -------- host 688: void SWMG_SetSoundVolume(object,int,int) -------------------
 extern "C" int __stdcall KseSetCreatureField(int argCount)
 {
@@ -1626,117 +1707,70 @@ extern "C" int __stdcall KseSetCreatureField(int argCount)
     if (!getInt(KseVM(), nullptr, &nValue))      { Log("K1SE ANOMALY field: get.int (value) failed"); return -1; }
 
     const char* why = "";
+
+    if (nFieldType == KSE_FIELD_CURRENT_HP) {
+        void* obj = KseField_Obj(objId, &why);
+        if (!obj) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        BYTE* slot = reinterpret_cast<BYTE*>(obj) + KSE_OBJ_CURRENT_HP_OFF;
+        int oldVal = *reinterpret_cast<int*>(slot);
+        *reinterpret_cast<int*>(slot) = nValue;
+        Log("K1SE SetCreatureField CURRENT_HP : %d -> %d [write #%ld]",
+            oldVal, nValue, (long)InterlockedIncrement(&g_fieldWrites));
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_ADD_FORCE_POWER || nFieldType == KSE_FIELD_REMOVE_FORCE_POWER) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        KseForcePowerOp(block, nFieldType, nValue);
+        return 0;
+    }
+
     void* block = KseField_StatBlock(objId, &why);
     if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
     KseField_Core(block, nFieldType, nValue);
     return 0;
 }
 
-// -------- host 638: void SWMG_SetGunBankTarget(object,int,int) -- TEMPORARY --
-// research diagnostic, not a shipped feature -- see offsets.h's KSE_DUMPSB_ID
-// comment. Dumps nLength raw bytes starting at KseField_StatBlock()'s return
-// value + nOffset straight to kse.log as hex, so a live before/after diff
-// around a real Force-power grant can be read without a separate SNAPSHOT/
-// DUMPMEM file. Reuses the exact same resolver every other field/skill/save
-// native here already trusts -- no new object-resolution code.
-extern "C" int __stdcall KseDumpStatBlock(int argCount)
+// -------- host 617: int SWMG_GetMaxHitPoints(object oFollower)->int ------------
+// KOTOR AP ADDITION (2026-09-06): Current HP getter -- see offsets.h's
+// KSE_OBJ_CURRENT_HP_OFF comment for the confirmed offset/derivation. Uses
+// KseField_Obj() (the raw resolved object), NOT KseField_StatBlock() --
+// Current HP is one step earlier in the resolution chain than every other
+// field this project reads/writes. Returns -1 if the object can't be
+// resolved (never dereferences a null).
+extern "C" int __stdcall KseGetCurrentHP(int argCount)
 {
-    if (argCount != 3) { Log("K1SE ANOMALY dumpstatblock: argCount=%d (declared 3)", argCount); return -1; }
+    if (argCount != 1) { Log("K1SE ANOMALY getcurrenthp: argCount=%d (declared 1)", argCount); return -1; }
     BYTE* base = KseImageBase();
     KseGetFn getObject = reinterpret_cast<KseGetFn>(base + KSE_GET_OBJECT_RVA);
-    KseGetFn getInt    = reinterpret_cast<KseGetFn>(base + KSE_GET_INT_RVA);
-    int objId = 0, nOffset = 0, nLength = 0;   // declaration order: object, int, int
-    if (!getObject(KseVM(), nullptr, &objId)) { Log("K1SE ANOMALY dumpstatblock: get.object failed"); return -1; }
-    if (!getInt(KseVM(), nullptr, &nOffset))  { Log("K1SE ANOMALY dumpstatblock: get.int (offset) failed"); return -1; }
-    if (!getInt(KseVM(), nullptr, &nLength))  { Log("K1SE ANOMALY dumpstatblock: get.int (length) failed"); return -1; }
-    if (nLength <= 0 || nLength > 512) {
-        Log("K1SE ANOMALY dumpstatblock: nLength=%d out of bounds (1-512)", nLength);
-        return -1;
-    }
+    KseSetIntFn setRetInt = reinterpret_cast<KseSetIntFn>(base + KSE_SETRET_INT_RVA);
+    int objId = 0;
+    if (!getObject(KseVM(), nullptr, &objId)) { Log("K1SE ANOMALY getcurrenthp: get.object failed"); return -1; }
 
     const char* why = "";
-    void* block = KseField_StatBlock(objId, &why);
-    if (!block) { Log("K1SE ANOMALY dumpstatblock: %s; no dump", why); return 0; }
-
-    BYTE* start = reinterpret_cast<BYTE*>(block) + nOffset;
-    char hex[512 * 3 + 1];
-    int pos = 0;
-    for (int i = 0; i < nLength; i++) {
-        pos += sprintf(hex + pos, "%02X ", start[i]);
-    }
-    Log("K1SE DUMPSTATBLOCK obj=%d block=%p offset=0x%X length=%d bytes: %s",
-        objId, block, nOffset, nLength, hex);
-    return 0;
-}
-
-// -------- host 606: int SWMG_GetLastHPChange()->int -- TEMPORARY --
-// research diagnostic (see offsets.h's KSE_CREDITS_CHAIN_ID comment / this
-// project's FutureDesign.md "CONFIRMED: credits offset" entry, 2026-09-03).
-// Exercises the chain the game's own HUD-update code uses to read credits:
-// KSE_OBJ_ROOT_RVA -> seed -> <call>(seed) -> pRes -> [pRes+0xFC]. Never
-// dereferences a null -- returns a distinct negative sentinel for each
-// possible failure point instead.
-//
-// TWO CANDIDATES for <call>, tried in the same pass (round 2, 2026-09-03):
-// round 1 called KSE_OBJ_TABLE_GET_RVA directly and got back a non-null,
-// non-crashing but WRONG pointer (derived=-2013026816 against a real 9540)
-// -- confirmed live. KSE_OBJ_TABLE_GET_RVA returns a TABLE that needs a
-// further KSE_OBJ_RESOLVE_RVA(table, objectId, &obj) step with an explicit
-// id (see KSE_FEAT_ID's chain above), but the raw disassembly of the
-// credits HUD code showed only ONE call whose return went straight to
-// pRes, no id, no second call -- consistent with a DIFFERENT, dedicated
-// "get the one party/campaign resource" accessor at KSE_OBJ_TABLE_GET_ALT_RVA
-// (0x4AEE70, the original manual decode's target, 0x100 off from
-// KSE_OBJ_TABLE_GET_RVA) rather than the general per-object table getter.
-// Both are computed and logged for comparison; the ALT candidate is
-// returned to the calling script since it's this round's primary
-// hypothesis.
-extern "C" int __stdcall KseTestCreditsChain(int argCount)
-{
-    if (argCount != 0) { Log("K1SE ANOMALY creditschain: argCount=%d (declared 0)", argCount); return -1; }
-    BYTE* base = KseImageBase();
-    KseSetIntFn setRetInt = reinterpret_cast<KseSetIntFn>(base + KSE_SETRET_INT_RVA);
-
-    void* objRoot = *reinterpret_cast<void**>(base + KSE_OBJ_ROOT_RVA);
-    if (!objRoot) {
-        Log("K1SE creditschain: objRoot null; chain not resolvable yet");
+    void* obj = KseField_Obj(objId, &why);
+    if (!obj) {
+        Log("K1SE ANOMALY getcurrenthp: %s; returning -1", why);
         setRetInt(KseVM(), nullptr, -1);
         return 0;
     }
-    void* seed = *reinterpret_cast<void**>(reinterpret_cast<BYTE*>(objRoot) + 8);
-    if (!seed) {
-        Log("K1SE creditschain: seed null (objRoot=%p)", objRoot);
-        setRetInt(KseVM(), nullptr, -2);
-        return 0;
-    }
-
-    typedef void* (__fastcall *KseObjTableGetFn)(void* thisptr, void* edx);
-
-    KseObjTableGetFn getResOld = reinterpret_cast<KseObjTableGetFn>(base + KSE_OBJ_TABLE_GET_RVA);
-    void* pResOld = getResOld(seed, nullptr);
-    int creditsOld = pResOld ? *reinterpret_cast<int*>(reinterpret_cast<BYTE*>(pResOld) + 0xFC) : -3;
-
-    KseObjTableGetFn getResAlt = reinterpret_cast<KseObjTableGetFn>(base + KSE_OBJ_TABLE_GET_ALT_RVA);
-    void* pResAlt = getResAlt(seed, nullptr);
-    if (!pResAlt) {
-        Log("K1SE creditschain: pResAlt null (objRoot=%p seed=%p) -- old candidate: pRes=%p derived=%d",
-            objRoot, seed, pResOld, creditsOld);
-        setRetInt(KseVM(), nullptr, -4);
-        return 0;
-    }
-    int creditsAlt = *reinterpret_cast<int*>(reinterpret_cast<BYTE*>(pResAlt) + 0xFC);
-
-    Log("K1SE TESTCREDITSCHAIN objRoot=%p seed=%p | OLD(OBJ_TABLE_GET) pRes=%p derived=%d | ALT(0x4AEE70) pRes=%p derived=%d",
-        objRoot, seed, pResOld, creditsOld, pResAlt, creditsAlt);
-    setRetInt(KseVM(), nullptr, creditsAlt);
+    int hp = *reinterpret_cast<int*>(reinterpret_cast<BYTE*>(obj) + KSE_OBJ_CURRENT_HP_OFF);
+    setRetInt(KseVM(), nullptr, hp);
     return 0;
 }
 
+// KseDumpStatBlock (host 638) and KseTestCreditsChain (host 606) -- both
+// TEMPORARY research diagnostics -- were removed 2026-09-06 once the
+// research they supported concluded and shipped as real natives/offsets.
+// Archived verbatim at
+// extender/research_archive/kse_hook_temp_natives_2026-09-06.cpp.txt.
+
 // Shared resolver for the confirmed credits chain -- KSE_OBJ_ROOT_RVA ->
-// seed -> KSE_OBJ_TABLE_GET_ALT_RVA(seed) -> pRes. Used by both
-// KseTestCreditsChain's read-only diagnostic (above, still calls it
-// inline) and KseSetCredits's real write (below). Returns nullptr and
-// sets *why on any failure; never dereferences a null.
+// seed -> KSE_OBJ_TABLE_GET_ALT_RVA(seed) -> pRes. Used by KseSetCredits's
+// real write (below); the old KseTestCreditsChain diagnostic that first
+// exercised this chain inline is archived (see comment above). Returns
+// nullptr and sets *why on any failure; never dereferences a null.
 static void* KseResolveCreditsRes(const char** why)
 {
     BYTE* base = KseImageBase();
@@ -2461,12 +2495,9 @@ __declspec(naked) static void Kse19_Detour()
         // KOTOR AP ADDITION (not part of upstream K1SE) -- host 688.
         cmp  dword ptr [esp + 4], KSE_FIELD_ID
         je   k19_field
-        // KOTOR AP ADDITION, TEMPORARY (research pass) -- host 638.
-        cmp  dword ptr [esp + 4], KSE_DUMPSB_ID
-        je   k19_dumpsb
-        // KOTOR AP ADDITION, TEMPORARY (credits chain confirm) -- host 606.
-        cmp  dword ptr [esp + 4], KSE_CREDITS_CHAIN_ID
-        je   k19_creditschain
+        // KOTOR AP ADDITION (not part of upstream K1SE) -- host 617.
+        cmp  dword ptr [esp + 4], KSE_GETCURRENTHP_ID
+        je   k19_getcurrenthp
         // KOTOR AP ADDITION (real credits write) -- host 683.
         cmp  dword ptr [esp + 4], KSE_SET_CREDITS_ID
         je   k19_setcredits
@@ -2476,11 +2507,8 @@ __declspec(naked) static void Kse19_Detour()
     k19_field:     push dword ptr [esp + 8]
                    call KseSetCreatureField
                    ret  8
-    k19_dumpsb:    push dword ptr [esp + 8]
-                   call KseDumpStatBlock
-                   ret  8
-    k19_creditschain: push dword ptr [esp + 8]
-                   call KseTestCreditsChain
+    k19_getcurrenthp: push dword ptr [esp + 8]
+                   call KseGetCurrentHP
                    ret  8
     k19_setcredits: push dword ptr [esp + 8]
                    call KseSetCredits

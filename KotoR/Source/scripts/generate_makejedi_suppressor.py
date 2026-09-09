@@ -66,7 +66,8 @@ def _arg_value(flag, default):
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-NWNNSSCOMP = r"C:\Program Files (x86)\KotOR Scripting Tool\nwnnsscomp.exe"
+from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+NWNNSSCOMP = resolve_nwnnsscomp()
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 # Same path generate_poll_shared.py/the two patch_*.py scripts read --
 # see patch_item_suppression.py's copy of this same constant/comment for

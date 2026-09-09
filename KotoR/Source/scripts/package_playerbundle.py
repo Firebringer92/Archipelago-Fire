@@ -33,30 +33,79 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # Step 1). No shared constant between the two scripts on purpose: bumping
 # one without the other would be a silent mistake either way, so each
 # script's own default should be updated by hand at release time.
-BUNDLE_VERSION = "0.1.2"
+BUNDLE_VERSION = "0.1.3"
 
+# REMINDER: this list does not update itself. Every time a NEW file (not
+# just an edit to an existing one) becomes something a tester needs to run
+# -- a new patch_*.py script, a new persisted _*.json data table under
+# extender/area_trampolines/, a new precompiled fallback .ncs -- it has to
+# be added here by hand, or it silently ships without it (see the docstring
+# above: this has already happened twice for real, both times to scripts
+# README.md itself documented as tester-run steps). Check this list as part
+# of finishing any feature, not just at release time.
+#
 # Individual files (not whole folders) copied in as-is.
 FILES = [
+    # Destination is deliberately NOT under "extender/" like the rest of
+    # this list -- every other entry here lands in the merged PlayerBundle
+    # folder, but this one file specifically needs to end up in the real
+    # Steam KOTOR game folder ROOT (see scripts/nwnnsscomp_path.py's
+    # resolve_nwnnsscomp(), which checks <game-dir>/nwnnsscomp.exe first).
+    # The Step-2 installer script is the thing that actually knows to copy
+    # this one to a different place than everything else in this list --
+    # not a generic "unzip everything into the same folder" operation.
+    # Redistribution permission confirmed directly with the tool's dev,
+    # 2026-09-08 (see FutureDesign.md's Q1).
+    (("extender", "nwnnsscomp.exe"), "to_game_folder/nwnnsscomp.exe"),
+    (("scripts", "nwnnsscomp_path.py"), "scripts/nwnnsscomp_path.py"),
     (("extender", "install.ps1"), "extender/install.ps1"),
     (("extender", "build_new", "binkw32.dll"), "extender/build_new/binkw32.dll"),
     (("extender", "area_trampolines", "_graph.json"), "extender/area_trampolines/_graph.json"),
     (("extender", "area_trampolines", "_idx_to_name.json"), "extender/area_trampolines/_idx_to_name.json"),
     (("extender", "area_trampolines", "_mapping.json"), "extender/area_trampolines/_mapping.json"),
     (("extender", "area_trampolines", "_shop_map.json"), "extender/area_trampolines/_shop_map.json"),
-    (("Archipelago", "KotorClient.py"), "KotorClient/KotorClient.py"),
-    (("Archipelago", "kotor_extender_bridge.py"), "KotorClient/kotor_extender_bridge.py"),
-    (("Archipelago", "kotor_location_tracker.py"), "KotorClient/kotor_location_tracker.py"),
-    (("Archipelago", "kotor_reconciliation.py"), "KotorClient/kotor_reconciliation.py"),
+    # 2026-09-08 fix: these 4 used to land in a "KotorClient/" subfolder,
+    # requiring a manual "open it, move the 4 files out, delete the empty
+    # folder" step (README.md's old Step 1) -- easy to get wrong, and
+    # directly undercuts the whole point of the new 3-step simplified
+    # install (install_playerbundle.py doesn't do this move either, so
+    # without this fix it would've been the ONE remaining manual step left
+    # over from the old process). KotorClient.py needs to sit directly
+    # next to CommonClient.py either way (it does `from CommonClient
+    # import ...`), so these now extract straight to the Client folder
+    # root, same level as every other zip entry here -- no subfolder, no
+    # move-and-delete step, matching a plain "extract the zip into your
+    # Client folder" instruction.
+    (("Archipelago", "KotorClient.py"), "KotorClient.py"),
+    (("Archipelago", "kotor_extender_bridge.py"), "kotor_extender_bridge.py"),
+    (("Archipelago", "kotor_location_tracker.py"), "kotor_location_tracker.py"),
+    (("Archipelago", "kotor_reconciliation.py"), "kotor_reconciliation.py"),
+    # 2026-09-09: double-clickable installer -- testers don't run command
+    # prompt commands. Ships at the Client folder root (sibling of
+    # CommonClient.py, same level as scripts\) so `cd /d "%~dp0"` inside it
+    # resolves to the Client folder itself and `scripts\install_playerbundle.py`
+    # is a direct, correct relative path from there.
+    (("scripts", "Install.bat"), "Install.bat"),
+    (("scripts", "Uninstall.bat"), "Uninstall.bat"),
     (("scripts", "arm_orchestrator.py"), "scripts/arm_orchestrator.py"),
     (("scripts", "generate_makejedi_suppressor.py"), "scripts/generate_makejedi_suppressor.py"),
     (("scripts", "generate_poll_shared.py"), "scripts/generate_poll_shared.py"),
     (("scripts", "generate_trampoline_batch.py"), "scripts/generate_trampoline_batch.py"),
     (("scripts", "setup_game.py"), "scripts/setup_game.py"),
+    (("scripts", "install_playerbundle.py"), "scripts/install_playerbundle.py"),
     # Found missing entirely from v0.1.1/v0.1.2 (2026-09-04) -- both are
     # explicitly documented as tester-run steps in README.md Step 4, but
     # the ad hoc script those releases were built from never included them.
     (("scripts", "patch_item_suppression.py"), "scripts/patch_item_suppression.py"),
     (("scripts", "patch_door_randomizer.py"), "scripts/patch_door_randomizer.py"),
+    # Same gap, caught this time before release (2026-09-08): Additional
+    # Enemies' tester-run patch script and its 4 persisted reference tables
+    # (Tables A/B/C + the safe pool) were both missing here entirely.
+    (("scripts", "patch_additional_enemies.py"), "scripts/patch_additional_enemies.py"),
+    (("extender", "area_trampolines", "_enemy_spawn_points.json"), "extender/area_trampolines/_enemy_spawn_points.json"),
+    (("extender", "area_trampolines", "_enemy_cr_bands.json"), "extender/area_trampolines/_enemy_cr_bands.json"),
+    (("extender", "area_trampolines", "_enemy_category_pools.json"), "extender/area_trampolines/_enemy_category_pools.json"),
+    (("extender", "area_trampolines", "_enemy_safe_pool.json"), "extender/area_trampolines/_enemy_safe_pool.json"),
     # patch_item_suppression.py's item whitelist -- found broken 2026-09-04:
     # a real tester's checkout only ever has kotor.apworld as a zip in
     # custom_worlds/, never an extracted worlds/kotor/gear_items.json file

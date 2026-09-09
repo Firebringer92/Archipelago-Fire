@@ -1435,7 +1435,196 @@ void CheckClasses()
     string sReport = "AP|CLASSREPORT|guardian=" + IntToString(GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC))
         + "|consular=" + IntToString(GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC))
         + "|sentinel=" + IntToString(GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC));
+    int nBaseClass = GetClassByPosition(1, oPC);
+    int nBaseLevel = GetLevelByPosition(1, oPC);
+    sReport = sReport + "|baseclass=" + IntToString(nBaseClass) + "|baselevel=" + IntToString(nBaseLevel);
     KSE_Diag(65, sReport);
+}
+
+// Traps feature (2026-09-08) -- reports every feat.2da id the character
+// currently holds (KSE_GetFeatAcquired is per-id membership only, there's
+// no 'list all feats' native), so the client can pick half at random for
+// the Remove Half Known Feats trap without guessing at what's held.
+void CheckFeats()
+{
+    object oPC = GetFirstPC();
+    string sHeld = "";
+    if (KSE_GetFeatAcquired(1, oPC)) sHeld += "1,";
+    if (KSE_GetFeatAcquired(2, oPC)) sHeld += "2,";
+    if (KSE_GetFeatAcquired(3, oPC)) sHeld += "3,";
+    if (KSE_GetFeatAcquired(4, oPC)) sHeld += "4,";
+    if (KSE_GetFeatAcquired(5, oPC)) sHeld += "5,";
+    if (KSE_GetFeatAcquired(6, oPC)) sHeld += "6,";
+    if (KSE_GetFeatAcquired(7, oPC)) sHeld += "7,";
+    if (KSE_GetFeatAcquired(8, oPC)) sHeld += "8,";
+    if (KSE_GetFeatAcquired(9, oPC)) sHeld += "9,";
+    if (KSE_GetFeatAcquired(10, oPC)) sHeld += "10,";
+    if (KSE_GetFeatAcquired(11, oPC)) sHeld += "11,";
+    if (KSE_GetFeatAcquired(12, oPC)) sHeld += "12,";
+    if (KSE_GetFeatAcquired(13, oPC)) sHeld += "13,";
+    if (KSE_GetFeatAcquired(14, oPC)) sHeld += "14,";
+    if (KSE_GetFeatAcquired(15, oPC)) sHeld += "15,";
+    if (KSE_GetFeatAcquired(16, oPC)) sHeld += "16,";
+    if (KSE_GetFeatAcquired(17, oPC)) sHeld += "17,";
+    if (KSE_GetFeatAcquired(18, oPC)) sHeld += "18,";
+    if (KSE_GetFeatAcquired(19, oPC)) sHeld += "19,";
+    if (KSE_GetFeatAcquired(20, oPC)) sHeld += "20,";
+    if (KSE_GetFeatAcquired(21, oPC)) sHeld += "21,";
+    if (KSE_GetFeatAcquired(22, oPC)) sHeld += "22,";
+    if (KSE_GetFeatAcquired(24, oPC)) sHeld += "24,";
+    if (KSE_GetFeatAcquired(25, oPC)) sHeld += "25,";
+    if (KSE_GetFeatAcquired(26, oPC)) sHeld += "26,";
+    if (KSE_GetFeatAcquired(27, oPC)) sHeld += "27,";
+    if (KSE_GetFeatAcquired(28, oPC)) sHeld += "28,";
+    if (KSE_GetFeatAcquired(29, oPC)) sHeld += "29,";
+    if (KSE_GetFeatAcquired(30, oPC)) sHeld += "30,";
+    if (KSE_GetFeatAcquired(31, oPC)) sHeld += "31,";
+    if (KSE_GetFeatAcquired(32, oPC)) sHeld += "32,";
+    if (KSE_GetFeatAcquired(33, oPC)) sHeld += "33,";
+    if (KSE_GetFeatAcquired(34, oPC)) sHeld += "34,";
+    if (KSE_GetFeatAcquired(35, oPC)) sHeld += "35,";
+    if (KSE_GetFeatAcquired(36, oPC)) sHeld += "36,";
+    if (KSE_GetFeatAcquired(37, oPC)) sHeld += "37,";
+    if (KSE_GetFeatAcquired(38, oPC)) sHeld += "38,";
+    if (KSE_GetFeatAcquired(39, oPC)) sHeld += "39,";
+    if (KSE_GetFeatAcquired(40, oPC)) sHeld += "40,";
+    if (KSE_GetFeatAcquired(41, oPC)) sHeld += "41,";
+    if (KSE_GetFeatAcquired(42, oPC)) sHeld += "42,";
+    if (KSE_GetFeatAcquired(43, oPC)) sHeld += "43,";
+    if (KSE_GetFeatAcquired(44, oPC)) sHeld += "44,";
+    if (KSE_GetFeatAcquired(45, oPC)) sHeld += "45,";
+    if (KSE_GetFeatAcquired(46, oPC)) sHeld += "46,";
+    if (KSE_GetFeatAcquired(47, oPC)) sHeld += "47,";
+    if (KSE_GetFeatAcquired(48, oPC)) sHeld += "48,";
+    if (KSE_GetFeatAcquired(49, oPC)) sHeld += "49,";
+    if (KSE_GetFeatAcquired(50, oPC)) sHeld += "50,";
+    if (KSE_GetFeatAcquired(51, oPC)) sHeld += "51,";
+    if (KSE_GetFeatAcquired(52, oPC)) sHeld += "52,";
+    if (KSE_GetFeatAcquired(53, oPC)) sHeld += "53,";
+    if (KSE_GetFeatAcquired(54, oPC)) sHeld += "54,";
+    if (KSE_GetFeatAcquired(55, oPC)) sHeld += "55,";
+    if (KSE_GetFeatAcquired(56, oPC)) sHeld += "56,";
+    if (KSE_GetFeatAcquired(57, oPC)) sHeld += "57,";
+    if (KSE_GetFeatAcquired(58, oPC)) sHeld += "58,";
+    if (KSE_GetFeatAcquired(60, oPC)) sHeld += "60,";
+    if (KSE_GetFeatAcquired(61, oPC)) sHeld += "61,";
+    if (KSE_GetFeatAcquired(62, oPC)) sHeld += "62,";
+    if (KSE_GetFeatAcquired(63, oPC)) sHeld += "63,";
+    if (KSE_GetFeatAcquired(64, oPC)) sHeld += "64,";
+    if (KSE_GetFeatAcquired(65, oPC)) sHeld += "65,";
+    if (KSE_GetFeatAcquired(66, oPC)) sHeld += "66,";
+    if (KSE_GetFeatAcquired(67, oPC)) sHeld += "67,";
+    if (KSE_GetFeatAcquired(68, oPC)) sHeld += "68,";
+    if (KSE_GetFeatAcquired(69, oPC)) sHeld += "69,";
+    if (KSE_GetFeatAcquired(70, oPC)) sHeld += "70,";
+    if (KSE_GetFeatAcquired(71, oPC)) sHeld += "71,";
+    if (KSE_GetFeatAcquired(72, oPC)) sHeld += "72,";
+    if (KSE_GetFeatAcquired(73, oPC)) sHeld += "73,";
+    if (KSE_GetFeatAcquired(74, oPC)) sHeld += "74,";
+    if (KSE_GetFeatAcquired(75, oPC)) sHeld += "75,";
+    if (KSE_GetFeatAcquired(76, oPC)) sHeld += "76,";
+    if (KSE_GetFeatAcquired(77, oPC)) sHeld += "77,";
+    if (KSE_GetFeatAcquired(78, oPC)) sHeld += "78,";
+    if (KSE_GetFeatAcquired(79, oPC)) sHeld += "79,";
+    if (KSE_GetFeatAcquired(80, oPC)) sHeld += "80,";
+    if (KSE_GetFeatAcquired(81, oPC)) sHeld += "81,";
+    if (KSE_GetFeatAcquired(82, oPC)) sHeld += "82,";
+    if (KSE_GetFeatAcquired(83, oPC)) sHeld += "83,";
+    if (KSE_GetFeatAcquired(84, oPC)) sHeld += "84,";
+    if (KSE_GetFeatAcquired(85, oPC)) sHeld += "85,";
+    if (KSE_GetFeatAcquired(86, oPC)) sHeld += "86,";
+    if (KSE_GetFeatAcquired(87, oPC)) sHeld += "87,";
+    if (KSE_GetFeatAcquired(88, oPC)) sHeld += "88,";
+    if (KSE_GetFeatAcquired(89, oPC)) sHeld += "89,";
+    if (KSE_GetFeatAcquired(90, oPC)) sHeld += "90,";
+    if (KSE_GetFeatAcquired(91, oPC)) sHeld += "91,";
+    if (KSE_GetFeatAcquired(92, oPC)) sHeld += "92,";
+    if (KSE_GetFeatAcquired(93, oPC)) sHeld += "93,";
+    if (KSE_GetFeatAcquired(94, oPC)) sHeld += "94,";
+    if (KSE_GetFeatAcquired(95, oPC)) sHeld += "95,";
+    if (KSE_GetFeatAcquired(96, oPC)) sHeld += "96,";
+    if (KSE_GetFeatAcquired(97, oPC)) sHeld += "97,";
+    if (KSE_GetFeatAcquired(98, oPC)) sHeld += "98,";
+    if (KSE_GetFeatAcquired(99, oPC)) sHeld += "99,";
+    if (KSE_GetFeatAcquired(100, oPC)) sHeld += "100,";
+    if (KSE_GetFeatAcquired(101, oPC)) sHeld += "101,";
+    if (KSE_GetFeatAcquired(102, oPC)) sHeld += "102,";
+    if (KSE_GetFeatAcquired(103, oPC)) sHeld += "103,";
+    if (KSE_GetFeatAcquired(104, oPC)) sHeld += "104,";
+    if (KSE_GetFeatAcquired(105, oPC)) sHeld += "105,";
+    if (KSE_GetFeatAcquired(106, oPC)) sHeld += "106,";
+    if (KSE_GetFeatAcquired(107, oPC)) sHeld += "107,";
+    if (KSE_GetFeatAcquired(108, oPC)) sHeld += "108,";
+    if (KSE_GetFeatAcquired(109, oPC)) sHeld += "109,";
+    if (KSE_GetFeatAcquired(110, oPC)) sHeld += "110,";
+    if (KSE_GetFeatAcquired(111, oPC)) sHeld += "111,";
+    if (KSE_GetFeatAcquired(112, oPC)) sHeld += "112,";
+    if (KSE_GetFeatAcquired(113, oPC)) sHeld += "113,";
+    if (KSE_GetFeatAcquired(114, oPC)) sHeld += "114,";
+    if (KSE_GetFeatAcquired(115, oPC)) sHeld += "115,";
+    if (KSE_GetFeatAcquired(116, oPC)) sHeld += "116,";
+    if (KSE_GetFeatAcquired(117, oPC)) sHeld += "117,";
+    if (KSE_GetFeatAcquired(118, oPC)) sHeld += "118,";
+    if (KSE_GetFeatAcquired(119, oPC)) sHeld += "119,";
+    if (KSE_GetFeatAcquired(120, oPC)) sHeld += "120,";
+    if (KSE_GetFeatAcquired(121, oPC)) sHeld += "121,";
+    if (KSE_GetFeatAcquired(122, oPC)) sHeld += "122,";
+    if (KSE_GetFeatAcquired(123, oPC)) sHeld += "123,";
+    if (KSE_GetFeatAcquired(124, oPC)) sHeld += "124,";
+    KSE_Diag(135, "AP|FEATREPORT|" + sHeld);
+}
+
+// Same shape as CheckFeats() above, for spells.2da (force powers) --
+// GetHasSpell is likewise per-id membership only.
+void CheckForcePowers()
+{
+    object oPC = GetFirstPC();
+    string sHeld = "";
+    if (GetHasSpell(4, oPC)) sHeld += "4,";
+    if (GetHasSpell(6, oPC)) sHeld += "6,";
+    if (GetHasSpell(7, oPC)) sHeld += "7,";
+    if (GetHasSpell(8, oPC)) sHeld += "8,";
+    if (GetHasSpell(9, oPC)) sHeld += "9,";
+    if (GetHasSpell(10, oPC)) sHeld += "10,";
+    if (GetHasSpell(11, oPC)) sHeld += "11,";
+    if (GetHasSpell(12, oPC)) sHeld += "12,";
+    if (GetHasSpell(13, oPC)) sHeld += "13,";
+    if (GetHasSpell(14, oPC)) sHeld += "14,";
+    if (GetHasSpell(15, oPC)) sHeld += "15,";
+    if (GetHasSpell(16, oPC)) sHeld += "16,";
+    if (GetHasSpell(17, oPC)) sHeld += "17,";
+    if (GetHasSpell(18, oPC)) sHeld += "18,";
+    if (GetHasSpell(19, oPC)) sHeld += "19,";
+    if (GetHasSpell(20, oPC)) sHeld += "20,";
+    if (GetHasSpell(22, oPC)) sHeld += "22,";
+    if (GetHasSpell(23, oPC)) sHeld += "23,";
+    if (GetHasSpell(24, oPC)) sHeld += "24,";
+    if (GetHasSpell(25, oPC)) sHeld += "25,";
+    if (GetHasSpell(26, oPC)) sHeld += "26,";
+    if (GetHasSpell(27, oPC)) sHeld += "27,";
+    if (GetHasSpell(28, oPC)) sHeld += "28,";
+    if (GetHasSpell(29, oPC)) sHeld += "29,";
+    if (GetHasSpell(30, oPC)) sHeld += "30,";
+    if (GetHasSpell(31, oPC)) sHeld += "31,";
+    if (GetHasSpell(32, oPC)) sHeld += "32,";
+    if (GetHasSpell(33, oPC)) sHeld += "33,";
+    if (GetHasSpell(34, oPC)) sHeld += "34,";
+    if (GetHasSpell(35, oPC)) sHeld += "35,";
+    if (GetHasSpell(36, oPC)) sHeld += "36,";
+    if (GetHasSpell(37, oPC)) sHeld += "37,";
+    if (GetHasSpell(38, oPC)) sHeld += "38,";
+    if (GetHasSpell(40, oPC)) sHeld += "40,";
+    if (GetHasSpell(41, oPC)) sHeld += "41,";
+    if (GetHasSpell(42, oPC)) sHeld += "42,";
+    if (GetHasSpell(43, oPC)) sHeld += "43,";
+    if (GetHasSpell(44, oPC)) sHeld += "44,";
+    if (GetHasSpell(45, oPC)) sHeld += "45,";
+    if (GetHasSpell(46, oPC)) sHeld += "46,";
+    if (GetHasSpell(47, oPC)) sHeld += "47,";
+    if (GetHasSpell(48, oPC)) sHeld += "48,";
+    if (GetHasSpell(49, oPC)) sHeld += "49,";
+    if (GetHasSpell(50, oPC)) sHeld += "50,";
+    KSE_Diag(136, "AP|POWERREPORT|" + sHeld);
 }
 
 // Character name, reported every poll -- the client keys its persistent
@@ -1599,6 +1788,8 @@ void main()
     CheckInventory();
     CheckAbilityScores();
     CheckClasses();
+    CheckFeats();
+    CheckForcePowers();
     CheckCharacterName();
     CheckSkills();
     CheckDeath();

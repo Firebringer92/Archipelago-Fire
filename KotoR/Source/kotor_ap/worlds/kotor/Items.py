@@ -132,7 +132,124 @@ item_table: typing.Dict[str, ItemData] = {
     "PC Class: Soldier": ItemData(base_id + 47, ItemClassification.progression, "pc_class_soldier"),
     "PC Class: Scout": ItemData(base_id + 48, ItemClassification.progression, "pc_class_scout"),
     "PC Class: Scoundrel": ItemData(base_id + 49, ItemClassification.progression, "pc_class_scoundrel"),
+    # AdditionalFeats (2026-09-07): one per eligible character (PC + the 7
+    # non-droid companions, order matching __init__.py's COMPANION_CLASS_KEYS).
+    # Receiving one grants nothing immediately -- the arm_name is a marker
+    # KotorClient.py recognizes specially (NOT a real extender arm name,
+    # unlike every other entry in this table): it records a pending flag
+    # in the delivery log instead of queuing a send, and only decides +
+    # queues the actual 3-feat grant once that character is both recruited
+    # and their class has settled (see KotorContext._is_companion_recruited/
+    # _is_companion_class_finalized/_is_pc_class_finalized). The eventual
+    # real send reuses the "companion_class"-style parameterized-action
+    # shape once the 3 feats are chosen -- see generate_trampoline_batch.py's
+    # build_additional_feats_block().
+    "Additional Feats Character: PC": ItemData(base_id + 50, ItemClassification.useful, "additional_feats:pc"),
+    "Additional Feats Character: Bastila": ItemData(base_id + 51, ItemClassification.useful, "additional_feats:bastila"),
+    "Additional Feats Character: Canderous": ItemData(base_id + 52, ItemClassification.useful, "additional_feats:canderous"),
+    "Additional Feats Character: Carth": ItemData(base_id + 53, ItemClassification.useful, "additional_feats:carth"),
+    "Additional Feats Character: Jolee": ItemData(base_id + 54, ItemClassification.useful, "additional_feats:jolee"),
+    "Additional Feats Character: Juhani": ItemData(base_id + 55, ItemClassification.useful, "additional_feats:juhani"),
+    "Additional Feats Character: Mission": ItemData(base_id + 56, ItemClassification.useful, "additional_feats:mission"),
+    "Additional Feats Character: Zaalbar": ItemData(base_id + 57, ItemClassification.useful, "additional_feats:zaalbar"),
+
+    # 2026-09-08: Progression System (ProgressionSystem option) -- 10 real
+    # main-questline items, each classification=progression (not useful --
+    # AP's own fill algorithm needs the real classification to weight/place
+    # these correctly relative to logic, unlike Additional Feats above
+    # which is a pure quality-of-life bonus with no access rule riding on
+    # it). Reuses the EXISTING give_item:<resref> mechanism (already
+    # proven for curated gear, see gear_base_id below) directly -- no new
+    # client-side grant code needed, "create this real item in inventory"
+    # is the exact same operation regardless of WHY it's being granted.
+    # What makes these different from ordinary gear is entirely on the
+    # SUPPRESSION/RECONCILIATION side (see PROGRESSION_ITEM_RESREFS below
+    # and scripts/patch_progression_system.py) -- each one's normal
+    # vanilla acquisition script gets suppressed, and it's granted instead
+    # once the paired AP check clears. See Rules.py for the access rules
+    # gating what each one unlocks, and FutureDesign.md's 2026-09-08
+    # Progression System entries for the full derivation (every gate here
+    # is confirmed via the game's own compiled scripts, not guessed).
+    # base_id + 58 through 67 = the 10 originally-designed Progression System
+    # items. base_id+62 (Tatooine Desert Map) and base_id+63 (Star Map:
+    # Dantooine) were dropped 2026-09-08 after tracing each one's REAL
+    # checkpoint script rather than just its pickup location: nothing in the
+    # entire game (chitin + Override, every resource type) ever checks
+    # whether the player possesses tat20aa_westmap, and Dantooine's star map
+    # turned out to be neither part of the Leviathan-capture gate nor a
+    # travel barrier of any kind (see Rules.py and FutureDesign.md). Their
+    # IDs are left permanently unused rather than renumbering the rest.
+    "Progression Item: Sith Armor": ItemData(base_id + 58, ItemClassification.progression, "give_item:ptar_sitharmor"),
+    "Progression Item: Sith Papers": ItemData(base_id + 59, ItemClassification.progression, "give_item:ptar_sithpapers"),
+    "Progression Item: Taris Shield Codes": ItemData(base_id + 60, ItemClassification.progression, "give_item:ptar_shieldcodes"),
+    "Progression Item: Manaan Enviro Suit": ItemData(base_id + 61, ItemClassification.progression, "give_item:man28_envirosuit"),
+    "Progression Item: Star Map (Tatooine)": ItemData(base_id + 64, ItemClassification.progression, "give_item:tat_starpad"),
+    "Progression Item: Star Map (Kashyyyk)": ItemData(base_id + 65, ItemClassification.progression, "give_item:kas_starpad"),
+    "Progression Item: Star Map (Manaan)": ItemData(base_id + 66, ItemClassification.progression, "give_item:man_starpad"),
+    "Progression Item: Star Map (Korriban)": ItemData(base_id + 67, ItemClassification.progression, "give_item:kor_starpad"),
 }
+
+# Real in-game item resref for each Progression System item above, keyed
+# by the SHORT key used everywhere else (suppression script tables,
+# reconciliation) -- redundant with the arm_name's give_item:<resref>
+# suffix above, kept as its own explicit table since the suppression/
+# reconciliation side needs to go resref -> key just as often as key ->
+# resref (e.g. "I found ptar_sitharmor already in inventory -- is that
+# one of the 8 tracked progression items, and if so is it legitimately
+# AP-granted yet?"). All 8 confirmed via the game's own compiled
+# scripts -- see FutureDesign.md's 2026-09-08 entries. (desert_map and
+# starmap_dantooine dropped 2026-09-08 -- see the comment above the item
+# table itself for why.)
+PROGRESSION_ITEM_RESREFS: typing.Dict[str, str] = {
+    "sith_armor": "ptar_sitharmor",
+    "sith_papers": "ptar_sithpapers",
+    "shield_codes": "ptar_shieldcodes",
+    "enviro_suit": "man28_envirosuit",
+    "starmap_tatooine": "tat_starpad",
+    "starmap_kashyyyk": "kas_starpad",
+    "starmap_manaan": "man_starpad",
+    "starmap_korriban": "kor_starpad",
+}
+
+# Traps (2026-09-08): 12 items, gated by EnableTraps, guaranteed placement
+# (added to mandatory_names in __init__.py's create_items() exactly like
+# Additional Feats/Progression System above) whenever the option is on --
+# NOT part of the weighted _distribute_items() draw, since the design is
+# "always exactly 12 exist in the pool when enabled," not "maybe a few
+# show up." arm_name uses a "trap:<key>" sentinel KotorClient.py's
+# _deliver_item recognizes specially (same interception pattern as
+# "additional_feats:") -- every trap's REAL effect is decided at the
+# moment of delivery from the character's actual live state (which half
+# of their feats/force powers/inventory, which companion, how much CON
+# reduction gets closest to half Max HP), never baked in at generation
+# time. PC-only; never affects companions except as the deliberate
+# target of Remove a Companion. See Options.py's EnableTraps docstring
+# for the full player-facing description of each one. No standalone
+# "Halve Constitution" item -- Cut Max Health in Half already works by
+# reducing CON (the only lever this engine has for Max HP at all, see
+# FutureDesign.md), so a separate CON-halving trap would just overlap
+# with it; STR/DEX/INT/WIS/CHA are the 5 standalone ability traps.
+TRAP_ITEMS: typing.Dict[str, ItemData] = {
+    "Trap: Remove All Credits": ItemData(base_id + 70, ItemClassification.trap, "trap:remove_credits"),
+    # Cut Level in Half retired 2026-09-08 (base_id+71 kept, not
+    # renumbered) -- SetXP can't reduce XP below the current level's
+    # threshold once it's already banked (confirmed live: level dropped,
+    # XP didn't), leaving an inconsistent character. Reduce a Skill reuses
+    # EffectSkillDecrease, the same plain-effect approach already proven
+    # live for the 5 ability traps below -- no threshold to fight.
+    "Trap: Reduce a Skill": ItemData(base_id + 71, ItemClassification.trap, "trap:reduce_skill"),
+    "Trap: Remove Half Known Feats": ItemData(base_id + 72, ItemClassification.trap, "trap:remove_half_feats"),
+    "Trap: Remove Half Known Force Powers": ItemData(base_id + 73, ItemClassification.trap, "trap:remove_half_powers"),
+    "Trap: Cut Max Health in Half": ItemData(base_id + 74, ItemClassification.trap, "trap:cut_max_hp"),
+    "Trap: Remove a Companion": ItemData(base_id + 75, ItemClassification.trap, "trap:remove_companion"),
+    "Trap: Remove Half Inventory Items": ItemData(base_id + 76, ItemClassification.trap, "trap:remove_half_inventory"),
+    "Trap: Halve Strength": ItemData(base_id + 77, ItemClassification.trap, "trap:reduce_str"),
+    "Trap: Halve Dexterity": ItemData(base_id + 78, ItemClassification.trap, "trap:reduce_dex"),
+    "Trap: Halve Intelligence": ItemData(base_id + 80, ItemClassification.trap, "trap:reduce_int"),
+    "Trap: Halve Wisdom": ItemData(base_id + 81, ItemClassification.trap, "trap:reduce_wis"),
+    "Trap: Halve Charisma": ItemData(base_id + 82, ItemClassification.trap, "trap:reduce_cha"),
+}
+item_table.update(TRAP_ITEMS)
 
 # Curated gear (weapons/armor/equipment/consumables) lives in gear_items.json,
 # not here -- it's meant to stay live-editable by hand without a code

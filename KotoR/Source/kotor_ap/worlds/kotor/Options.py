@@ -108,6 +108,159 @@ class CompanionClass(Choice):
     default = 0
 
 
+class AdditionalFeats(Toggle):
+    """Whether "Additional Feats" items exist in the pool at all. When on,
+    one such item is placed per eligible character -- just the PC when
+    companion_mode is "none", otherwise the PC plus all 7 non-droid
+    companions (Bastila, Canderous, Carth, Jolee, Juhani, Mission,
+    Zaalbar -- HK-47 and T3-M4 are droids and never eligible).
+
+    Receiving one doesn't grant anything immediately -- which 3 feats it
+    grants is decided later, once that character is actually recruited
+    AND their class has settled (so a Randomize_class-in-progress
+    character is never granted feats against a class that's about to
+    change out from under them). The 3 feats are drawn randomly from a
+    fixed pool spanning every class's weapon/armor proficiencies and
+    signature abilities -- e.g. a Scoundrel could end up with Lightsaber
+    Proficiency, letting them wield a weapon their own class never would.
+    Off (default): no such items exist."""
+    display_name = "Additional Feats"
+    default = False
+
+
+class ProgressionSystem(Toggle):
+    """Gates 8 real main-questline items (Sith Armor, Sith Papers, Taris
+    Shield Codes, Manaan Enviro Suit, and 4 Star Maps -- Tatooine/
+    Kashyyyk/Manaan/Korriban) behind real AP checks instead of their
+    normal vanilla pickup. (Tatooine Desert Map and the Dantooine Star
+    Map were dropped from an original 10-item design after tracing each
+    item's real vanilla gate -- neither one turned out to gate anything
+    at all; see FutureDesign.md's 2026-09-08 entries.)
+
+    Two different mechanisms depending on the item: Sith Armor/Papers/
+    Shield Codes/Enviro Suit are suppressed at their normal vanilla
+    acquisition point and granted once the paired check clears, same as
+    before. The 4 Star Maps use a DIFFERENT mechanism -- vanilla KOTOR
+    has no travel restriction to any planet at all (confirmed via the
+    real galaxy-map script), so this option creates an artificial one:
+    Tatooine/Kashyyyk/Manaan/Korriban are unreachable via the galaxy map
+    until that planet's Star Map check clears.
+
+    A real access-rule layer rides on this (see Rules.py): Taris' Lower
+    City and everything past it requires Sith Armor, the Sith Base
+    additionally requires Sith Papers, Escaping Taris requires the Shield
+    Codes, Manaan's Hrakert Rift (and its own Star Map) requires the
+    Enviro Suit, EVERY location on the 4 travel-gated planets requires
+    that planet's own Star Map item, and Leviathan/Unknown World/Star
+    Forge/the ending require ALL 4 Star Maps. This is a REAL logic layer,
+    not flavor -- Archipelago's own generation-time reachability sweep
+    uses it to guarantee the seed is actually completable, the same
+    mechanism every other Archipelago game's world uses for progression
+    gating.
+
+    Off (default): vanilla -- all 8 items behave normally, no access
+    rules, no suppression, no artificial travel gate.
+
+    INCOMPATIBLE with area_randomizer -- door/entrance randomization would
+    make the reachability logic above impossible to reason about (the
+    whole point of the rules above is knowing which real locations sit on
+    which side of each gate; scrambling area connections breaks that
+    entirely). Enabling both raises an error at generation time, not just
+    a description note."""
+    display_name = "Progression System"
+    default = False
+
+
+class EnableTraps(Toggle):
+    """Whether "Trap" items exist in the pool at all. When on, 12 trap
+    items take the place of 12 ordinary filler items -- they're never
+    guaranteed placement, just folded into the normal item pool like any
+    other filler, so a given seed might place several or (rarely) none.
+
+    A trap item does something purely punishing to whichever character
+    receives it (the PC only -- companions are never affected, except as
+    the TARGET of the "remove a companion" trap below), and never repeats
+    itself: once delivered, that's it, no re-triggering on a later
+    reconnect or area transition.
+
+    The 12 traps: Remove All Credits, Reduce a Skill (one randomly-picked
+    known skill, halved), Remove Half Known Feats, Remove Half Known Force
+    Powers, Cut Max Health (as close to half as the character's build
+    allows -- see below), Remove a Companion (a random currently-recruited
+    one; does nothing if none are recruited yet), Remove Half Inventory
+    Items (backpack only, equipped gear is safe, quest items are never
+    eligible), and one dedicated item per remaining ability score
+    (Strength/Dexterity/Intelligence/Wisdom/Charisma) that halves that
+    specific score -- Constitution has no standalone item since Cut Max
+    Health in Half already works by reducing it (the only lever this
+    engine has for Max HP at all), so a separate CON trap would just
+    overlap.
+
+    2026-09-08: originally shipped as "Cut Level (and XP) in Half," but
+    live testing found the engine's SetXP silently refuses to reduce XP
+    below whatever the character's CURRENT level already requires (same
+    no-op class as TakeGoldFromCreature) -- confirmed live: the level
+    field dropped but the XP didn't, leaving an inconsistent character.
+    Retired in favor of Reduce a Skill, which reuses the same
+    EffectSkillDecrease approach already proven live for the 5 ability
+    traps above (a plain vanilla effect, no threshold to fight).
+
+    Several are decided at the moment of delivery, not at generation
+    time, since they depend on the character's real current state: which
+    half of their feats/force powers/inventory gets picked, which
+    companion (if any) gets removed, what "half" actually means for their
+    current level/HP/stat. If a character has 0 or 1 of something a trap
+    would normally halve (feats, force powers, inventory items), that
+    trap is a safe no-op rather than forcing a removal.
+
+    Max HP has no direct in-memory field in this engine -- it's always
+    computed from class levels + a Constitution bonus term. The trap
+    reduces Constitution as far as needed to get AS CLOSE to half Max HP
+    as achievable; for some high-level/high-hit-die characters, exactly
+    half may not be reachable through Constitution alone, so the actual
+    reduction can fall short of a true 50% cut.
+
+    Off (default): no trap items exist, vanilla filler distribution
+    unaffected."""
+    display_name = "Enable Traps"
+    default = False
+
+
+class AdditionalEnemies(Choice):
+    """Adds brand-new hostile creatures alongside whatever's already
+    placed in an area -- existing enemies/scripts/encounters are never
+    touched or removed, this only adds more. Locations are fixed per
+    module (precomputed, safety-checked spots -- see
+    extender/area_trampolines/_enemy_spawn_points.json), only WHICH
+    creature goes in each slot is decided per seed.
+
+    off (default): vanilla, no additions.
+
+    area_appropriate: each new creature is drawn only from OTHER
+    creatures native to that area's own planet, matched to roughly that
+    area's own existing difficulty range -- e.g. Endar Spire would only
+    ever get more Sith troopers/soldiers, never something from a
+    completely different planet.
+
+    random_sane: any creature from the safe pool (any planet), but still
+    matched to roughly that specific area's own existing CR (challenge
+    rating) range -- more variety than area_appropriate, but still
+    difficulty-consistent with where you actually are.
+
+    fully_random: any creature from the safe pool, no planet or
+    difficulty restriction at all -- can be significantly
+    over/under-tuned for wherever it lands (confirmed live: a CR 14
+    creature dropped into an opening-hours area can kill a low-level
+    character fast). Most variety, least predictable difficulty.
+    """
+    display_name = "Additional Enemies"
+    option_off = 0
+    option_area_appropriate = 1
+    option_random_sane = 2
+    option_fully_random = 3
+    default = 0
+
+
 class ExperienceMode(Choice):
     """Controls how (and whether) you receive AP-driven XP. Either way
     besides off, vanilla combat/quest XP is clamped down to an "expected"
@@ -620,6 +773,10 @@ class KotorOptions(PerGameCommonOptions):
     starting_class: StartingClass
     jedi_class: JediClass
     companion_class: CompanionClass
+    additional_feats: AdditionalFeats
+    progression_system: ProgressionSystem
+    enable_traps: EnableTraps
+    additional_enemies: AdditionalEnemies
     experience_mode: ExperienceMode
     experience_limiter: ExperienceLimiter
     experience_item: ExperienceItem

@@ -1713,12 +1713,25 @@ class KotorContext(CommonContext):
 
     def on_package(self, cmd: str, args: dict):
         super().on_package(cmd, args)
+        if cmd == "RoomInfo":
+            # 2026-09-09 fix, found live: this used to rely on
+            # self.server_seed_name (a CommonContext attribute confirmed
+            # ONLY present on Archipelago's unreleased main-branch dev
+            # snapshot -- absent from every real tagged release including
+            # the actual current one, 0.6.7). Every real tester hit a hard
+            # AttributeError the instant they connected. RoomInfo's own
+            # "seed_name" field is genuine, long-standing network-protocol
+            # data present across every version -- capturing it ourselves
+            # here (RoomInfo always arrives before Connected) is a
+            # version-safe replacement that doesn't depend on which
+            # CommonContext attributes happen to exist.
+            self.seed_name = args.get("seed_name") or self.seed_name
         if cmd == "Connected":
             slot_data = args.get("slot_data", {}) or {}
             write_slot_data_for_patch_scripts(
                 slot_data.get("loot_mode", 0), slot_data.get("door_mapping"),
                 bool(slot_data.get("area_randomizer", False)), slot_data.get("starting_class", 0),
-                slot_data.get("additional_enemies_mode", 0), self.server_seed_name or self.seed_name,
+                slot_data.get("additional_enemies_mode", 0), self.seed_name,
                 bool(slot_data.get("progression_system", False)))
             self.companion_mode = slot_data.get("companion_mode", 0)
             self.companion_class_rolls = slot_data.get("companion_class_rolls", {})
@@ -1756,7 +1769,7 @@ class KotorContext(CommonContext):
             # here the same way poll_shared/makejedi already do -- gated by
             # seed_name so a same-seed reconnect doesn't re-pay the full
             # RIM-sweep cost every launch (see PATCHED_SEEDS_MARKER_PATH).
-            seed_name = self.server_seed_name or self.seed_name
+            seed_name = self.seed_name
             asyncio.get_event_loop().run_in_executor(
                 None, self._apply_item_suppression_and_log, seed_name, False)
             asyncio.get_event_loop().run_in_executor(

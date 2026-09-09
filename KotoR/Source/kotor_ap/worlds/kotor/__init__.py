@@ -36,20 +36,64 @@ def launch_kotor_client(*args: str) -> None:
     marker_path = os.path.join(state_dir, "install_path.txt")
     if not os.path.isfile(marker_path):
         print("KOTOR Client: no PlayerBundle install found. Extract the PlayerBundle zip and "
-              "run `python install_playerbundle.py` from inside it first (see README.md), "
-              "then use this button again.")
+              "double-click Install.bat inside it first (see README.md), then use this button "
+              "again.")
         return
 
     with open(marker_path, encoding="utf-8") as f:
         install_path = f.read().strip()
-    kotor_client_path = os.path.join(install_path, "KotorClient", "KotorClient.py")
+    # 2026-09-09 fix, found live: KotorClient.py used to ship in a
+    # "KotorClient\" subfolder -- that layout was fixed (package_playerbundle.py
+    # now puts it at the Client folder root, see that script's own fix note),
+    # but this path was never updated to match, so the button always failed
+    # its own isfile check silently.
+    kotor_client_path = os.path.join(install_path, "KotorClient.py")
     if not os.path.isfile(kotor_client_path):
         print(f"KOTOR Client: the recorded install path ({install_path!r}) doesn't have "
-              f"KotorClient\\KotorClient.py any more -- was it moved, renamed, or deleted? "
-              f"Re-run install_playerbundle.py to fix this.")
+              f"KotorClient.py any more -- was it moved, renamed, or deleted? "
+              f"Re-run Install.bat to fix this.")
         return
 
-    subprocess.Popen([sys.executable, kotor_client_path, *args])
+    # 2026-09-09 fix, found live: this button runs INSIDE the compiled
+    # Archipelago Launcher .exe, where sys.executable is the frozen
+    # Launcher's OWN exe path, not a python interpreter -- confirmed live,
+    # clicking the button just relaunched a second, confused Launcher
+    # instance instead of KotorClient.py (a real python.exe would run this
+    # fine; a frozen app's sys.executable never is one). Use the real
+    # interpreter install_playerbundle.py recorded when it ran (always a
+    # genuine python.exe, since it's launched via Install.bat's `py -3`/
+    # `python`), falling back to sys.executable only if that marker is
+    # somehow missing (e.g. an install from before this fix).
+    python_marker = os.path.join(state_dir, "python_path.txt")
+    python_exe = sys.executable
+    if os.path.isfile(python_marker):
+        with open(python_marker, encoding="utf-8") as f:
+            recorded = f.read().strip()
+        if recorded and os.path.isfile(recorded):
+            python_exe = recorded
+        else:
+            print(f"KOTOR Client: recorded python interpreter ({recorded!r}) not found -- "
+                  f"falling back to {python_exe!r}, which may not work if this is a frozen app. "
+                  f"Re-run Install.bat to fix this.")
+    else:
+        print(f"KOTOR Client: no recorded python interpreter -- falling back to {python_exe!r}, "
+              f"which may not work if this is a frozen app. Re-run Install.bat to fix this.")
+
+    # 2026-09-09 fix, found live: even with the right interpreter, a raw
+    # `Popen([python_exe, ...])` window closes the instant the process
+    # exits -- if KotorClient.py crashes on startup (e.g. GUI mode's Kivy
+    # dependency missing/broken), the window flashes and closes before
+    # anyone can read why. Routed through `cmd /K` instead, which leaves
+    # the console open after the command finishes so any error is
+    # actually readable; the user closes it manually when done. Also
+    # defaults to --nogui unless the caller already specified a GUI-mode
+    # flag -- this launch path has no obvious reason to risk GUI mode's
+    # extra Kivy dependency (see README's Python-version caveat) when
+    # --nogui already covers the same client.
+    args_list = list(args)
+    if "--nogui" not in args_list and "--gui" not in args_list:
+        args_list.append("--nogui")
+    subprocess.Popen(["cmd", "/K", python_exe, kotor_client_path, *args_list])
 
 
 components.append(Component("KOTOR Client", "KOTORClient", func=launch_kotor_client, component_type=Type.CLIENT))

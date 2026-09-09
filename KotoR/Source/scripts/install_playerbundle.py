@@ -63,6 +63,7 @@ CAPTURED_ORIG_COPY = os.path.join(INSTALL_PS1_BACKUP_DIR, "binkw32_real_captured
 
 KOTORAP_STATE_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "KotorAP")
 INSTALL_PATH_MARKER = os.path.join(KOTORAP_STATE_DIR, "install_path.txt")
+PYTHON_PATH_MARKER = os.path.join(KOTORAP_STATE_DIR, "python_path.txt")
 INSTALL_MANIFEST = os.path.join(KOTORAP_STATE_DIR, "install_manifest.json")
 
 
@@ -204,6 +205,19 @@ def _write_state(manifest: dict) -> None:
     os.makedirs(KOTORAP_STATE_DIR, exist_ok=True)
     with open(INSTALL_PATH_MARKER, "w", encoding="utf-8") as f:
         f.write(REPO_ROOT)
+    # 2026-09-09 fix, found live: the Launcher's "KOTOR Client" button
+    # (worlds/kotor/__init__.py's launch_kotor_client) used to trust
+    # sys.executable to find a real python interpreter -- fine when
+    # THIS script runs it (a real interpreter, per Install.bat), but the
+    # button itself runs inside the compiled Archipelago Launcher .exe,
+    # where sys.executable is the FROZEN LAUNCHER'S OWN exe path, not a
+    # python interpreter at all. Confirmed live: clicking the button just
+    # relaunched a confused second Launcher instance instead of
+    # KotorClient.py. Recording the REAL interpreter that ran this
+    # installer (always a genuine python.exe, since Install.bat invokes
+    # `py -3`/`python`) so the button can reuse it instead of guessing.
+    with open(PYTHON_PATH_MARKER, "w", encoding="utf-8") as f:
+        f.write(sys.executable)
     with open(INSTALL_MANIFEST, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
@@ -287,7 +301,7 @@ def uninstall() -> None:
     print(f"Removed {removed} Override file(s) this installer added "
           f"(left anything that already existed before install untouched).")
 
-    for path in (INSTALL_PATH_MARKER, INSTALL_MANIFEST):
+    for path in (INSTALL_PATH_MARKER, PYTHON_PATH_MARKER, INSTALL_MANIFEST):
         if os.path.isfile(path):
             os.remove(path)
     print(f"\nUninstall complete. {game_dir} should now be back to a vanilla-plus-Steam state, "

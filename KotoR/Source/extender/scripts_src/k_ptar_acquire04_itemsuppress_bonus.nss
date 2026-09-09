@@ -540,6 +540,13 @@ void HandleAcquiredItem()
 {
     object oItem = GetModuleItemAcquired();
     string sTag = GetStringLowerCase(GetTag(oItem));
+    if (sTag == "ptar_shieldcodes" ||
+        sTag == "ptar_sitharmor")
+    {
+        KSE_Diag(89, "AP|PROGRESSION_SUPPRESSED|" + sTag);
+        DestroyObject(oItem);
+        return;
+    }
     if (KSE_HasData("granted_exempt_" + sTag)) return;
     if (sTag == "bast_temp_saber" ||
         sTag == "carth_temp_gun" ||

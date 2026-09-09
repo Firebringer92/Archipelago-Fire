@@ -172,6 +172,14 @@ class ExtenderBridge:
                 if field.startswith("name="):
                     name = f"companion_class:{field[len('name='):]}"
                     break
+        elif name == "trap":
+            # Same shape again -- the trampoline confirmation logs under
+            # the fixed literal "trap", keyed further by the specific
+            # trap_type (see build_trap_block).
+            for field in detail.split("|"):
+                if field.startswith("type="):
+                    name = f"trap:{field[len('type='):]}"
+                    break
         record = self.deliveries.get(name)
         if record is not None and record.applied_at is None:
             self.deliveries[name] = record._replace(applied_at=time.time(), detail=detail)
@@ -225,6 +233,55 @@ class ExtenderBridge:
         key = f"companion_class:{name}"
         self.deliveries[key] = DeliveryRecord(key, time.time(), None, "")
         logger.info(f"[extender] queued: companion_class {name} -> {class_name}")
+        return True
+
+    async def send_additional_feats(self, name: str, feat_ids: typing.List[int]) -> bool:
+        """Sends APPLYVALUE:additional_feats:<name>:<f1>,<f2>,<f3> -- the
+        AdditionalFeats mechanism (Options.py). Unlike every other
+        parameterized action, the target/values here are decided entirely
+        client-side at delivery time (see KotorContext._check_pending_
+        additional_feats), not baked into the received item itself -- the
+        item is just a marker saying "grant 3 for character <name>
+        eventually." feat_ids is always exactly 3 real feat.2da row ids
+        from the fixed 18-feat combined pool (see GameMechanics.md);
+        comma-joined since APPLYVALUE's own framing is colon-delimited.
+        Tracked under a per-name key, same reasoning as
+        send_companion_class."""
+        if self._writer is None:
+            logger.warning(f"send_additional_feats({name}, {feat_ids}): not connected to extender, not sent.")
+            return False
+        feat_csv = ",".join(str(f) for f in feat_ids)
+        self._writer.write(f"APPLYVALUE:additional_feats:{name}:{feat_csv}\n".encode())
+        await self._writer.drain()
+        key = f"additional_feats:{name}"
+        self.deliveries[key] = DeliveryRecord(key, time.time(), None, "")
+        logger.info(f"[extender] queued: additional_feats {name} -> {feat_ids}")
+        return True
+
+    async def send_trap(self, trap_type: str, params: str) -> bool:
+        """Sends APPLYVALUE:trap:<trap_type>:<params> -- the single
+        consolidated wire action for every Traps item (Options.py's
+        EnableTraps). One action name covers all 12 trap types, mirroring
+        additional_feats:'s "decided client-side at delivery" shape: the
+        item itself is just a marker (arm_name="trap:<trap_type>"),
+        KotorClient.py computes the real specifics from the character's
+        live state (which feat/power ids, which companion, how much to
+        reduce a stat by) and passes them here pre-encoded as params
+        (comma-joined ids, a companion key, a bare int -- whatever that
+        specific trap_type expects, see generate_trampoline_batch.py's
+        build_trap_block for the exact per-type shape). Tracked under a
+        per-trap_type key -- traps are one-time-only by design (see
+        EnableTraps' docstring), so a collision here would mean the same
+        trap type firing twice in-flight at once, which shouldn't happen
+        given the delivery-log dedup every item already goes through."""
+        if self._writer is None:
+            logger.warning(f"send_trap({trap_type}, {params}): not connected to extender, not sent.")
+            return False
+        self._writer.write(f"APPLYVALUE:trap:{trap_type}:{params}\n".encode())
+        await self._writer.drain()
+        key = f"trap:{trap_type}"
+        self.deliveries[key] = DeliveryRecord(key, time.time(), None, "")
+        logger.info(f"[extender] queued: trap {trap_type} -> {params}")
         return True
 
     async def send_raw(self, command: str) -> bool:

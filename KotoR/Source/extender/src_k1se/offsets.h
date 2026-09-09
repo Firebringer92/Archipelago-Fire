@@ -319,37 +319,16 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 // as empirically confirmed rather than source-verified. See this project's
 // own memory notes (kotor_engine_constraints.md) for the full test history.
 // -----------------------------------------------------------------------------
-// KOTOR AP ADDITION, TEMPORARY (research pass, Force Powers offset hunt --
-// see kotor_engine_constraints memory / PHASE14.md): dump raw bytes starting
-// at the SAME statBlock pointer KseField_StatBlock() already resolves, for a
-// live before/after diff around a real Force-power grant. Not a shipped
-// feature -- remove this routine once the research pass is done, or keep it
-// (renamed/promoted) if a real Force Powers native gets built on what it
-// finds.
-#define KSE_DUMPSB_ID 638  // void SWMG_SetGunBankTarget(object,int,int); confirmed
-                           // 0 real callers via scan_opcode_usage.py, not
-                           // claimed by any other KSE_*_ID in this file --
-                           // used as (object oCreature, int nOffset, int nLength).
-
-// KOTOR AP ADDITION, TEMPORARY (research pass, credits offset confirmation,
-// 2026-09-03): exercises the chain the game's own HUD-update code uses to
-// read credits. CONFIRMED LIVE, exact match against real GetGold():
-//   seed    = *(void**)(*(void**)KSE_OBJ_ROOT_RVA + 8)          (below)
-//   pRes    = <call at KSE_OBJ_TABLE_GET_ALT_RVA>(seed) -- __thiscall, no stack args
-//   credits = *(int*)((BYTE*)pRes + 0xFC)
-// (KSE_OBJ_TABLE_GET_RVA itself was tried first and confirmed NOT to be the
-// right call target -- see KSE_OBJ_TABLE_GET_ALT_RVA's own comment above.)
-// Superseded by the real KSE_SET_CREDITS_ID native below, which reuses this
-// same read chain plus a write -- kept only as a standalone read-only
-// diagnostic. Not a shipped feature -- retire once KSE_SET_CREDITS_ID has
-// had its own live soak.
-#define KSE_CREDITS_CHAIN_ID 606  // int SWMG_GetLastHPChange()->int; confirmed
-                           // 0 real callers via scan_opcode_usage.py
-                           // (2026-09-03), not claimed by any other
-                           // KSE_*_ID in this file -- takes no arguments.
+// KSE_DUMPSB_ID (638, generic statBlock hex dumper) and KSE_CREDITS_CHAIN_ID
+// (606, read-only credits-chain diagnostic) were both TEMPORARY research
+// hosts, removed 2026-09-06 once the research they supported concluded and
+// shipped as real natives/offsets. Archived at
+// extender/research_archive/kse_hook_temp_natives_2026-09-06.cpp.txt. Both
+// IDs (638, 606) are now unclaimed again -- do not reuse without re-running
+// scan_opcode_usage.py fresh, per this project's own opcode-safety discipline.
 
 // KOTOR AP ADDITION (not part of upstream K1SE): SetCredits -- the real,
-// write-capable promotion of KSE_CREDITS_CHAIN_ID above (2026-09-03).
+// write-capable promotion of the old credits-chain diagnostic (2026-09-03).
 // Resolves pRes via the SAME confirmed chain, then writes the caller's
 // value directly to [pRes+0xFC] -- an exact, bidirectional set, unlike the
 // old GiveGoldToCreature/TakeGoldFromCreature dance (TakeGoldFromCreature
@@ -373,9 +352,88 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 #define KSE_FIELD_CLASS1_TYPE  2   // second class slot's type byte
 #define KSE_FIELD_CLASS1_LEVEL 3   // second class slot's level byte
 #define KSE_FIELD_FORCE        4   // current/max Force points, 4-byte int
+#define KSE_FIELD_CURRENT_HP   5   // current HP, 4-byte int -- lives on
+                                   // KseField_Obj()'s object, NOT the
+                                   // statBlock every other field above
+                                   // uses. See KSE_STATS_CURRENT_HP_OFF's
+                                   // own comment for why this field is
+                                   // special-cased to a different base.
+#define KSE_FIELD_ADD_FORCE_POWER    6   // nValue = spells.2da row id. Searches
+                                          // the known-powers array first; if the
+                                          // id is already present, no-ops (a real
+                                          // duplicate grant was live-tested
+                                          // 2026-09-06 and confirmed harmless, but
+                                          // skipping it anyway keeps count/capacity
+                                          // sane). Appends at [count] and increments
+                                          // count if not present and count < capacity
+                                          // (16, observed fixed on every creature).
+#define KSE_FIELD_REMOVE_FORCE_POWER 7   // nValue = spells.2da row id. Searches the
+                                          // known-powers array; if found at index i,
+                                          // shifts every later entry down by one and
+                                          // decrements count. If NOT found, safely
+                                          // no-ops (explicitly required -- must not
+                                          // crash or corrupt count on a missing id).
 
 #define KSE_STATS_CLASS0_TYPE_OFF  0xa7
 #define KSE_STATS_CLASS0_LEVEL_OFF 0xa8
 #define KSE_STATS_CLASS1_TYPE_OFF  0xcf
 #define KSE_STATS_CLASS1_LEVEL_OFF 0xd0
 #define KSE_STATS_FORCE_OFF        0x124
+
+// Current HP -- CONFIRMED 2026-09-06 via live differential testing (see
+// FutureDesign.md's HP research entry for the full derivation) to live at
+// this offset from KseField_Obj()'s object (the raw resolved engine
+// object, one step EARLIER in the resolution chain than every other
+// field above, which all use KseField_StatBlock()'s further-dereferenced
+// object instead). This is also, independently, the exact offset a 2012
+// public Cheat Engine table for this game proposed for "current HP" --
+// that offset was real all along; it had just been tested against the
+// wrong base object in an earlier pass this same night before this one
+// was confirmed correct. Max HP has NO equivalent field anywhere
+// (confirmed absent via a thorough double-diff of both objects across a
+// real Max HP change) -- it must be computed from class/level/CON, not
+// read from a fixed offset; see FutureDesign.md for the confirmed
+// formula and confirmed alternative (EffectAbilityIncrease/Decrease
+// correctly triggers the engine's own Max HP recalculation, both
+// directions, including proper current-HP clamping on a decrease).
+#define KSE_OBJ_CURRENT_HP_OFF     0xDC
+
+// Force Powers (known-list) category record -- CONFIRMED 2026-09-06 (see
+// FutureDesign.md) at a fixed offset from KseField_StatBlock()'s object,
+// same base every other field above uses. Category 1 is confirmed to be
+// the Force Powers list; category 0 exists (2 total categories on every
+// creature tested) but is unidentified -- not needed for this feature.
+#define KSE_STATS_CATEGORY_TABLE_OFF   0x8C  // + (category * KSE_STATS_CATEGORY_STRIDE)
+#define KSE_STATS_CATEGORY_STRIDE      40
+#define KSE_FORCE_POWER_CATEGORY       1
+// Record layout, relative to the category's own base (STATS_CATEGORY_TABLE_OFF
+// + category*STRIDE): {ptr, count, capacity}, the same 12-byte header shape
+// every other array in this stat block already uses.
+#define KSE_CATEGORY_PTR_OFF   0x00
+#define KSE_CATEGORY_COUNT_OFF 0x04
+#define KSE_CATEGORY_CAP_OFF   0x08
+
+// -----------------------------------------------------------------------------
+// KOTOR AP ADDITION (2026-09-06): one new getter for Current HP, chosen the
+// same way every prior opcode choice in this project was --
+// scripts/scan_opcode_usage.py re-run fresh against all 77 SWMG_ candidate
+// ids, filtered against BOTH K1SE's own already-claimed list (583, 584,
+// 618, 622, 627, 631-634, 640, 685-687) and this project's own (606, 638,
+// 683, 688). NOTE: an earlier pass this same night picked 588/589 for this
+// purpose without checking their declared nwscript.nss signatures --
+// both turned out to be zero-argument functions
+// (SWMG_GetLastBulletHitTarget/Shooter), incompatible with the needed
+// (object)->int shape. 617 was then chosen instead, verified BOTH for zero
+// real callers AND the exact required signature.
+#define KSE_GETCURRENTHP_ID 617   // int SWMG_GetMaxHitPoints(object oFollower);
+                                   // confirmed zero real callers via
+                                   // scan_opcode_usage.py, not K1SE-claimed,
+                                   // and its (object)->int signature exactly
+                                   // matches what KseGetCurrentHP needs.
+                                   // Everything else this session's design
+                                   // needed (SetCurrentHP, AddForcePower,
+                                   // RemoveForcePower) fits as new
+                                   // nFieldType selectors on the existing
+                                   // KSE_FIELD_ID (688) host instead --
+                                   // see KSE_FIELD_ADD_FORCE_POWER/
+                                   // KSE_FIELD_REMOVE_FORCE_POWER above.

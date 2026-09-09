@@ -84,11 +84,53 @@ _XP_RE = re.compile(r"AP\|XPREPORT\|current=(\d+)")
 _COMPANION_RE = re.compile(r"AP\|CHECK\|COMPANION\|(\d+)")
 _AREA_RE = re.compile(r"AP\|CHECK\|AREA\|(\d+)")
 _DEATH_RE = re.compile(r"AP\|CHECK\|DEATH")
-_CLASSREPORT_RE = re.compile(r"AP\|CLASSREPORT\|guardian=(\d+)\|consular=(\d+)\|sentinel=(\d+)")
+_CLASSREPORT_RE = re.compile(
+    r"AP\|CLASSREPORT\|guardian=(\d+)\|consular=(\d+)\|sentinel=(\d+)"
+    r"(?:\|baseclass=(-?\d+)\|baselevel=(\d+))?"
+)
 # Free-form string field (not a digit run), so bounded by the trailing '"'
 # the kse.log wrapper adds instead -- same reasoning as the digit-bounded
 # regexes above, just a different terminator since this isn't numeric.
 _NAMEREPORT_RE = re.compile(r'AP\|NAMEREPORT\|([^"]+)')
+
+# Traps (2026-09-08, see Options.py's EnableTraps): 4 new report types,
+# read-only -- unlike credits/xp/skills, nothing here is ever
+# reconciliation-corrected (no expected_ counterpart, no clamp), these
+# just give the trap-delivery decision logic in KotorClient.py a live
+# snapshot of state to compute "half of X" from. ABILITYREPORT was
+# already broadcast every poll but completely unparsed before this;
+# FEATREPORT/POWERREPORT are new additions to ap_poll_shared.nss (see
+# generate_poll_shared.py's CheckFeats/CheckForcePowers); INVENTORY was
+# also already broadcast and unparsed (see _parse_inventory_report below,
+# not a simple regex since it's a comma-list of possibly-many entries).
+_ABILITY_RE = re.compile(
+    r"AP\|ABILITYREPORT\|str=(\d+)\|dex=(\d+)\|con=(\d+)\|int=(\d+)\|wis=(\d+)\|cha=(\d+)"
+)
+_FEATREPORT_RE = re.compile(r"AP\|FEATREPORT\|([\d,]*)")
+_POWERREPORT_RE = re.compile(r"AP\|POWERREPORT\|([\d,]*)")
+_INVENTORY_RE = re.compile(r'AP\|INVENTORY\|([^"]*)')
+
+
+def _parse_inventory_report(payload: str) -> typing.Dict[str, int]:
+    """Parses ap_poll_shared.nss's CheckInventory() payload (see its own
+    comment for the exact format) into {tag: stacksize} for BACKPACK
+    items only -- equipped-slot entries (EQ_HEAD:tag, EQ_BODY:tag, etc.,
+    no stacksize) are deliberately excluded here, since the Remove Half
+    Inventory Items trap is backpack-only by design (Options.py's
+    EnableTraps docstring)."""
+    result: typing.Dict[str, int] = {}
+    for entry in payload.split(","):
+        entry = entry.strip()
+        if not entry or entry.startswith("EQ_"):
+            continue
+        tag, sep, count_str = entry.partition(":")
+        if not sep:
+            continue
+        try:
+            result[tag] = int(count_str)
+        except ValueError:
+            continue
+    return result
 
 # arm_name -> current_classes key, for the has_class() pre-send check.
 CLASS_ARM_TO_KEY = {
@@ -171,8 +213,19 @@ class ReconciliationTracker:
         # None until the first report arrives (distinguishes "don't know
         # yet" from "confirmed level 0"), so callers can choose to wait for
         # real data rather than act on an assumed-zero default.
-        self.current_classes: typing.Dict[str, int] = {"guardian": 0, "consular": 0, "sentinel": 0}
+        self.current_classes: typing.Dict[str, int] = {
+            "guardian": 0, "consular": 0, "sentinel": 0,
+            "baseclass": -1, "baselevel": 0,
+        }
         self._classes_known = False
+        # Traps (2026-09-08): read-only state, no expected_/correction
+        # counterpart -- see the report regexes' own comment above.
+        self.current_abilities: typing.Dict[str, int] = {
+            "str": 0, "dex": 0, "con": 0, "int": 0, "wis": 0, "cha": 0,
+        }
+        self.current_feats: typing.Set[int] = set()
+        self.current_powers: typing.Set[int] = set()
+        self.current_inventory: typing.Dict[str, int] = {}
         # From NAMEREPORT -- the delivery log's other half (see
         # KotorClient.py) keys on this to tell a fresh character (deliberate
         # restart, should get everything re-granted) apart from reconnecting
@@ -279,11 +332,38 @@ class ReconciliationTracker:
             self.current_classes["guardian"] = int(m.group(1))
             self.current_classes["consular"] = int(m.group(2))
             self.current_classes["sentinel"] = int(m.group(3))
+            # baseclass/baselevel are only present once the DLL carrying
+            # 2026-09-06's ap_poll_shared.nss fix is deployed -- older builds
+            # still match (the whole suffix is optional), just without them.
+            if m.group(4) is not None:
+                self.current_classes["baseclass"] = int(m.group(4))
+                self.current_classes["baselevel"] = int(m.group(5))
             self._classes_known = True
             return
         m = _NAMEREPORT_RE.search(event)
         if m:
             self.current_character_name = m.group(1)
+            return
+        m = _ABILITY_RE.search(event)
+        if m:
+            self.current_abilities["str"] = int(m.group(1))
+            self.current_abilities["dex"] = int(m.group(2))
+            self.current_abilities["con"] = int(m.group(3))
+            self.current_abilities["int"] = int(m.group(4))
+            self.current_abilities["wis"] = int(m.group(5))
+            self.current_abilities["cha"] = int(m.group(6))
+            return
+        m = _FEATREPORT_RE.search(event)
+        if m:
+            self.current_feats = {int(x) for x in m.group(1).split(",") if x}
+            return
+        m = _POWERREPORT_RE.search(event)
+        if m:
+            self.current_powers = {int(x) for x in m.group(1).split(",") if x}
+            return
+        m = _INVENTORY_RE.search(event)
+        if m:
+            self.current_inventory = _parse_inventory_report(m.group(1))
             return
         if _AREA_RE.search(event):
             # AP|CHECK|AREA|<idx> fires directly from the area's native

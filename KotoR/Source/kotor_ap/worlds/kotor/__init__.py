@@ -1,15 +1,58 @@
 import typing
 
 from BaseClasses import Region
+from Options import OptionError
 from worlds.AutoWorld import World, WebWorld
+from worlds.LauncherComponents import Component, components, Type
 
 from . import EntranceRando
-from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json
+from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS
 from .Locations import KotorLocation, location_table, location_name_to_id
 from .Options import (
     KotorOptions, STARTING_ABILITY_ARMS, STARTING_SKILL_ARMS,
 )
 from .Rules import set_rules, set_completion_rules
+
+# Registers a "KOTOR Client" button in the Archipelago Launcher, the
+# `x2wotc`/`tits_the_3rd`-style pattern confirmed working (2026-09-07
+# research, see FutureDesign.md's Q2) by reading those two real installed
+# third-party apworlds' own __init__.py directly. KOTOR's own client is
+# NOT bundled into this apworld and run in-process the way theirs are --
+# KotorClient.py's whole job is bridging to a SEPARATELY installed
+# PlayerBundle folder via _detect_repo_root() walking real directories
+# relative to __file__, which breaks the instant it's imported from
+# inside a zip (no real folder to walk). So this launches it as a
+# subprocess instead, pointed at wherever install_playerbundle.py (see
+# scripts/install_playerbundle.py) actually installed it -- recorded in
+# the install-path marker that script writes on every install.
+
+
+def launch_kotor_client(*args: str) -> None:
+    import os
+    import subprocess
+    import sys
+
+    state_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "KotorAP")
+    marker_path = os.path.join(state_dir, "install_path.txt")
+    if not os.path.isfile(marker_path):
+        print("KOTOR Client: no PlayerBundle install found. Extract the PlayerBundle zip and "
+              "run `python install_playerbundle.py` from inside it first (see README.md), "
+              "then use this button again.")
+        return
+
+    with open(marker_path, encoding="utf-8") as f:
+        install_path = f.read().strip()
+    kotor_client_path = os.path.join(install_path, "KotorClient", "KotorClient.py")
+    if not os.path.isfile(kotor_client_path):
+        print(f"KOTOR Client: the recorded install path ({install_path!r}) doesn't have "
+              f"KotorClient\\KotorClient.py any more -- was it moved, renamed, or deleted? "
+              f"Re-run install_playerbundle.py to fix this.")
+        return
+
+    subprocess.Popen([sys.executable, kotor_client_path, *args])
+
+
+components.append(Component("KOTOR Client", "KOTORClient", func=launch_kotor_client, component_type=Type.CLIENT))
 
 JEDI_CLASS_ITEMS = {
     0: "Class Switch: Jedi Guardian",
@@ -68,17 +111,34 @@ GOAL_EVENT_LOCATIONS: typing.Dict[str, str] = {
 # KotorWorld._gear_category_pools().
 _ARMOR_SLOTS = {"Arm", "Belt", "Body", "Hands", "Hands/Implant", "Head", "Implant"}
 
-# The 5 planets with covered shops, keyed by name (used as fill_slot_data's
+# The 6 planets with covered shops, keyed by name (used as fill_slot_data's
 # per-planet shop_stock dict key) -- module-prefix mapping duplicated in
-# generate_trampoline_batch.py/arm_orchestrator.py since those are separate
-# dev-tooling scripts, not part of this apworld package. Same real module
-# prefixes EntranceRando.py already relies on elsewhere in this file.
+# generate_trampoline_batch.py since that's a separate dev-tooling script,
+# not part of this apworld package (arm_orchestrator.py's --set-shop-stock=
+# handler is planet-name-agnostic, no duplicate copy needed there). Same
+# real module prefixes EntranceRando.py already relies on elsewhere in
+# this file.
+#
+# 2026-09-08 FIX: Tatooine ("tatooine") was missing entirely -- confirmed
+# a real bug, not by-design scope: tat_m17ab/tat_m17ad genuinely have
+# real store objects (see extender/area_trampolines/_shop_map.json), but
+# with this key absent, _shop_stock() below never generated a "tatooine"
+# entry at all, so those 2 stores always restocked with an EMPTY catalog
+# (see build_shop_stock_block's destroy-then-recreate-from-list logic --
+# an empty list still runs the destroy half, just adds nothing back).
+# NOT a "shares Kashyyyk's shop data" bug, despite tat_m17ab/tat_m17ad's
+# own real vanilla store resrefs confusingly starting with "kas_" (a
+# genuine, verified-against-the-real-game-files naming quirk in the
+# original dev data, unrelated to this bug -- GetObjectByTag is scoped
+# to the current module regardless of what the tag string looks like, so
+# that part was never actually broken).
 PLANET_MODULE_PREFIXES: typing.Dict[str, str] = {
     "taris": "tar_m",
     "dantooine": "danm",
     "kashyyyk": "kas_m",
     "manaan": "manm",
     "korriban": "korr_m",
+    "tatooine": "tat_m",
 }
 
 # Fixed baseline used when item_distribution_type is "normal" -- a
@@ -185,6 +245,21 @@ class KotorWorld(World):
         return KotorItem(name, data.classification, data.code, self.player)
 
     def generate_early(self) -> None:
+        # 2026-09-08: Progression System's real access-rule layer (see
+        # Rules.py) depends entirely on knowing which real locations sit
+        # on which side of each gate -- area_randomizer scrambling door/
+        # entrance connections makes that reasoning impossible (a location
+        # "behind" the Sith Base checkpoint in the vanilla layout could be
+        # entrance-randomized to connect somewhere completely different).
+        # Hard-enforced here, not just documented in the option's own
+        # docstring -- same OptionError pattern other AP worlds use for
+        # incompatible option combinations (e.g. worlds/blasphemous).
+        if self.options.progression_system and self.options.area_randomizer:
+            raise OptionError(
+                f"[KotOR - '{self.player_name}'] Progression System and Area Randomizer cannot both be "
+                "enabled -- Progression System's access rules depend on the vanilla area layout to know "
+                "which locations are actually behind each gate, which Area Randomizer scrambles.")
+
         """Precollected (starting-inventory) items: the starting_class
         choice (only when starting_class is "jedi_start" -- "jedi_granted"
         places the same item in the shuffled pool instead, see
@@ -266,6 +341,47 @@ class KotorWorld(World):
         # per-companion items matches it.
         for key, class_name in self.jedi_companion_items.items():
             mandatory_names = mandatory_names + [f"Jedi Training: {key.capitalize()} ({class_name.capitalize()})"]
+
+        # AdditionalFeats (2026-09-07): guaranteed placement, same reasoning
+        # as the Jedi Training items above -- a fixed count tied directly to
+        # the option, not subject to the weighted _distribute_items() draw.
+        # 1 item (PC only) when companion_mode is "none" (no companions
+        # exist to target at all), else 8 (PC + all 7 non-droid companions,
+        # regardless of CompanionClass -- KotorClient.py's own recruited/
+        # class-finalized gating handles waiting for each one correctly,
+        # this is just pool placement).
+        if self.options.additional_feats:
+            mandatory_names = mandatory_names + ["Additional Feats Character: PC"]
+            if self.options.companion_mode != 2:  # not "none"
+                mandatory_names = mandatory_names + [
+                    f"Additional Feats Character: {key.capitalize()}" for key in COMPANION_CLASS_KEYS
+                ]
+
+        # ProgressionSystem (2026-09-08): all 8 items are guaranteed
+        # placement, same reasoning as Additional Feats above -- these
+        # carry real access rules (Rules.py), so unlike a weighted-draw
+        # item there's no sense in which "maybe it doesn't appear this
+        # seed" would even be coherent; the rules assume all 8 exist.
+        # (Originally 10 -- Tatooine Desert Map and Star Map (Dantooine)
+        # dropped 2026-09-08 after tracing each one's real checkpoint
+        # script; see Items.py's comment on the item table and Rules.py.)
+        if self.options.progression_system:
+            mandatory_names = mandatory_names + [
+                "Progression Item: Sith Armor", "Progression Item: Sith Papers",
+                "Progression Item: Taris Shield Codes", "Progression Item: Manaan Enviro Suit",
+                "Progression Item: Star Map (Tatooine)",
+                "Progression Item: Star Map (Kashyyyk)", "Progression Item: Star Map (Manaan)",
+                "Progression Item: Star Map (Korriban)",
+            ]
+
+        # EnableTraps (2026-09-08): all 12 items guaranteed placement, same
+        # reasoning as Additional Feats/Progression System above -- "always
+        # exactly 12 exist when the option is on," not a weighted-chance
+        # draw. See Items.py's TRAP_ITEMS for the full list/arm_name
+        # mapping and Options.py's EnableTraps docstring for what each one
+        # does.
+        if self.options.enable_traps:
+            mandatory_names = mandatory_names + list(TRAP_ITEMS.keys())
 
         pool = [self.create_item(name) for name in mandatory_names]
         pool += self._distribute_items(active_count - len(pool))
@@ -402,6 +518,29 @@ class KotorWorld(World):
             # got placed (see create_items()), not sent here. Empty dict
             # for off/jedi_companion.
             "companion_class_rolls": self.companion_class_rolls,
+            # 2026-09-07 addition: the raw mode value itself (0=off/1=no_jedi/
+            # 2=jedi_companion/3=randomize_all) -- companion_class_rolls alone
+            # can't distinguish "off" from "jedi_companion" (both leave it
+            # empty), which the Additional Feats feature's class-finalization
+            # check needs to tell apart (jedi_companion means an eligible
+            # companion DOES have a class change still coming, just not
+            # reflected in companion_class_rolls; off means none ever will).
+            "companion_class_mode": self.options.companion_class.value,
+            # 2026-09-08: Additional Enemies mode (0=off/1=area_appropriate/
+            # 2=random_sane/3=fully_random) -- read by the local, tester-run
+            # patch script (not yet built) that consumes
+            # extender/area_trampolines/_enemy_spawn_points.json +
+            # _enemy_cr_bands.json, same seed-gated pattern as loot_mode/
+            # door_mapping above (not baked into the item pool -- this is a
+            # pure area modification, no AP items involved).
+            "additional_enemies_mode": self.options.additional_enemies.value,
+            # 2026-09-08: whether Progression System is active -- the
+            # local KotorClient.py/patch_progression_system.py (not yet
+            # built) needs this before it suppresses any of the 10 real
+            # quest items' vanilla acquisition scripts, same seed-gated
+            # pattern as loot_mode/door_mapping/additional_enemies_mode
+            # above.
+            "progression_system": bool(self.options.progression_system),
         }
 
     def _shop_stock(self) -> typing.Dict[str, typing.List[str]]:

@@ -383,6 +383,14 @@ int KSE_FIELD_CLASS0_LEVEL() { return 1; }  // primary class slot's level byte
 int KSE_FIELD_CLASS1_TYPE()  { return 2; }  // second class slot's type byte
 int KSE_FIELD_CLASS1_LEVEL() { return 3; }  // second class slot's level byte
 int KSE_FIELD_FORCE()        { return 4; }  // current/max Force points (4-byte int)
+int KSE_FIELD_CURRENT_HP()   { return 5; }  // current HP (4-byte int) -- see
+                                             // KSE_GetCurrentHP below for why
+                                             // Max HP has no counterpart here
+                                             // (it's computed, not stored).
+int KSE_FIELD_ADD_FORCE_POWER()    { return 6; }  // nValue = spells.2da row id.
+                                                   // No-ops if already known.
+int KSE_FIELD_REMOVE_FORCE_POWER() { return 7; }  // nValue = spells.2da row id.
+                                                   // No-ops if not known.
 
 void KSE_SetCreatureField(object oCreature, int nFieldType, int nValue)
 {
@@ -390,44 +398,34 @@ void KSE_SetCreatureField(object oCreature, int nFieldType, int nValue)
 }
 
 // -----------------------------------------------------------------------------
-// KOTOR AP ADDITION, TEMPORARY (research pass, Force Powers offset hunt -- see
-// kotor_engine_constraints memory / PHASE14.md). Dumps nLength raw bytes
-// starting at oCreature's statBlock pointer (the SAME base every other
-// KSE_*Field/Skill/Save call already resolves to) + nOffset, straight to
-// kse.log as hex. Not a shipped feature -- remove once the research pass is
-// done, or promote it into a real native if a Force Powers feature gets
-// built on what it finds.
+// KOTOR AP ADDITION (2026-09-06): Current HP getter -- the read-side
+// counterpart to KSE_FIELD_CURRENT_HP() above. Max HP has NO equivalent
+// native: it has no memory field at all (confirmed via a thorough double-
+// diff, see FutureDesign.md), and is computed instead from class/level/CON
+// -- read it with the standard GetMaxHitPoints(). Current and Max Force
+// Points also need no new native -- GetCurrentForcePoints()/
+// GetMaxForcePoints() already work; only the write side
+// (KSE_FIELD_FORCE()) needed this project's own extension.
 //
-// ACTION 638 -- SWMG_SetGunBankTarget's (object,int,int) void shape carries
-// it exactly, same reasoning as KSE_SetCreatureField on 688. Confirmed zero
-// real callers via scan_opcode_usage.py and not claimed by any other KSE
-// host (see offsets.h's KSE_DUMPSB_ID comment).
-void KSE_DumpStatBlock(object oCreature, int nOffset, int nLength)
+// ACTION 617 -- SWMG_GetMaxHitPoints's (object)->int shape carries it
+// exactly. Confirmed zero real callers via scan_opcode_usage.py
+// (2026-09-06) and not claimed by any other KSE host (see offsets.h's
+// KSE_GETCURRENTHP_ID comment).
+int KSE_GetCurrentHP(object oCreature)
 {
-    SWMG_SetGunBankTarget(oCreature, nOffset, nLength);
+    return SWMG_GetMaxHitPoints(oCreature);
 }
 
-// -----------------------------------------------------------------------------
-// KOTOR AP ADDITION, TEMPORARY (research pass, credits offset confirmation --
-// see FutureDesign.md's "CONFIRMED: credits offset" entry, 2026-09-03).
-// Exercises the game's own credits-read chain end-to-end natively and
-// returns the derived value, so a caller can compare it directly against
-// GetGold(oPC) in the same script pass. Not a shipped feature -- remove
-// once confirmed either way, or promote into the real feature if it
-// matches.
-//
-// ACTION 606 -- SWMG_GetLastHPChange()'s zero-arg int-returning shape
-// carries it exactly. Confirmed zero real callers via scan_opcode_usage.py
-// (2026-09-03) and not claimed by any other KSE host (see offsets.h's
-// KSE_CREDITS_CHAIN_ID comment).
-int KSE_TestCreditsChain()
-{
-    return SWMG_GetLastHPChange();
-}
+// KSE_DumpStatBlock (ACTION 638) and KSE_TestCreditsChain (ACTION 606) --
+// both TEMPORARY research wrappers -- were removed 2026-09-06 once the
+// research they supported concluded and shipped as real natives/offsets.
+// Archived at extender/research_archive/kse_hook_temp_natives_2026-09-06.cpp.txt.
+// Both underlying ACTION ids are unclaimed again -- do not reuse without
+// re-running scan_opcode_usage.py fresh.
 
 // -----------------------------------------------------------------------------
 // KOTOR AP ADDITION (not part of upstream K1SE): SetCredits -- the real,
-// write-capable promotion of KSE_TestCreditsChain above (2026-09-03).
+// write-capable promotion of the old credits-chain diagnostic (2026-09-03).
 // Resolves pRes via the same confirmed chain and writes nValue directly to
 // [pRes+0xFC] -- an exact, bidirectional set. Replaces the old
 // GiveGoldToCreature/TakeGoldFromCreature dance (TakeGoldFromCreature is a

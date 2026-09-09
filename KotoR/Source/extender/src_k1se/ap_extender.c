@@ -242,6 +242,48 @@ static DWORD WINAPI ap_kse_log_tail_thread(LPVOID unused) {
                             args[sizeof(args) - 1] = '\0';
                             ap_run_orchestrator(args);
                         }
+                    } else if (_stricmp(applied_name, "additional_feats") == 0) {
+                        /* Same shape as companion_class above -- confirmation
+                         * line is "AP|APPLIED|additional_feats|name=X|feats=..."
+                         * (see build_additional_feats_block), keyed further by
+                         * the specific character name ("pc" or a companion key). */
+                        const char *name_marker = strstr(line, "|name=");
+                        if (name_marker) {
+                            const char *name_start = name_marker + strlen("|name=");
+                            const char *end = strchr(name_start, '|');
+                            size_t name_len2 = end ? (size_t)(end - name_start) : strlen(name_start);
+                            char cname[32];
+                            if (name_len2 >= sizeof(cname)) name_len2 = sizeof(cname) - 1;
+                            memcpy(cname, name_start, name_len2);
+                            cname[name_len2] = '\0';
+
+                            char args[64];
+                            _snprintf(args, sizeof(args) - 1, "--delivered=additional_feats:%s", cname);
+                            args[sizeof(args) - 1] = '\0';
+                            ap_run_orchestrator(args);
+                        }
+                    } else if (_stricmp(applied_name, "trap") == 0) {
+                        /* One consolidated action for all 12 EnableTraps
+                         * items (Options.py) -- confirmation line is
+                         * "AP|APPLIED|trap|type=X|..." (see
+                         * build_trap_block), keyed further by the specific
+                         * trap_type, same shape as companion_class/
+                         * additional_feats above. */
+                        const char *type_marker = strstr(line, "|type=");
+                        if (type_marker) {
+                            const char *type_start = type_marker + strlen("|type=");
+                            const char *end = strchr(type_start, '|');
+                            size_t type_len = end ? (size_t)(end - type_start) : strlen(type_start);
+                            char ttype[32];
+                            if (type_len >= sizeof(ttype)) type_len = sizeof(ttype) - 1;
+                            memcpy(ttype, type_start, type_len);
+                            ttype[type_len] = '\0';
+
+                            char args[64];
+                            _snprintf(args, sizeof(args) - 1, "--delivered=trap:%s", ttype);
+                            args[sizeof(args) - 1] = '\0';
+                            ap_run_orchestrator(args);
+                        }
                     }
                 }
             }
@@ -287,27 +329,57 @@ static const char *AP_ARM_NAMES[] = {
     "ability_strength", "ability_dexterity", "ability_constitution",
     "ability_intelligence", "ability_wisdom",
     "force_death",
-    "dump_statblock", /* TEMPORARY (2026-08-31): Force Powers offset research,
-                        * see kotor_engine_constraints memory / PHASE14.md.
-                        * Retire (leave the gap) once the research pass is done. */
+    /* Slot 33 RETIRED 2026-09-06 (was dump_statblock) -- Force Powers offset
+     * research concluded; the confirmed layout shipped as KseForcePowerOp.
+     * Renamed, not removed, so array positions/arm IDs after this point
+     * don't shift -- same convention as slots 11/15/16 above. */
+    "_retired_dump_statblock",
     "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel", /* StartingClass=
                         * random_class (2026-09-02), base-class roll only --
                         * see generate_trampoline_batch.py's APPLIES table. */
-    /* Slots 37-41 backfilled 2026-09-03 -- this session's Carth/Juhani
-     * hotbar-bug research arms existed in generate_trampoline_batch.py's
-     * APPLIES table but were never added here, so they were only ever
-     * reachable via raw numeric queuing (arm_orchestrator.py
-     * --queue-add=<id>), never by name via /ap_apply. Backfilled to close
-     * the sync gap and make room for slot 42 below. TEMPORARY research
-     * arms, same as dump_statblock above -- retire (leave the gaps) once
-     * confirmed done. */
-    "dump_statblock_carth", "dump_statblock_juhani",
-    "carth_addmulticlass_hybrid_test", "juhani_addmulticlass_scoundrel_test",
-    "juhani_grant_critical_strike_test",
-    "test_credits_chain", /* TEMPORARY (2026-09-03): credits derivation
-                        * chain confirmation -- see offsets.h's
-                        * KSE_CREDITS_CHAIN_ID comment. Retire (leave the
-                        * gap) once confirmed either way. */
+    /* Slots 37-46 RETIRED 2026-09-06 -- every research question this
+     * session's temporary arms existed to answer is now confirmed and
+     * shipped as real offsets/natives (see offsets.h's
+     * KSE_OBJ_CURRENT_HP_OFF/KSE_FIELD_ADD_FORCE_POWER/
+     * KSE_FIELD_REMOVE_FORCE_POWER). Renamed, not removed -- same
+     * gap-preserving convention as slots 11/15/16/33 above. Full bodies
+     * archived at extender/research_archive/
+     * generate_trampoline_batch_temp_arms_2026-09-06.py.txt. */
+    "_retired_dump_statblock_carth", "_retired_dump_statblock_juhani",
+    "_retired_carth_addmulticlass_hybrid_test", "_retired_juhani_addmulticlass_scoundrel_test",
+    "_retired_juhani_grant_critical_strike_test",
+    "_retired_test_credits_chain",
+    "_retired_grant_implant_3",
+    "_retired_test_set_max_hp",
+    "_retired_test_con_boost_effect",
+    "_retired_test_con_decrease_effect",
+    /* Slots 47/48 RETIRED 2026-09-06 (were test_hp_fp_natives/
+     * test_alignment_shift) -- both LIVE-CONFIRMED working the same
+     * night (KseGetCurrentHP/CURRENT_HP/ADD_FORCE_POWER/REMOVE_FORCE_POWER
+     * all matched expected values exactly; AdjustAlignment shifted and
+     * netted back correctly). Renamed, not removed, same convention as
+     * every other retired slot above. Archived at extender/
+     * research_archive/test_hp_fp_alignment_arms_2026-09-06.py.txt. */
+    "_retired_test_hp_fp_natives", "_retired_test_alignment_shift",
+    /* Slot 49 RETIRED 2026-09-06 (was test_add_100_hp) -- confirmed the
+     * write succeeds (84->184) but current HP appears clamped to Max HP
+     * once it exceeds it, no visible change on the sheet -- expected
+     * engine invariant, not a bug. Archived at extender/research_archive/
+     * test_hp_fp_alignment_arms_2026-09-06.py.txt. */
+    "_retired_test_add_100_hp",
+    /* Slot 50 RETIRED 2026-09-06 (was test_lower_hp) -- user-confirmed
+     * live: a within-max current-HP write persisted correctly on the
+     * character sheet. Combined with slots 47/49, ALL current-HP native
+     * behavior relevant to real features is now confirmed. Archived at
+     * extender/research_archive/test_hp_fp_alignment_arms_2026-09-06.py.txt. */
+    "_retired_test_lower_hp",
+    "test_grant_active_feat", /* TEMPORARY (2026-09-06): live verification
+                        * of whether KSE_GrantFeatArrayA makes an ACTIVE
+                        * feat (Critical Strike, feat id 8) genuinely
+                        * usable (hotbar), not just present -- blocks the
+                        * planned Feats [Add/Remove] equipment-access
+                        * feature's ability pool. Retire once confirmed --
+                        * see generate_trampoline_batch.py's APPLIES[51]. */
 };
 /* IDs must match AP_ARM_NAMES position (1-indexed). scripts/generate_trampoline_batch.py's
  * APPLIES table is the single source of truth this array is kept in sync
@@ -852,6 +924,14 @@ static int ap_dump_mem(unsigned __int32 addr, unsigned int size, char *reply, si
     return 1;
 }
 
+/* WATCHPAGE/UNWATCHPAGE/WATCHCALL/UNWATCHCALL (software data watchpoint +
+ * code breakpoint diagnostics, built 2026-09-06 for the HP/Force-Powers
+ * offset hunt) were removed once that research concluded and its findings
+ * shipped as real offsets/natives -- see FutureDesign.md's HP/Force Powers
+ * entries and offsets.h's KSE_OBJ_CURRENT_HP_OFF/KSE_STATS_CATEGORY_TABLE_OFF.
+ * Archived verbatim, with full derivation notes, at
+ * extender/research_archive/watchpage_watchcall_2026-09-06.c.txt. */
+
 /* Dispatches one already-delimited command line (no trailing \r\n) and
  * writes the reply into reply[reply_size]. Split out of ap_handle_client so
  * the line-framing loop there can call it once per complete line, however
@@ -907,6 +987,53 @@ static void ap_dispatch_command(char *buf, char *reply, size_t reply_size) {
                     ap_run_orchestrator(args);
                     ap_log("APPLYVALUE: queued companion_class %s:%s via orchestrator.", name, class_name);
                     _snprintf(reply, reply_size - 1, "STAGED:companion_class:%s:%s\n", name, class_name);
+                    reply[reply_size - 1] = '\0';
+                }
+            } else if (_stricmp(action, "additional_feats") == 0) {
+                /* additional_feats:<name>:<f1>,<f2>,<f3> -- AdditionalFeats
+                 * (Options.py). Unlike every other parameterized action,
+                 * the value here (which 3 feat ids) was decided entirely
+                 * client-side (see KotorClient.py's
+                 * _check_pending_additional_feats), not fixed at generation
+                 * time -- this host just forwards it through unchanged.
+                 * name is short fixed vocab (companion key or "pc"); the
+                 * csv is always exactly 3 small ints (feat.2da row ids,
+                 * all under 130), so a generous bound is plenty. */
+                char name[32];
+                char feats_csv[16];
+                if (sscanf(after_action, "%31[^:]:%15s", name, feats_csv) == 2) {
+                    matched = 1;
+                    char args[96];
+                    _snprintf(args, sizeof(args) - 1, "--queue-additional-feats=%s:%s", name, feats_csv);
+                    args[sizeof(args) - 1] = '\0';
+                    ap_run_orchestrator(args);
+                    ap_log("APPLYVALUE: queued additional_feats %s:%s via orchestrator.", name, feats_csv);
+                    _snprintf(reply, reply_size - 1, "STAGED:additional_feats:%s:%s\n", name, feats_csv);
+                    reply[reply_size - 1] = '\0';
+                }
+            } else if (_stricmp(action, "trap") == 0) {
+                /* trap:<trap_type>:<params> -- ONE consolidated action for
+                 * all 12 EnableTraps items (Options.py). Like
+                 * additional_feats, every real specific (params) was
+                 * decided entirely client-side (see KotorClient.py's
+                 * _deliver_item trap: interception) from the character's
+                 * live state -- this host just forwards it through
+                 * unchanged. trap_type is short fixed vocab (see
+                 * generate_trampoline_batch.py's build_trap_block); params
+                 * varies by trap_type (a bare int, a companion key, or a
+                 * comma-list of ids/tags) but never contains whitespace,
+                 * so %s is safe -- sized generously for the widest case
+                 * (a comma-list of feat/power ids or inventory tags). */
+                char trap_type[32];
+                char params[200];
+                if (sscanf(after_action, "%31[^:]:%199s", trap_type, params) == 2) {
+                    matched = 1;
+                    char args[248];
+                    _snprintf(args, sizeof(args) - 1, "--queue-trap=%s:%s", trap_type, params);
+                    args[sizeof(args) - 1] = '\0';
+                    ap_run_orchestrator(args);
+                    ap_log("APPLYVALUE: queued trap %s:%s via orchestrator.", trap_type, params);
+                    _snprintf(reply, reply_size - 1, "STAGED:trap:%s:%s\n", trap_type, params);
                     reply[reply_size - 1] = '\0';
                 }
             } else if (_stricmp(action, "set_xp") == 0 || _stricmp(action, "set_credits") == 0) {

@@ -58,7 +58,7 @@ KotOR:
   # suppressed so simply playing it through normally can't also grant (or
   # duplicate) a class outside this option's own control.
   # Valid: off, jedi_start, jedi_granted, random_class
-  starting_class: jedi_granted
+  starting_class: random_class
 
   # Which Jedi class you become. Only matters if starting_class is jedi_start
   # or jedi_granted -- ignored entirely by random_class, which rolls its own class.
@@ -99,6 +99,62 @@ KotOR:
   #             removed from the pool entirely.
   companion_mode: ap_gated
 
+  # --- Extra features (quest-item gating, traps, enemies) -------------------
+
+  # Whether "Additional Feats" items exist in the pool at all. When on, one
+  # such item is placed per eligible character (the PC, plus all 7 non-droid
+  # companions unless companion_mode is "none" -- HK-47/T3-M4 are droids and
+  # never eligible). Receiving one doesn't grant anything immediately -- 3
+  # random feats (weapon/armor proficiencies and class signature abilities,
+  # from a fixed pool) are picked once that character is actually recruited
+  # and their class has settled.
+  # false (default): no such items exist.
+  additional_feats: false
+
+  # Gates 8 real main-questline items (Sith Armor, Sith Papers, Taris Shield
+  # Codes, Manaan Enviro Suit, and 4 Star Maps -- Tatooine/Kashyyyk/Manaan/
+  # Korriban) behind real AP checks instead of their normal vanilla pickup.
+  # Also creates an artificial galaxy-map travel lock to those 4 planets
+  # until their own Star Map check clears (vanilla KOTOR has no such lock at
+  # all). A real access-rule layer rides on this (see Rules.py) so
+  # Archipelago's own generation guarantees the seed stays completable.
+  # false (default): vanilla -- all 8 items behave normally, no gating.
+  # INCOMPATIBLE with area_randomizer below -- enabling both raises an error
+  # at generation time.
+  progression_system: false
+
+  # Whether "Trap" items exist in the pool at all. When on, 12 trap items
+  # take the place of 12 ordinary filler items. Each one does something
+  # purely punishing to the PC (never companions, except as the deliberate
+  # target of "remove a companion"), once only, no re-triggering. The 12:
+  # Remove All Credits, Reduce a Skill, Remove Half Known Feats, Remove Half
+  # Known Force Powers, Cut Max Health in Half (best-effort via
+  # Constitution -- KOTOR has no direct Max HP field, so an exact 50% cut
+  # isn't always reachable), Remove a Companion (random currently-recruited
+  # one, no-op if none recruited yet), Remove Half Inventory Items (backpack
+  # only, quest items never eligible), and one item each for
+  # Strength/Dexterity/Intelligence/Wisdom/Charisma that halves that score
+  # (no standalone Constitution item -- Cut Max Health already uses it). A
+  # trap with nothing to halve (0 or 1 of something) just does nothing.
+  # false (default): no trap items exist.
+  enable_traps: false
+
+  # Adds brand-new hostile creatures alongside whatever's already placed in
+  # an area -- existing enemies/scripts/encounters are never touched or
+  # removed, this only adds more. Locations are fixed, safety-checked spots
+  # per module; only WHICH creature goes in each slot is decided per seed.
+  #   off (default):     vanilla, no additions.
+  #   area_appropriate:  new creatures drawn only from OTHER creatures
+  #                       native to that area's own planet, matched to
+  #                       roughly that area's own existing difficulty.
+  #   random_sane:       any creature from the safe pool (any planet), still
+  #                       matched to that area's own difficulty range.
+  #   fully_random:      any creature from the safe pool, no planet or
+  #                       difficulty restriction at all -- most variety,
+  #                       least predictable difficulty (can be significantly
+  #                       over/under-tuned for wherever it lands).
+  additional_enemies: off
+
   # Extra points added on top of whatever you roll at character creation,
   # 0-9 each, granted the moment you start. 0 (default) = vanilla, untouched.
   starting_strength: 0
@@ -132,7 +188,7 @@ KotOR:
   #   ap_gated:      XP comes from "Experience Points" items received through
   #                  the Archipelago server. Each item is worth experience_item
   #                  XP. Your level depends on what other players/your items found.
-  experience_mode: ap_gated
+  experience_mode: off
 
   # XP granted per YOUR OWN completed check, when experience_mode is
   # ap_limited. Range: 1-20000. Default 600 -- at full completion (~200
@@ -198,7 +254,7 @@ KotOR:
   #   true:             shop_item_count items get drawn from the curated
   #                     pool and stocked in every covered shop, replacing
   #                     its vanilla inventory on first visit.
-  shop_randomizer: true
+  shop_randomizer: false
 
   # How many items to stock per shop when shop_randomizer is true.
   # Range: 1-30.
@@ -219,7 +275,7 @@ KotOR:
   # scripts/patch_item_suppression.py (see README) -- this option only
   # takes effect once that patch step has actually been run for your seed.
   # Valid: normal, destroy, bonus, replace
-  loot_mode: bonus
+  loot_mode: normal
 
   # Controls how almost the ENTIRE item pool is composed. Only companions
   # (when companion_mode is ap_gated) are ever unconditionally guaranteed

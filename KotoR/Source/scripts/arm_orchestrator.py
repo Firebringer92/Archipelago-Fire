@@ -15,7 +15,9 @@ State lives in two small JSON files next to the trampoline sources:
 Usage:
   python arm_orchestrator.py --area=<base>                 (area change; use current pending queue)
   python arm_orchestrator.py --queue-add=<arm_id>           (new check arrived; re-derive armed set for last-known area)
-  python arm_orchestrator.py --queue-companion-class=<name>:<class>  (RandomizeClass -- see Options.py)
+  python arm_orchestrator.py --queue-companion-class=<name>:<class>  (CompanionClass -- see Options.py)
+  python arm_orchestrator.py --queue-additional-feats=<name>:<f1>,<f2>,<f3>  (AdditionalFeats -- see Options.py)
+  python arm_orchestrator.py --queue-trap=<trap_type>:<params>  (EnableTraps -- see Options.py)
   python arm_orchestrator.py --delivered=<arm_id>,<arm_id>  (confirmed applied; remove from queue, clear fired areas)
   python arm_orchestrator.py --status                       (print current state, no changes)
 
@@ -94,6 +96,10 @@ def _cli_token(item):
             return f"give_item:{item['resref']}:{item['count']}"
         if item["action"] == "companion_class":
             return f"companion_class:{item['name']}:{item['class_name']}"
+        if item["action"] == "additional_feats":
+            return f"additional_feats:{item['name']}:{','.join(str(f) for f in item['feat_ids'])}"
+        if item["action"] == "trap":
+            return f"trap:{item['trap_type']}:{item['params']}"
         if item["action"] == "notify":
             return f"notify:{item['text']}"
         return f"{item['action']}:{item['value']}"
@@ -343,6 +349,40 @@ def _dispatch():
         apply_armed_set(current, graph)
         return
 
+    if arg.startswith("--queue-additional-feats="):
+        name, feats_csv = arg.split("=", 1)[1].split(":")
+        feat_ids = [int(f) for f in feats_csv.split(",")]
+        queue = load_json(QUEUE_PATH, [])
+        # Append, not replace: same reasoning as companion_class -- each
+        # character's grant is a distinct, one-shot delivery (the 3 feat
+        # ids were already chosen client-side, see KotorClient.py's
+        # _check_pending_additional_feats), and in principle more than one
+        # could be pending at once (e.g. the PC's and a companion's both
+        # clearing their gates in the same poll cycle).
+        queue.append({"action": "additional_feats", "name": name, "feat_ids": feat_ids})
+        save_json(QUEUE_PATH, queue)
+        current = load_json(CURRENT_AREA_PATH, {}).get("area")
+        apply_armed_set(current, graph)
+        return
+
+    if arg.startswith("--queue-trap="):
+        # Format is "<trap_type>:<params>" -- split(":", 1), not a bare
+        # split(":"), since params' own internal shape can legitimately
+        # contain more colons (reduce_skill's "<skill_key>:<amount>"). One new
+        # queue action for all 12 EnableTraps items (Options.py) -- see
+        # generate_trampoline_batch.py's build_trap_block for what each
+        # trap_type actually does.
+        trap_type, params = arg.split("=", 1)[1].split(":", 1)
+        queue = load_json(QUEUE_PATH, [])
+        # Append, not replace: same reasoning as additional_feats -- a
+        # one-shot delivery, and in principle more than one trap could be
+        # pending at once (e.g. two traps received close together).
+        queue.append({"action": "trap", "trap_type": trap_type, "params": params})
+        save_json(QUEUE_PATH, queue)
+        current = load_json(CURRENT_AREA_PATH, {}).get("area")
+        apply_armed_set(current, graph)
+        return
+
     if arg.startswith("--set-shop-stock="):
         # Format is "<planet>:<resref1>,<resref2>,..." -- one call per
         # planet (2026-08-29, was a single universal list before), sent as
@@ -397,6 +437,24 @@ def _dispatch():
                 # branch's comment.
                 for idx, q in enumerate(queue):
                     if isinstance(q, dict) and q.get("action") == "companion_class" and q.get("name") == name:
+                        queue.pop(idx)
+                        break
+            elif i.startswith("additional_feats:"):
+                name = i.split(":", 1)[1]
+                # Same first-match-only removal as give_item/companion_class.
+                for idx, q in enumerate(queue):
+                    if isinstance(q, dict) and q.get("action") == "additional_feats" and q.get("name") == name:
+                        queue.pop(idx)
+                        break
+            elif i.startswith("trap:"):
+                trap_type = i.split(":", 1)[1]
+                # Same first-match-only removal as the others above --
+                # traps are one-shot by design (Options.py's EnableTraps),
+                # so in the normal case only one entry per trap_type is
+                # ever queued at once, but first-match-only is still the
+                # correct/safe behavior if that ever isn't true.
+                for idx, q in enumerate(queue):
+                    if isinstance(q, dict) and q.get("action") == "trap" and q.get("trap_type") == trap_type:
                         queue.pop(idx)
                         break
             else:

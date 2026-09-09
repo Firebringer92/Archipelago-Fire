@@ -2,10 +2,29 @@
 
 **Status: Alpha.** Core pipeline (delivery, detection, options, item
 distribution, goal detection) is built, wired, and generation-tested
-end-to-end. Live in-game testing has proven that it is working.
+end-to-end. Live in-game testing has proven most of it, including a
+2026-09-08 live-test pass that confirmed Traps (all 12), Additional
+Feats (PC and companion), and the Tatooine shop-catalog fix — see
+`DEVELOPMENT_HISTORY.md`'s "Live-test pass" subsection for the real bugs
+that pass found and fixed. **One feature remains code-complete but NOT
+yet live-tested at all**: the redesigned Progression System's artificial
+travel-gate (§4.1's `Rules.py` entry) — by the user's own 2026-09-08
+call, gate verification is left to natural playthrough/testers rather
+than forced via console warp, since warping bypasses the unlock sequence
+the feature is built around. Additional Enemies is feature-complete and
+*partially* live-tested (both extreme modes confirmed across 3 modules;
+`random_sane` specifically not yet exercised, and per the user's own
+2026-09-08 call, 3/3 correct modules is treated as working-as-intended
+rather than grounds for exhaustive per-module testing). See
+[DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md) for the consolidated
+technical history (feature decisions, confirmed capabilities, and every
+engine limitation found) that this doc summarizes
 
 This document explains how the whole system fits together and what each
-Python file is for.
+Python file is for. It does not re-derive the engine-constraint discoveries
+that shaped this design — see
+[DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)'s engine-limitations
+section
 
 ## 1. What this is
 
@@ -72,8 +91,9 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   area and its direct neighbors carry the pending batch — see
   `arm_orchestrator.py`. This keeps each individual trampoline small and
   avoids constantly touching all ~78 covered areas.
-- **Reconciliation is deficit-only**, except XP and Credits under specific restrictions
-  which is a bidirectional clamp (it has to suppress vanilla combat/quest XP, not
+- **Reconciliation is deficit-only**, except XP under
+  `experience_mode` (when not `off`), which is the one deliberately
+  bidirectional clamp (it has to suppress vanilla combat/quest XP, not
   just top up).
 - **Only ~10 items are ever unconditionally guaranteed** in the pool (the
   9 companions, when `companion_mode` is `ap_gated`) — everything else
@@ -97,25 +117,73 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   `_skill_ability_pools`), builds `slot_data` (`fill_slot_data`) for the
   client to read on connect, and wires in `EntranceRando`/`Rules` when
   their options are on. This is where the weighted item-distribution
-  system actually lives.
+  system actually lives. Guaranteed-placement pool: the 9 companions
+  (`companion_mode=ap_gated`), the 8 Progression System quest items
+  (`progression_system` on), and the 12 Traps items (`enable_traps` on)
+  are the only items ever unconditionally placed — same
+  `mandatory_names` pattern for all three, everything else drawn through
+  the weighted distribution. `PLANET_MODULE_PREFIXES` maps each of the 6
+  planets to its module-name prefix for `_shop_stock()`'s per-planet
+  catalogs — Tatooine (`"tat_m"`) was missing entirely until 2026-09-08
+  (see `DEVELOPMENT_HISTORY.md`); a dev-tooling duplicate of this same
+  dict, `_PLANET_PREFIXES` in `scripts/generate_trampoline_batch.py`, has
+  to be kept in sync by hand (the two live in separate processes — see
+  4.3's note — so they can't just share one Python object).
 - **`Options.py`** — every player-facing setting (`KotorOptions`
   dataclass) with full docstrings. `STARTING_ABILITY_ARMS`/
   `STARTING_SKILL_ARMS` map arm names to their matching starting-boost
-  option, shared with `__init__.py`.
+  option, shared with `__init__.py`. `ProgressionSystem` (redesigned
+  2026-09-08 after real per-item disassembly, see `Rules.py` below) and
+  `EnableTraps` (new 2026-09-08 — 12 one-time punishment items, see
+  `Items.py`/`KotorClient.py` below) are the two newest option classes;
+  both default off.
 - **`Items.py`** — `item_table`: every AP item (skills, companions,
   abilities, class switches, XP/credits filler) plus gear items loaded at
   runtime from `gear_items.json` (only rows flagged `included_as_item`
   get a real AP code). Exports `arm_name_to_item`, `item_name_to_id`,
   `lookup_id_to_name` as the single source of truth other files import
-  rather than rebuild.
+  rather than rebuild. `TRAP_ITEMS` (12 entries, `arm_name`s like
+  `trap:cut_max_hp`) all route through one consolidated `trap:<type>:
+  <params>` wire action rather than each getting its own native/plumbing
+  — see `KotorClient.py` and 4.3's `generate_trampoline_batch.py` entry.
 - **`Locations.py`** — `location_table`: all 200 real locations (100
   journal, 9 companion, 78 area, 13 alignment). **Auto-generated by
   `scripts/generate_kotor_locations.py`** — never hand-edit this file.
-- **`Rules.py`** — `set_rules` (access rules; currently flat/ungated,
-  real story-order gating is future work) and `set_completion_rules` (a
+- **`Rules.py`** — `set_rules` and `set_completion_rules` (the latter a
   deliberate no-op — the real Goal signal is entirely client-driven via
   `KotorClient.py`'s `_check_goal`/`finished_game`, independent of AP's
-  own completion-condition machinery).
+  own completion-condition machinery). `set_rules` was largely
+  flat/ungated until the Progression System redesign (2026-09-08): real
+  per-item disassembly found the 4 star-map quest items are gated by a
+  *global flag* (`k_pla_actmap`), not inventory possession, so
+  suppressing the item alone wouldn't stop a player from completing the
+  vanilla flag first. The fix is an **artificial travel-gate**: `Rules.py`
+  now maps every location on each of the 4 star-map planets (via
+  `PLANET_AREA_IDX`, cross-referenced against
+  `extender/area_trampolines/_mapping.json`) plus companion-recruitment
+  and Genoharadan-bounty locations known to occur on those planets
+  (`COMPANION_PLANET_OVERRIDE`, `GENOHARADAN_PLANET_OVERRIDE` — the
+  latter's Lorgal→Korriban entry is an inference by elimination, lower
+  confidence than the other three) back to that planet's own AP star-map
+  item, and `add_rule`-gates (AND-combines) every one of those locations
+  behind actually holding it. Dantooine and its Desert Map were dropped
+  from the item list entirely once disassembly showed neither is a real
+  mechanical gate (see `DEVELOPMENT_HISTORY.md`). The other 4 Progression
+  items (Sith Armor/Papers, Shield Codes, Enviro Suit) genuinely are
+  inventory-gated, so those stay suppressed at the source instead (see
+  `gear_items.json`'s `progression_suppression` flag and 4.3's
+  `apply_progression_checkpoint_wrappers`) — `Rules.py`'s new gating
+  logic only covers the 4 star maps.
+- **`launch_kotor_client()` + its `Component(...)` registration**
+  (2026-09-08, top of `__init__.py`) — registers a "KOTOR Client" button
+  in the Archipelago Launcher (the `x2wotc`/`tits_the_3rd`-style pattern).
+  Doesn't run `KotorClient.py` in-process the way those two do -- its
+  `_detect_repo_root()` needs a real folder to walk, which breaks inside
+  a zip -- so this reads the install-path marker `install_playerbundle.py`
+  writes (`%LOCALAPPDATA%\KotorAP\install_path.txt`) and launches it as a
+  subprocess instead. No `KotorClient.py`/helper-module bundling needed
+  inside the apworld for this to work, despite an earlier research note
+  assuming it would be.
 - **`EntranceRando.py`** — door/trigger randomization, built on
   Archipelago's own `entrance_rando.py` engine, run in uncoupled mode.
   Builds a separate physical-module region graph purely for this purpose
@@ -125,7 +193,10 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   needs matched-by-name reverse entrance/exit pairs this flat
   156-transition data model doesn't have), so a shuffled door reliably
   has some way back without needing that bigger data-modeling effort. See
-  its own module docstring
+  its own module docstring, [docs/history/PHASE12.md](docs/history/PHASE12.md)
+  for the exclusion-zone design and the module/dest_module mixup bug, and
+  [docs/history/PHASE13.md](docs/history/PHASE13.md) for the reciprocal
+  pairing feature and the stale-bookkeeping bug found while building it.
 
 ### 4.2 The Python AP client (`Archipelago/` root)
 
@@ -151,6 +222,22 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   wrapper (`regenerate_makejedi_suppressor()`, with the connected seed's
   `starting_class`; `!ap_regen_makejedi` is its manual fallback) -- see 4.3's
   `generate_makejedi_suppressor.py` entry.
+  **2026-09-08 (the "3-step install" plan, Option B)**: the 3 heavier
+  per-seed patch scripts (`patch_item_suppression.py`/
+  `patch_door_randomizer.py`/`patch_additional_enemies.py`) are now ALSO
+  auto-invoked on every `Connected`, the same subprocess-wrapper shape as
+  poll_shared/makejedi (`apply_item_suppression()`/`apply_door_randomizer()`/
+  `apply_additional_enemies()`) -- this is what used to be a separate
+  manual README/TESTING.md step. Unlike poll_shared/makejedi (a cheap
+  single-file recompile, safe to always re-run), these 3 do a real
+  per-module RIM sweep with no internal "already applied" short-circuit
+  of their own, so `_apply_seed_patch_if_new()` gates each on
+  `PATCHED_SEEDS_MARKER_PATH` (a small JSON marker recording the last
+  seed_name each was actually applied for) so a reconnect to the SAME
+  seed skips the redundant sweep rather than re-paying its cost on every
+  launch. `!ap_apply_item_suppression`/`!ap_apply_door_randomizer`/
+  `!ap_apply_additional_enemies` are the manual fallbacks, each bypassing
+  the marker to force a clean re-apply.
   New-character safeguard (`_evaluate_character_safety`, 2026-09-02):
   pauses every delivery/reconciliation action if the connected
   character's name has never appeared in the delivery log AND they're
@@ -159,6 +246,17 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   backlog onto an unexpected character (wrong save loaded, etc.).
   `!ap_confirm_character` overrides it once a human confirms. See
   `TESTING.md`'s "New-character safeguard" section.
+  `_resolve_trap()` (2026-09-08) implements all 12 Traps items'
+  one-time-only computation (each gated by the existing delivery log, no
+  new dedup mechanism needed) — notably `_compute_max_hp()`/
+  `_con_decrease_for_half_max_hp()`, since KOTOR has no direct Max HP
+  memory field (it's `sum(class_level*hitdie) + floor((CON-10)/2)*
+  total_level`); halving HP means searching for the CON decrease that
+  gets closest to half, then sending that amount over the `trap:` wire
+  action for the NWScript side to apply as an `EffectAbilityDecrease`
+  (same mechanism as the other 5 ability-score trap items — this project
+  has no absolute base-ability-score setter, only the relative Effect,
+  same as K1SE).
 - **`kotor_extender_bridge.py`** — owns the raw TCP connection to the
   injected extender (127.0.0.1:25586) and the wire protocol
   (`APPLY:`/`APPLYVALUE:`/`EVENT:`/`STAGED:`/`ERROR:`), plus a
@@ -191,10 +289,18 @@ Override; re-run after changing their inputs):
 - `generate_trampoline_batch.py` — regenerates a specific area's
   trampoline with the current pending arm batch inlined (`APPLIES`
   table, kept in sync with `dllmain.c`'s `AP_ARM_NAMES` by hand).
+  `build_trap_block()` (2026-09-08) generates all 12 Traps items' NWScript
+  bodies from one `trap:<type>:<params>` action, following the same
+  consolidated-wire-action pattern as `companion_class:`/`give_item:` —
+  adding a Traps-shaped feature needed zero new native/opcode work, only
+  a new case in this function plus matching cases in `arm_orchestrator.py`
+  and `ap_extender.c`. Also owns `_PLANET_PREFIXES` (see 4.1's
+  `PLANET_MODULE_PREFIXES` note for why this is a separate dict, not a
+  shared import, and why Tatooine's absence from both was a real bug).
 - `generate_companion_suppressors.py` / `generate_store_suppressors.py`
   — preserve-and-chain wrapper pairs for companion recruitment and store
   markers.
-- `generate_makejedi_suppressor.py`  — same preserve-and-chain
+- `generate_makejedi_suppressor.py` (2026-09-02) — same preserve-and-chain
   pattern, for Dantooine's real "become a Jedi" trial-completion script
   (`k_pdan_makejedi`). Confirmed via `read_ncs()` that the vanilla script
   calls `AddMultiClass()` unconditionally on trial completion, completely
@@ -217,11 +323,17 @@ Override; re-run after changing their inputs):
   arming neighbors), and the full 156-transition door/trigger graph (used
   by `EntranceRando.py`).
 - `generate_kotor_locations.py` — generates `Locations.py` from
-  `questtagmapping.json`/`areatodisplaymap.json`  built
+  `questtagmapping.json`/`areatodisplaymap.json` (renamed by the user
+  2026-09-02 from `scratch_locations.json`/`scratch_areas.json`, built
   from the now-removed journal-scan scripts), a hardcoded companion list,
-  AND all 33 alignment/level/goal locations (10 alignment
+  AND (2026-09-02) all 33 alignment/level/goal locations (10 alignment
   thresholds, 3 alignment-bonus checks, 19 character levels, 1 Malak-
-  defeated) via fixed constants at the top of the file. Covers all 220 real locations
+  defeated) via fixed constants at the top of the file -- these used to
+  live in `Locations.py` some other way outside this generator's
+  knowledge, and a re-run silently wiped all 33 once, breaking every
+  seed's generation project-wide until caught and fixed same session (see
+  `FutureDesign.md`). Covers all 220 real locations now; re-running this
+  can't silently drop any of them again.
 
 **Live pipeline — runtime orchestration:**
 - `arm_orchestrator.py` — invoked by the extender's C code on every
@@ -255,9 +367,31 @@ generated seed, gated on that seed's options):
   *content* changes per mode. Falls back to precompiled copies (one per
   non-skip mode) when `nwnnsscomp.exe` isn't present, so a tester's
   machine doesn't need the compiler.
+  `apply_progression_checkpoint_wrappers()` (2026-09-08) is a separate,
+  smaller mechanism for the Progression System's 4 suppress-at-source
+  items (Sith Armor/Papers, Shield Codes, Enviro Suit): extracts each
+  real checkpoint script's TRUE original directly from chitin via
+  `Installation(game_dir).resource(name, ResourceType.NCS)`, writes it as
+  `apo_<name>_orig.ncs`, and deploys a small gate-and-delegate wrapper
+  (`k_sup_galaxymap_progression.nss` etc. in `extender/scripts_src/`) that
+  checks a `KSE_HasData("granted_exempt_<tag>")` exemption flag before
+  calling through via `ExecuteScript`. One of the 4
+  (`k_ptar_sithpaper`, a `StartingConditional`) needed full
+  reimplementation instead of gate-and-delegate, since `ExecuteScript`
+  can't relay a called script's return value back to its caller.
 - `patch_door_randomizer.py` — rewrites each shuffled transition's
   `LinkedToModule`/`LinkedTo` GFF fields to match the seed's computed
   mapping. No compiler dependency at all (pure GFF field edits).
+- `patch_additional_enemies.py` (2026-09-08) — the fourth per-seed
+  patcher, same pattern as the two above. Reads `additional_enemies_mode`
+  from slot_data and, for each of 195 precomputed safe spawn points
+  across 40 modules (Tables A/B/C — see `DEVELOPMENT_HISTORY.md`), places
+  a creature chosen by mode (`area_appropriate`: CR-filtered, drawn from
+  that module's own dominant category; `random_sane`: CR-filtered, full
+  safe pool; `fully_random`: unfiltered). Seeded by the real AP
+  `seed_name` so a reconnect reproduces identical placements.
+  Live-tested at both extremes; `random_sane` itself not yet separately
+  exercised (mechanically identical minus the category filter).
 
 **Distribution/packaging** (for getting a fresh install running without
 the full dev toolchain — see `README.md`):
@@ -266,6 +400,21 @@ the full dev toolchain — see `README.md`):
   scripts' own data so it can't silently drift.
 - `setup_game.py` — tester-facing: copies `dist/Override/` into a real
   install. Pure standard library, no `pykotor`/compiler needed.
+- `install_playerbundle.py` (2026-09-08, the "3-step install" plan's
+  Step 2) — the real installer: calls `setup_game.py`, copies the now-
+  bundled `nwnnsscomp.exe` into the game folder root, installs the merged
+  `binkw32.dll` proxy (a native Python port of `install.ps1 -Install` --
+  see that file's own entry in 4.4 for why both exist rather than one
+  shelling out to the other), `pip install`s `pykotor`, and writes an
+  install-path marker (`%LOCALAPPDATA%\KotorAP\install_path.txt`, for the
+  not-yet-built apworld Launcher-button registration to read) plus a
+  manifest (`install_manifest.json`) recording exactly what it touched.
+  `--uninstall` reverses all of it -- the 3 patch scripts' own
+  `--restore`, the DLL swap, and only the Override files THIS run
+  actually added (anything that already existed with the same name is
+  left alone, since Override is shared space). Verified live against a
+  synthetic fake game directory, install then uninstall, byte-for-byte
+  correct on both sides -- not yet run against a real Steam install.
 - `package_apworld.py` (2026-08-31) — packages `Archipelago/worlds/kotor/`
   into a single, version-stamped `dist/kotor.apworld` (Archipelago's
   standard world-distribution format, via `worlds.Files.APWorldContainer`)
@@ -291,4 +440,14 @@ no separate K1SE mod to chain under any more). Runs a local TCP server
 them as `EVENT:` lines, and handles incoming `APPLY:`/`APPLYVALUE:`
 commands by shelling out to `arm_orchestrator.py`. `AP_ARM_NAMES[]` is the
 authoritative arm-ID table, kept in sync by hand with
-`generate_trampoline_batch.py`'s `APPLIES`
+`generate_trampoline_batch.py`'s `APPLIES`.
+
+`extender/install.ps1` captures the game folder's real `binkw32.dll` as
+`binkw32_real.dll` (once) and swaps in this compiled proxy, plus writes
+`ap_repo_root.txt` (read by `ap_extender.c` at runtime to find
+`scripts\arm_orchestrator.py`). Still maintained as a standalone dev
+tool, but 4.3's `install_playerbundle.py` (2026-09-08) is now the
+tester-facing path -- it ports this same logic natively into Python
+rather than shelling out to PowerShell, a small deliberate duplication
+(this script is short and rarely touched) rather than adding a
+PowerShell subprocess dependency to the one true installer path.

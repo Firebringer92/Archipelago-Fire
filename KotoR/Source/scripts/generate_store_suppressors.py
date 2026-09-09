@@ -24,7 +24,8 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 MOD_DIR = os.path.join(GAME, "modules")
 OVERRIDE = os.path.join(GAME, "Override")
-NWNNSSCOMP = r"C:\Program Files (x86)\KotOR Scripting Tool\nwnnsscomp.exe"
+from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+NWNNSSCOMP = resolve_nwnnsscomp()
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 
 # (module, resref) pairs -- every script found to call OpenStore via the

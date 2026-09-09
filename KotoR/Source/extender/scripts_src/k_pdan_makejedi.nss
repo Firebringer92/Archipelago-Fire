@@ -1,7 +1,7 @@
 // Suppression wrapper for Dantooine's real "become a Jedi" trial-completion
 // script (originally danm13's k_pdan_makejedi, preserved as apo_makejedi_orig).
 //
-// jedi_start is project-managed this seed (not "off") -- the vanilla
+// starting_class is project-managed this seed (not "off") -- the vanilla
 // AddMultiClass()/XP grant/cutscene-polish is skipped entirely here. The
 // real class grant comes from this project's own class_guardian/
 // class_consular/class_sentinel arms (or any future PC-class-randomize

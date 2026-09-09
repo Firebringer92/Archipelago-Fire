@@ -36,7 +36,8 @@ def _arg_value(flag, default):
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-NWNNSSCOMP = r"C:\Program Files (x86)\KotOR Scripting Tool\nwnnsscomp.exe"
+from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+NWNNSSCOMP = resolve_nwnnsscomp()
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 # Written by KotorClient.py on every successful Connect -- see its own
 # SLOT_DATA_PATH/write_slot_data_for_patch_scripts() for why. Only read
@@ -274,7 +275,77 @@ lines.append("    object oPC = GetFirstPC();")
 lines.append('    string sReport = "AP|CLASSREPORT|guardian=" + IntToString(GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC))')
 lines.append('        + "|consular=" + IntToString(GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC))')
 lines.append('        + "|sentinel=" + IntToString(GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC));')
+# 2026-09-08, found live during Traps testing: kotor_reconciliation.py's
+# _CLASSREPORT_RE has always expected an optional trailing
+# "|baseclass=X|baselevel=Y" (its own comment even cites a specific fix
+# date for it), but this generator never actually emitted it -- confirmed
+# directly against the real deployed .ncs, byte-search found zero
+# occurrences of either string despite the file being otherwise current
+# (has this session's FEATREPORT/POWERREPORT additions). Real consequence:
+# KotorClient.py's cut_level trap reads current_classes.get("baselevel", 0)
+# and always got the 0 default, silently treating every non-Jedi character
+# as level 0 -> total_level<=1 -> permanent no-op regardless of real level.
+# Position 1 (NWScript's class positions are 1-indexed, confirmed via
+# nwscript.nss's own doc comment: "nClassPosition: 1, 2 or 3" -- a
+# single-class creature only ever has a value at position 1) is always the
+# character's ORIGINAL class slot (Soldier/Scout/Scoundrel for anyone who
+# hasn't been made a Jedi via AddMultiClass yet, or whatever they started
+# as even after a later class gets ADDED at position 2) -- GetLevelByClass
+# above already covers the 3 Jedi classes separately, so this is
+# deliberately just the base slot, not total level.
+# KNOWN CAVEAT, not fixed here: if starting_class=jedi_start/jedi_granted
+# ever puts a Jedi class directly at position 1 with no separate base slot
+# at all (not the case for this project's current jedi_granted flow, which
+# starts a normal base class and adds Jedi later), this would double-count
+# that level once here and once via the matching GetLevelByClass line above
+# -- worth revisiting if that flow ever changes.
+lines.append('    int nBaseClass = GetClassByPosition(1, oPC);')
+lines.append('    int nBaseLevel = GetLevelByPosition(1, oPC);')
+lines.append('    sReport = sReport + "|baseclass=" + IntToString(nBaseClass) + "|baselevel=" + IntToString(nBaseLevel);')
 lines.append("    KSE_Diag(65, sReport);")
+lines.append("}")
+lines.append("")
+
+# Traps (2026-09-08, see Options.py's EnableTraps): the Remove Half Known
+# Feats / Remove Half Known Force Powers traps need to know WHICH ids the
+# character currently has before picking half at random -- there's no
+# "list every feat/power a creature knows" native, only per-id membership
+# (KSE_GetFeatAcquired / GetHasSpell), so this reports only the HELD ids
+# (comma-joined), not a full bitmap over every candidate id -- keeps the
+# report compact regardless of how large the candidate list grows.
+# force_powers_and_feats.json is this project's own confirmed real-id
+# reference data (feat.2da/spells.2da rows, see FutureDesign.md) -- feats
+# uses every row present (122, all real -- confirmed via pykotor, not a
+# placeholder subset), force_powers is filtered to rows with a real
+# in-game name (44 of 51 -- the other 7 are unused/master placeholder
+# rows like "FORCE_POWER_MASTER_ALTER_XXX").
+with open(os.path.join(REPO_ROOT, "force_powers_and_feats.json"), encoding="utf-8") as f:
+    _fp_feats = json.load(f)
+_ALL_FEAT_IDS = sorted(int(k) for k in _fp_feats["feats"].keys())
+_ALL_FORCE_POWER_IDS = sorted(int(k) for k, v in _fp_feats["force_powers"].items() if v.get("name"))
+
+lines.append("// Traps feature (2026-09-08) -- reports every feat.2da id the character")
+lines.append("// currently holds (KSE_GetFeatAcquired is per-id membership only, there's")
+lines.append("// no 'list all feats' native), so the client can pick half at random for")
+lines.append("// the Remove Half Known Feats trap without guessing at what's held.")
+lines.append("void CheckFeats()")
+lines.append("{")
+lines.append("    object oPC = GetFirstPC();")
+lines.append('    string sHeld = "";')
+for feat_id in _ALL_FEAT_IDS:
+    lines.append(f"    if (KSE_GetFeatAcquired({feat_id}, oPC)) sHeld += \"{feat_id},\";")
+lines.append('    KSE_Diag(135, "AP|FEATREPORT|" + sHeld);')
+lines.append("}")
+lines.append("")
+lines.append("// Same shape as CheckFeats() above, for spells.2da (force powers) --")
+lines.append("// GetHasSpell is likewise per-id membership only.")
+lines.append("void CheckForcePowers()")
+lines.append("{")
+lines.append("    object oPC = GetFirstPC();")
+lines.append('    string sHeld = "";')
+for power_id in _ALL_FORCE_POWER_IDS:
+    lines.append(f"    if (GetHasSpell({power_id}, oPC)) sHeld += \"{power_id},\";")
+lines.append('    KSE_Diag(136, "AP|POWERREPORT|" + sHeld);')
 lines.append("}")
 lines.append("")
 lines.append("// Character name, reported every poll -- the client keys its persistent")
@@ -457,6 +528,8 @@ lines.append("    CheckCredits();")
 lines.append("    CheckInventory();")
 lines.append("    CheckAbilityScores();")
 lines.append("    CheckClasses();")
+lines.append("    CheckFeats();")
+lines.append("    CheckForcePowers();")
 lines.append("    CheckCharacterName();")
 lines.append("    CheckSkills();")
 lines.append("    CheckDeath();")

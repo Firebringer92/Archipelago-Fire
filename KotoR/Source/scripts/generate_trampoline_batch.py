@@ -32,7 +32,84 @@ from collections import defaultdict
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "area_trampolines")
 OVERRIDE_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor\Override"
-NWNNSSCOMP = r"C:\Program Files (x86)\KotOR Scripting Tool\nwnnsscomp.exe"
+from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+NWNNSSCOMP = resolve_nwnnsscomp()
+
+# Base (auto-granted, feat.2da's <code>_granted=1) feats per class -- confirmed
+# 2026-09-06 via pykotor against the real game data, see GameMechanics.md /
+# research/feats/class_feats.json for the full derivation. Used by
+# build_class_feat_delta_lines() below to compute exactly which feats a
+# class-change should strip/grant, instead of the raw KSE_SetCreatureField
+# CLASS0_TYPE overwrite touching feats at all (which it never did on its
+# own -- confirmed live 2026-08-31 that a class write alone leaves the old
+# class's feats in place permanently, e.g. a Jedi-to-base switch keeping
+# lightsaber proficiency).
+CLASS_BASE_FEATS = {
+    "CLASS_TYPE_SOLDIER":      [4, 5, 6, 28, 29, 39, 40, 42, 44],
+    "CLASS_TYPE_SCOUT":        [5, 6, 11, 14, 30, 39, 40, 44],
+    "CLASS_TYPE_SCOUNDREL":    [5, 8, 31, 39, 40, 44, 60, 104],
+    "CLASS_TYPE_JEDIGUARDIAN": [39, 43, 44, 55, 101, 107, 116],
+    "CLASS_TYPE_JEDICONSULAR": [39, 43, 44, 55, 88, 107, 116],
+    "CLASS_TYPE_JEDISENTINEL": [39, 43, 44, 55, 98, 107, 116],
+}
+_ALL_CLASS_TYPE_CONSTS = list(CLASS_BASE_FEATS.keys())
+
+# Armor Prof ordering, confirmed via feat.2da's prereqfeat1/2 columns
+# (2026-09-06): Heavy(4) requires Medium(6)+Light(5); Medium(6) requires
+# Light(5); no other base feat in the table above has any prerequisite at
+# all. Removing must go highest-tier-first (so a lower tier a still-held
+# higher tier depends on is never pulled out from under it, even
+# transiently); granting must go lowest-tier-first (so a higher tier's
+# prerequisites are already satisfied the instant it's granted).
+_ARMOR_PROF_REMOVE_ORDER = {4: 0, 6: 1, 5: 2}
+_ARMOR_PROF_GRANT_ORDER = {5: 0, 6: 1, 4: 2}
+
+
+def build_class_feat_delta_lines(new_class_const, target_var, old_class_var="nOldClass", delay_grants=False, indent="    "):
+    """Generates NWScript lines that branch on `old_class_var` (must already
+    be read live via GetClassByPosition(1, ...) BEFORE the class-type field
+    is overwritten) and, for every possible old class other than
+    new_class_const, strip exactly the old class's base feats the new class
+    doesn't share, then grant exactly the new class's base feats the old
+    class didn't already have. Feats shared between old and new are never
+    touched -- sidesteps the undocumented "grant an already-held feat"
+    behavior entirely (see kse.nss's KSE_GrantFeatArrayA doc, no statement
+    either way on duplicates).
+
+    delay_grants=True wraps each grant in DelayCommand(1.0, ...) -- required
+    when granting INTO a Jedi class via AddMultiClass, which has a
+    confirmed settling race that silently drops immediate grants (see
+    build_companion_class_block's 2026-09-03 fix note); base-class grants
+    have no such race and stay immediate.
+
+    Emits NO branch at all for an old class that would need zero removes
+    and zero grants (nothing to do), and skips new_class_const itself
+    (already-correct, a same-class "switch" is a no-op)."""
+    new_kit = set(CLASS_BASE_FEATS[new_class_const])
+    lines = []
+    first = True
+    for old_const in _ALL_CLASS_TYPE_CONSTS:
+        if old_const == new_class_const:
+            continue
+        old_kit = set(CLASS_BASE_FEATS[old_const])
+        to_remove = sorted(old_kit - new_kit, key=lambda f: _ARMOR_PROF_REMOVE_ORDER.get(f, 10))
+        to_grant = sorted(new_kit - old_kit, key=lambda f: _ARMOR_PROF_GRANT_ORDER.get(f, -1))
+        if not to_remove and not to_grant:
+            continue
+        cond = "if" if first else "else if"
+        first = False
+        lines.append(f"{indent}{cond} ({old_class_var} == {old_const})")
+        lines.append(f"{indent}{{")
+        for feat in to_remove:
+            lines.append(f"{indent}    KSE_RemoveFeatArrayA({feat}, {target_var});")
+        for feat in to_grant:
+            if delay_grants:
+                lines.append(f"{indent}    DelayCommand(1.0, KSE_GrantFeatArrayA({feat}, {target_var}));")
+            else:
+                lines.append(f"{indent}    KSE_GrantFeatArrayA({feat}, {target_var});")
+        lines.append(f"{indent}}}")
+    return lines
+
 
 # Must match generate_arm_scripts.py / generate_heartbeat.py's ID scheme.
 APPLIES = {
@@ -92,24 +169,44 @@ APPLIES = {
         'int nAfter = GetSkillRank(SKILL_TREAT_INJURY, oPC);',
         'KSE_Diag(2, "AP|APPLIED|treat_injury|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
+    # GUARD added 2026-09-08 (real bug found live: two Bastilas after her
+    # grant arm re-fired on a later area transition -- the known
+    # one-transition delivery-lag retry logic re-queues an arm whenever its
+    # APPLIED confirmation isn't cleanly matched, and this arm previously
+    # had no idempotency check at all, so a re-fire created a genuine
+    # second CreateObject+AddPartyMember. `nWasAvailable` used to be purely
+    # diagnostic (captured, never branched on) -- now it actually gates the
+    # grant, same pattern generate_companion_suppressors.py's wrapper
+    # already used correctly. Still ALWAYS emits the APPLIED diag either
+    # way (skip or real grant) so the pending queue correctly dequeues it
+    # regardless -- an ELSE branch that stayed silent would make this
+    # worse, not better, by leaving the arm perpetually "pending".
     9: ("companion_bastila", [
         'int nNPC = NPC_BASTILA;',
         'string sTemplate = "p_bastilla";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
-        'AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        'object oPC = GetFirstPC();',
-        'object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        'int nAdded = AddPartyMember(nNPC, oNPC);',
+        'int nAdded = FALSE;',
+        'if (!nWasAvailable)',
+        '{',
+        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
+        '    object oPC = GetFirstPC();',
+        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
+        '    nAdded = AddPartyMember(nNPC, oNPC);',
+        '}',
         'KSE_Diag(4, "AP|APPLIED|companion_bastila|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     10: ("companion_canderous", [
         'int nNPC = NPC_CANDEROUS;',
         'string sTemplate = "p_cand";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
-        'AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        'object oPC = GetFirstPC();',
-        'object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        'int nAdded = AddPartyMember(nNPC, oNPC);',
+        'int nAdded = FALSE;',
+        'if (!nWasAvailable)',
+        '{',
+        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
+        '    object oPC = GetFirstPC();',
+        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
+        '    nAdded = AddPartyMember(nNPC, oNPC);',
+        '}',
         'KSE_Diag(4, "AP|APPLIED|companion_canderous|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     11: ("xp", [
@@ -152,21 +249,11 @@ APPLIES = {
     # handling below), wired into the real AP flow via Options.py's
     # CompanionClass. Not reusing these IDs -- same reasoning as the other
     # retired-gap comments in this table (12, old-16).
-    33: ("dump_statblock", [
-        # TEMPORARY (2026-08-31): Force Powers offset research -- see
-        # kotor_engine_constraints memory / PHASE14.md. Dumps 112 (0x70)
-        # bytes starting at the PC's statBlock pointer (offset 0) to
-        # kse.log as hex -- covers the 3 known {ptr,count,capacity}
-        # feat-array/use-counter triples (0x00-0x23, per offsets.h's own
-        # "the stat block opens with three consecutive triples" comment)
-        # through XP (confirmed at +0x68), the candidate region for a 4th
-        # such triple (Force Powers). Not a shipped feature -- retire this
-        # arm (leave the gap, don't renumber) once the research pass is
-        # done, same convention as every other retired arm in this table.
-        'object oPC = GetFirstPC();',
-        'KSE_DumpStatBlock(oPC, 0, 112);',
-        'KSE_Diag(111, "AP|APPLIED|dump_statblock|offset=0|length=112");',
-    ]),
+    # 33 (dump_statblock) RETIRED 2026-09-06 -- Force Powers offset research
+    # concluded (see FutureDesign.md); the confirmed layout shipped as
+    # KseForcePowerOp. Archived at extender/research_archive/
+    # generate_trampoline_batch_temp_arms_2026-09-06.py.txt, same gap
+    # convention as 12/15/16 above.
     17: ("credits", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetGold(oPC);',
@@ -199,70 +286,98 @@ APPLIES = {
         'int nNPC = NPC_CARTH;',
         'string sTemplate = "p_carth";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
-        'AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        'object oPC = GetFirstPC();',
-        'object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        'int nAdded = AddPartyMember(nNPC, oNPC);',
+        'int nAdded = FALSE;',
+        'if (!nWasAvailable)',
+        '{',
+        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
+        '    object oPC = GetFirstPC();',
+        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
+        '    nAdded = AddPartyMember(nNPC, oNPC);',
+        '}',
         'KSE_Diag(50, "AP|APPLIED|companion_carth|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     20: ("companion_hk47", [
         'int nNPC = NPC_HK_47;',
         'string sTemplate = "p_hk47";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
-        'AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        'object oPC = GetFirstPC();',
-        'object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        'int nAdded = AddPartyMember(nNPC, oNPC);',
+        'int nAdded = FALSE;',
+        'if (!nWasAvailable)',
+        '{',
+        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
+        '    object oPC = GetFirstPC();',
+        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
+        '    nAdded = AddPartyMember(nNPC, oNPC);',
+        '}',
         'KSE_Diag(51, "AP|APPLIED|companion_hk47|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     21: ("companion_jolee", [
         'int nNPC = NPC_JOLEE;',
         'string sTemplate = "p_jolee";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
-        'AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        'object oPC = GetFirstPC();',
-        'object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        'int nAdded = AddPartyMember(nNPC, oNPC);',
+        'int nAdded = FALSE;',
+        'if (!nWasAvailable)',
+        '{',
+        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
+        '    object oPC = GetFirstPC();',
+        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
+        '    nAdded = AddPartyMember(nNPC, oNPC);',
+        '}',
         'KSE_Diag(52, "AP|APPLIED|companion_jolee|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     22: ("companion_juhani", [
         'int nNPC = NPC_JUHANI;',
         'string sTemplate = "p_juhani";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
-        'AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        'object oPC = GetFirstPC();',
-        'object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        'int nAdded = AddPartyMember(nNPC, oNPC);',
+        'int nAdded = FALSE;',
+        'if (!nWasAvailable)',
+        '{',
+        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
+        '    object oPC = GetFirstPC();',
+        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
+        '    nAdded = AddPartyMember(nNPC, oNPC);',
+        '}',
         'KSE_Diag(53, "AP|APPLIED|companion_juhani|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     23: ("companion_mission", [
         'int nNPC = NPC_MISSION;',
         'string sTemplate = "p_mission";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
-        'AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        'object oPC = GetFirstPC();',
-        'object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        'int nAdded = AddPartyMember(nNPC, oNPC);',
+        'int nAdded = FALSE;',
+        'if (!nWasAvailable)',
+        '{',
+        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
+        '    object oPC = GetFirstPC();',
+        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
+        '    nAdded = AddPartyMember(nNPC, oNPC);',
+        '}',
         'KSE_Diag(54, "AP|APPLIED|companion_mission|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     24: ("companion_t3m4", [
         'int nNPC = NPC_T3_M4;',
         'string sTemplate = "p_t3m4";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
-        'AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        'object oPC = GetFirstPC();',
-        'object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        'int nAdded = AddPartyMember(nNPC, oNPC);',
+        'int nAdded = FALSE;',
+        'if (!nWasAvailable)',
+        '{',
+        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
+        '    object oPC = GetFirstPC();',
+        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
+        '    nAdded = AddPartyMember(nNPC, oNPC);',
+        '}',
         'KSE_Diag(55, "AP|APPLIED|companion_t3m4|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     25: ("companion_zaalbar", [
         'int nNPC = NPC_ZAALBAR;',
         'string sTemplate = "p_zaalbar";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
-        'AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        'object oPC = GetFirstPC();',
-        'object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        'int nAdded = AddPartyMember(nNPC, oNPC);',
+        'int nAdded = FALSE;',
+        'if (!nWasAvailable)',
+        '{',
+        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
+        '    object oPC = GetFirstPC();',
+        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
+        '    nAdded = AddPartyMember(nNPC, oNPC);',
+        '}',
         'KSE_Diag(56, "AP|APPLIED|companion_zaalbar|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     # Third Jedi class -- class_guardian/class_consular (13/14) covered
@@ -335,132 +450,98 @@ APPLIES = {
     # (AddMultiClass) unchanged. AddMultiClass can't REPLACE an existing
     # base class, so a base-class roll needs the same direct-write
     # mechanism CompanionClass already uses for companions
-    # (KSE_SetCreatureField) instead, targeting the PC. Deliberately
-    # minimal -- no Force write (base classes aren't Force-sensitive, and
-    # the companion recipe's Force=10 is Jedi-specific), no
-    # ShowLevelUpGUI (untested for this "replace an already-created
-    # character's class" scenario, and the companion recipe this mirrors
-    # doesn't call it either), no CLASS0_LEVEL write (this only ever fires
-    # via generate_early() precollection, immediately on a freshly
-    # created level-1 character, so it's already 1).
+    # (KSE_SetCreatureField) instead, targeting the PC. No Force write
+    # (base classes aren't Force-sensitive, and the companion recipe's
+    # Force=10 is Jedi-specific), no ShowLevelUpGUI (untested for this
+    # "replace an already-created character's class" scenario, and the
+    # companion recipe this mirrors doesn't call it either), no
+    # CLASS0_LEVEL write (this only ever fires via generate_early()
+    # precollection, immediately on a freshly created level-1 character,
+    # so it's already 1).
+    #
+    # 2026-09-07 fix: the raw field write above NEVER touched feats on its
+    # own -- confirmed live 2026-08-31 for the companion equivalent (a
+    # class change alone leaves the OLD class's feats in place forever,
+    # e.g. keeping Heavy Weapons after rolling into Scout). Now reads the
+    # PC's real starting class live (GetClassByPosition, 1-based) BEFORE
+    # overwriting it, and uses build_class_feat_delta_lines() to strip
+    # exactly the old class's base feats the new class doesn't share, then
+    # grant exactly the new class's base feats the old class didn't
+    # already have -- see that function's docstring and GameMechanics.md
+    # for the full base-feat-per-class data this is computed from.
     34: ("pc_class_soldier", [
         'object oPC = GetFirstPC();',
+        'int nOldClass = GetClassByPosition(1, oPC);',
+        *build_class_feat_delta_lines("CLASS_TYPE_SOLDIER", "oPC"),
         'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SOLDIER);',
         'KSE_Diag(9, "AP|APPLIED|pc_class_soldier");',
     ]),
     35: ("pc_class_scout", [
         'object oPC = GetFirstPC();',
+        'int nOldClass = GetClassByPosition(1, oPC);',
+        *build_class_feat_delta_lines("CLASS_TYPE_SCOUT", "oPC"),
         'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SCOUT);',
         'KSE_Diag(9, "AP|APPLIED|pc_class_scout");',
     ]),
     36: ("pc_class_scoundrel", [
         'object oPC = GetFirstPC();',
+        'int nOldClass = GetClassByPosition(1, oPC);',
+        *build_class_feat_delta_lines("CLASS_TYPE_SCOUNDREL", "oPC"),
         'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SCOUNDREL);',
         'KSE_Diag(9, "AP|APPLIED|pc_class_scoundrel");',
     ]),
-    37: ("dump_statblock_carth", [
-        # TEMPORARY (2026-09-03): comparative Force Powers hotbar-bug
-        # research -- same technique as arm 33's dump_statblock, but
-        # targeting a specific companion by tag instead of GetFirstPC(),
-        # to diff a class-switched companion's stat block against a
-        # natural/untouched Jedi's. See FutureDesign.md's "master flag"
-        # theory entry. Retire (leave the gap) once this research concludes.
-        'object oCompanion = GetObjectByTag("Carth");',
-        'if (GetIsObjectValid(oCompanion))',
-        '{',
-        '    KSE_DumpStatBlock(oCompanion, 0, 112);',
-        '    KSE_Diag(111, "AP|APPLIED|dump_statblock_carth|offset=0|length=112");',
-        '}',
-    ]),
-    38: ("dump_statblock_juhani", [
-        # TEMPORARY (2026-09-03) -- see dump_statblock_carth above, same
-        # technique, targeting the natural/untouched Jedi comparison side.
-        'object oCompanion = GetObjectByTag("Juhani");',
-        'if (GetIsObjectValid(oCompanion))',
-        '{',
-        '    KSE_DumpStatBlock(oCompanion, 0, 112);',
-        '    KSE_Diag(111, "AP|APPLIED|dump_statblock_juhani|offset=0|length=112");',
-        '}',
-    ]),
-    39: ("carth_addmulticlass_hybrid_test", [
-        # TEMPORARY (2026-09-03): hybrid hotbar-bug test. Theory: the
-        # documented Force-Powers-hotbar bug was only ever confirmed via
-        # companions converted with a raw KSE_SetCreatureField CLASS0_TYPE
-        # overwrite (see companion_class), which bypasses ALL of the
-        # engine's own class-change housekeeping. The PC's own Jedi
-        # transition uses the real AddMultiClass() native instead (same
-        # one the vanilla Dantooine trial calls) and has never actually
-        # been confirmed to have this bug. AddMultiClass() adds a class in
-        # the SECOND slot (Class1, not Class0) but is known to leave it at
-        # level 0 with no natural way to level a companion up -- so this
-        # test calls the real native for proper engine registration, then
-        # patches ONLY the level via KSE_SetCreatureField on CLASS1_LEVEL
-        # (not CLASS0_LEVEL -- that's the PRIMARY slot, untouched here).
-        # If Carth's hotbar works after this, the fix for the companion_class
-        # arm (CompanionClass option) is "use AddMultiClass + patch Class1's
-        # level" instead of overwriting Class0 directly. Retire (leave the gap)
-        # once this research concludes.
-        #
-        # Uses CLASS_TYPE_CONSULAR, not Guardian -- Carth is already
-        # Guardian in Class0 from the earlier raw-write test, and adding
-        # the SAME class twice via AddMultiClass is untested/likely
-        # invalid. Consular in the Class1 slot gives a clean, independent
-        # signal regardless of whatever state Class0 is already in.
-        'object oCompanion = GetObjectByTag("Carth");',
-        'if (GetIsObjectValid(oCompanion))',
-        '{',
-        '    AddMultiClass(CLASS_TYPE_JEDICONSULAR, oCompanion);',
-        '    KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS1_LEVEL(), 1);',
-        '    KSE_Diag(9, "AP|APPLIED|carth_addmulticlass_hybrid_test");',
-        '}',
-    ]),
-    40: ("juhani_addmulticlass_scoundrel_test", [
-        # TEMPORARY (2026-09-03) -- same hybrid AddMultiClass + Class1
-        # level patch as arm 39, but testing the OTHER direction: does the
-        # same fix also work for granting a BASE class (feats, e.g.
-        # Scoundrel's Luck/Sneak Attack) rather than a Jedi class (powers)?
-        # Run against a clean, untouched Jedi Juhani (natural Consular in
-        # Class0, Class1 empty) -- confirmed clean via a reloaded save.
-        'object oCompanion = GetObjectByTag("Juhani");',
-        'if (GetIsObjectValid(oCompanion))',
-        '{',
-        '    AddMultiClass(CLASS_TYPE_SCOUNDREL, oCompanion);',
-        '    KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS1_LEVEL(), 1);',
-        '    KSE_Diag(9, "AP|APPLIED|juhani_addmulticlass_scoundrel_test");',
-        '}',
-    ]),
-    41: ("juhani_grant_critical_strike_test", [
-        # TEMPORARY (2026-09-03): tests whether a direct KSE_GrantFeatArrayA
-        # write (already proven for the 4 PASSIVE Jedi feats) also works
-        # for an ACTIVE, hotbar-relevant combat feat -- Critical Strike
-        # (feat id 8), a level-1 Scoundrel entitlement per
-        # force_powers_and_feats.json. The earlier Jedi-feat precedent
-        # never actually proved this mechanism works for anything
-        # hotbar-relevant, since all 4 of those are passive bonuses.
-        'object oCompanion = GetObjectByTag("Juhani");',
-        'if (GetIsObjectValid(oCompanion))',
-        '{',
-        '    KSE_GrantFeatArrayA(8, oCompanion);',
-        '    KSE_Diag(9, "AP|APPLIED|juhani_grant_critical_strike_test");',
-        '}',
-    ]),
-    42: ("test_credits_chain", [
-        # TEMPORARY (2026-09-03): confirms/disproves the "front half" of the
-        # credits derivation chain (KSE_OBJ_ROOT_RVA -> seed ->
-        # KSE_OBJ_TABLE_GET_RVA(seed) -> pRes -> [pRes+0xFC]) end-to-end,
-        # natively, without a live snapshot-diff -- see FutureDesign.md's
-        # "CONFIRMED: credits offset" entry and its NEXT SESSION checklist.
-        # Compares the derived value against a real GetGold() read in the
-        # same script pass, so the result is self-contained in one log
-        # line -- no separate log correlation needed. No target object --
-        # not per-creature. Not a shipped feature -- retire this arm (leave
-        # the gap) once confirmed either way.
+    # 37/38 (dump_statblock_carth/juhani), 39-41 (carth_addmulticlass_hybrid_test/
+    # juhani_addmulticlass_scoundrel_test/juhani_grant_critical_strike_test),
+    # 42 (test_credits_chain), 43 (grant_implant_3), 44 (test_set_max_hp),
+    # 45/46 (test_con_boost_effect/test_con_decrease_effect) ALL RETIRED
+    # 2026-09-06 -- every research question they existed to answer is now
+    # confirmed (results noted in each archived entry) and shipped as real
+    # offsets/natives (see offsets.h's KSE_OBJ_CURRENT_HP_OFF/
+    # KSE_FIELD_ADD_FORCE_POWER/KSE_FIELD_REMOVE_FORCE_POWER, kse_hook.cpp's
+    # KseGetCurrentHP/KseForcePowerOp). Archived verbatim at
+    # extender/research_archive/generate_trampoline_batch_temp_arms_2026-09-06.py.txt,
+    # same gap convention as 12/15/16/33 above -- IDs never reused.
+    # 47 (test_hp_fp_natives) and 48 (test_alignment_shift) RETIRED
+    # 2026-09-06 -- both LIVE-CONFIRMED working (see kse.log results
+    # archived below) the same night they were added. All four new
+    # KseGetCurrentHP/KSE_FIELD_CURRENT_HP/ADD_FORCE_POWER/
+    # REMOVE_FORCE_POWER capabilities, plus the standard AdjustAlignment()
+    # action, are now confirmed shipped and working. Archived verbatim
+    # (with the exact confirmed kse.log result lines) at
+    # extender/research_archive/test_hp_fp_alignment_arms_2026-09-06.py.txt,
+    # same gap-preserving convention as every other retired arm above --
+    # IDs never reused.
+    # 49 (test_add_100_hp) RETIRED 2026-09-06 -- confirmed the write
+    # succeeds and reads back correctly at the instant of the write
+    # (84->184), but current HP appears clamped back to Max HP once it
+    # exceeds it (no visible change on the character sheet afterward) --
+    # a sane engine invariant, not a bug, and not a real use case anyway.
+    # Archived at extender/research_archive/test_hp_fp_alignment_arms_2026-09-06.py.txt.
+    # 50 (test_lower_hp) RETIRED 2026-09-06 -- user-confirmed live: a
+    # within-max current-HP write persisted correctly on the character
+    # sheet past the instant of the write. Combined with arms 47/49, ALL
+    # current-HP native behavior relevant to real features is now
+    # confirmed. Archived at extender/research_archive/
+    # test_hp_fp_alignment_arms_2026-09-06.py.txt.
+    51: ("test_grant_active_feat", [
+        # TEMPORARY (2026-09-06): live verification of whether granting an
+        # ACTIVE/hotbar combat feat via KSE_GrantFeatArrayA (already
+        # proven for PASSIVE feats only -- the 4 mandatory Jedi feats) also
+        # makes it genuinely USABLE (hotbar-addable), not just present on
+        # the character sheet. Blocks the planned Feats [Add/Remove]
+        # equipment-access feature's "ability" pool, which includes real
+        # active feats (Critical Strike, Flurry, Rapid Shot, Power Attack,
+        # etc.) -- see GameMechanics.md. Grants Critical Strike (feat id
+        # 8, a level-1 Scoundrel entitlement) to the PC regardless of
+        # class, since the point is only whether the GRANT mechanism
+        # works for an active feat, not whether the PC would normally
+        # have it. User must check in-game (combat feats / hotbar screen)
+        # whether it shows up as a usable ability, not just log output.
         'object oPC = GetFirstPC();',
-        'int nDerived = KSE_TestCreditsChain();',
-        'int nReal = GetGold(oPC);',
-        'string sResult = "MISMATCH";',
-        'if (nDerived == nReal) sResult = "MATCH";',
-        'KSE_Diag(112, "AP|APPLIED|test_credits_chain|derived=" + IntToString(nDerived) + "|real=" + IntToString(nReal) + "|" + sResult);',
+        'int nHasBefore = GetHasFeat(8, oPC);',
+        'KSE_GrantFeatArrayA(8, oPC);',
+        'int nHasAfter = GetHasFeat(8, oPC);',
+        'KSE_Diag(121, "AP|APPLIED|test_grant_active_feat|hadBefore=" + IntToString(nHasBefore) + "|hasAfter=" + IntToString(nHasAfter));',
     ]),
 }
 
@@ -576,6 +657,14 @@ _COMPANION_NPC_CONST = {
     "mission": "NPC_MISSION",
     "zaalbar": "NPC_ZAALBAR",
 }
+
+# All 9 companions including the 2 droids -- _COMPANION_NPC_CONST above is
+# deliberately non-droid-scoped (Randomize_class never targets HK-47/T3-M4),
+# but the "Remove a Companion" trap has no such restriction (user's own
+# spec: "a companion the player has access to", no exclusion), so it needs
+# its own full map. NPC_HK_47/NPC_T3_M4 confirmed via
+# generate_companion_suppressors.py's own suppression table.
+_COMPANION_NPC_CONST_ALL = {**_COMPANION_NPC_CONST, "hk47": "NPC_HK_47", "t3m4": "NPC_T3_M4"}
 
 
 def build_companion_class_block(name, class_name):
@@ -695,12 +784,43 @@ def build_companion_class_block(name, class_name):
     interaction. Feat grants/removals and the lightsaber/robe equip-swap
     run unconditionally either way -- redundant-but-harmless if
     AddMultiClass's own housekeeping already granted them (K1SE's adder is
-    the same one real level-up uses, confirmed safe to re-fire)."""
+    the same one real level-up uses, confirmed safe to re-fire).
+
+    2026-09-07 fix: the base-class-target branch used to ONLY strip the 4
+    universal Jedi feats, unconditionally, regardless of what the
+    companion's class actually was -- confirmed a real gap via
+    GameMechanics.md's base-feat-per-class data: a base-to-base switch
+    (e.g. Soldier -> Scout) never granted/stripped anything at all (keeps
+    Power Attack/Heavy Weapons forever, never gains Flurry/Rapid Shot), and
+    a Jedi-to-base switch never stripped that Jedi's own unique power feat
+    (Force Jump/Focus/Immunity Fear). Now reads the companion's real
+    CURRENT class live (GetClassByPosition, 1-based) before either branch
+    touches anything, and the base-class-target branch uses the same
+    build_class_feat_delta_lines() helper the PC's own pc_class_soldier/
+    scout/scoundrel arms use -- strips exactly the old class's base feats
+    the new class doesn't share, grants exactly the new class's base feats
+    the old class didn't already have. Same session, also added each Jedi
+    class's own unique power feat (Force Jump=101/Force Focus=88/Force
+    Immunity: Fear=98) to the Jedi-target grant list below, via the same
+    proven DelayCommand pattern -- previously only the 4 UNIVERSAL Jedi
+    feats were granted, never the class-specific one.
+
+    KNOWN REMAINING GAP, deliberately not closed this pass: granting a
+    Jedi class does NOT strip the companion's OLD non-shared feats (e.g. a
+    Soldier who becomes a Guardian keeps Armor Prof Heavy/Power Attack
+    forever), and an already-Jedi companion rolling a DIFFERENT Jedi class
+    keeps their old unique power feat alongside the new one (e.g. Force
+    Jump AND Force Focus both present) -- the base-class-target branch got
+    the full delta treatment because that was the explicit ask; the
+    Jedi-target branch only got the missing grant added, not a symmetric
+    strip. Revisit if this asymmetry turns out to matter in practice."""
     tag = _COMPANION_TAGS[name]
     npc_const = _COMPANION_NPC_CONST[name]
     class_const = _CLASS_NAME_TO_CONST[class_name]
     is_jedi = class_name in ("guardian", "consular", "sentinel")
     _JEDI_FEATS = (55, 43, 116, 107)  # Jedi Defense, Lightsaber Proficiency, Force Sensitivity, Jedi Sense
+    _JEDI_UNIQUE_POWER_FEAT = {"guardian": 101, "consular": 88, "sentinel": 98}  # Force Jump/Focus/Immunity:Fear
+    old_class_read_lines = ["    int nOldClass = GetClassByPosition(1, oCompanion);"]
     if is_jedi:
         # 2026-09-03 fix, found live testing Canderous: granting these
         # immediately after AddMultiClass() in the same script pass lost
@@ -721,16 +841,16 @@ def build_companion_class_block(name, class_name):
         # test), got all 4 feats via this delayed path -- Jedi Sense and
         # Force Sensitivity both landed this time. The old
         # (non-AddMultiClass) removal path below has no such race, so it
-        # stays immediate/unchanged.
+        # stays immediate/unchanged. The class-specific unique power feat
+        # (added 2026-09-07) rides the same delayed grant, untested on its
+        # own but no reason to expect it behaves differently from the
+        # other 4 -- same host, same timing.
         feat_lines = [
             f"    DelayCommand(1.0, KSE_GrantFeatArrayA({feat}, oCompanion));"
-            for feat in _JEDI_FEATS
+            for feat in (*_JEDI_FEATS, _JEDI_UNIQUE_POWER_FEAT[class_name])
         ]
     else:
-        feat_lines = [
-            f"    KSE_RemoveFeatArrayA({feat}, oCompanion);"
-            for feat in _JEDI_FEATS
-        ]
+        feat_lines = build_class_feat_delta_lines(class_const, "oCompanion", old_class_var="nOldClass", delay_grants=False)
     _LIGHTSABER_CHECK = (
         "nBase{n} == BASE_ITEM_LIGHTSABER || nBase{n} == BASE_ITEM_SHORT_LIGHTSABER"
         " || nBase{n} == BASE_ITEM_DOUBLE_BLADED_LIGHTSABER"
@@ -807,20 +927,313 @@ def build_companion_class_block(name, class_name):
             "    }",
         ]
     else:
-        # Target is a base class -- always the old path, unchanged
-        # regardless of the companion's current class (confirmed not
-        # broken for Jedi-to-base; see this function's docstring).
+        # Target is a base class -- the WRITE mechanism itself is always
+        # this same raw field overwrite, unchanged regardless of the
+        # companion's current class (confirmed not broken for
+        # Jedi-to-base; see this function's docstring). What DOES depend
+        # on the current class now is feat_lines above, computed from
+        # nOldClass (read below, before this write happens).
         class_lines = [line[4:] for line in _OLD_PATH]  # de-indent by one level, no runtime branch needed
     return [
         f'object oCompanion = GetObjectByTag("{tag}");',
         f"if (IsNPCPartyMember({npc_const}) && GetIsObjectValid(oCompanion))",
         "{",
+        *old_class_read_lines,
         *class_lines,
         *feat_lines,
         *unequip_lines,
         f'    KSE_Diag(109, "AP|APPLIED|companion_class|name={name}|class={class_name}");',
         "}",
     ]
+
+
+def build_additional_feats_block(name, feat_ids):
+    """AdditionalFeats action (Options.py, 2026-09-07) -- grants exactly
+    3 feats (feat_ids, already chosen client-side, see KotorClient.py's
+    _check_pending_additional_feats/ADDITIONAL_FEATS_POOL) to either the
+    PC (name == "pc") or a named companion, resolved by their real object
+    tag (see _COMPANION_TAGS) the same way build_companion_class_block
+    does -- an item-triggered action, not tied to recruit timing, so it
+    needs to find the companion wherever they currently are. Companion
+    targets get the same IsNPCPartyMember guard build_companion_class_block
+    uses, for the same reason (a tagged object can exist and resolve as
+    valid before/after they're actually a real party member).
+
+    Every grant is guarded with a live GetHasFeat check -- belt and
+    suspenders against the rare case where a character's real feat state
+    already has something from this pool that KotorClient.py's own
+    bookkeeping didn't account for (an incidental vanilla template pick,
+    or an overlap with a class-change action's own grants). See
+    GameMechanics.md for the pool's derivation.
+
+    No target-not-found retry logic needed beyond the existing "no Diag
+    emitted -> pending-queue retry fires this again next transition"
+    pattern every other item-triggered action already relies on (see
+    build_companion_class_block's own docstring) -- KotorClient.py's
+    recruited/class-finalized gating already means this only ever fires
+    once the target is known to exist, but the guard costs nothing."""
+    if name == "pc":
+        resolve_lines = ["object oTarget = GetFirstPC();"]
+        guard = "GetIsObjectValid(oTarget)"
+    else:
+        tag = _COMPANION_TAGS[name]
+        npc_const = _COMPANION_NPC_CONST[name]
+        resolve_lines = [f'object oTarget = GetObjectByTag("{tag}");']
+        guard = f"IsNPCPartyMember({npc_const}) && GetIsObjectValid(oTarget)"
+
+    # 2026-09-08 fix #1: the confirmation used to just echo back feat_ids
+    # verbatim ("feats=28,29,31"), which only proves the script ran to
+    # completion -- NOT that each KSE_GrantFeatArrayA write actually took.
+    # Confirmed live: Mission's additional_feats grant reported
+    # feats=28,29,31 as APPLIED, but she came out with 28 and 31 while 29
+    # (Power Blast) silently never landed. Now reports each feat's
+    # "before" state (GetHasFeat right before the attempt).
+    #
+    # 2026-09-08 fix #2, root cause found via this same diagnostic on a
+    # SECOND attempt: with the fix #1 diagnostic in place, a retry showed
+    # ALL 3 requested feats at before=0/after=0 -- a complete, 100% write
+    # failure for a companion target. This is the EXACT symptom already
+    # solved once in build_companion_class_block's 2026-09-03 fix note:
+    # granting feats to a companion immediately after AddMultiClass/class-
+    # settling races the engine's own asynchronous feat-list rebuild,
+    # which silently overwrites/discards the immediate grant. That fix's
+    # proven remedy -- DelayCommand(1.0, KSE_GrantFeatArrayA(...)) instead
+    # of an immediate call -- is applied here too, but ONLY for companion
+    # targets (name != "pc"); the PC path has never shown this symptom
+    # (additional_feats:pc's own live test only ever hit the SEPARATE
+    # already-known-feat no-op case, never a genuine failed write), so it
+    # stays immediate rather than adding an unproven delay with no
+    # evidence it's needed.
+    #
+    # Delaying the grant means an immediate post-grant GetHasFeat read
+    # would always show the PRE-delay state (NWScript evaluates
+    # DelayCommand's argument expression immediately, only the outermost
+    # action itself is deferred -- there is no cheap way to read the true
+    # post-delay state from this same script without a custom helper
+    # function, which build_notify_chain's own docstring already
+    # documents as a fragile path in this codegen, given NWScript's
+    # forward-declaration-order requirement). So for companions this now
+    # honestly reports "before" + "delayed=1" instead of a fabricated
+    # same-tick "after" that would always read wrong. Real confirmation
+    # is a live in-game feat-sheet check a few seconds later, same as
+    # build_companion_class_block's own verification story.
+    # 2026-09-08 fix #3: fix #2's DelayCommand wrap didn't help either --
+    # confirmed live on Bastila, who NEVER goes through AddMultiClass at
+    # all under jedi_companion mode (trivially class-finalized, no roll
+    # ever happens for her) -- her grant still failed the same way. That
+    # rules out the AddMultiClass-settling race entirely; whatever's
+    # actually wrong is unrelated to timing. The one remaining concrete
+    # difference from build_companion_class_block's PROVEN-working Jedi-
+    # feat grant (Canderous, confirmed live, all 4 feats landed) is that
+    # proven path grants UNCONDITIONALLY -- no GetHasFeat guard at all --
+    # while this one guards each grant with `if (!GetHasFeat(...))`
+    # first. Matching the proven pattern exactly: companion grants are now
+    # unconditional (still harmless if already known, same reasoning
+    # build_companion_class_block's own docstring gives for its redundant-
+    # but-harmless re-grants) and drop the guard. This is a hypothesis
+    # test, not a confirmed fix -- needs a live re-check, same as the
+    # last two attempts.
+    grant_lines = []
+    report_parts = []
+    delay_grants = name != "pc"
+    for i, feat in enumerate(feat_ids):
+        grant_lines.append(f"    int nHadFeat{i} = GetHasFeat({feat}, oTarget);")
+        if delay_grants:
+            grant_lines.append(f"    DelayCommand(1.0, KSE_GrantFeatArrayA({feat}, oTarget));")
+            report_parts.append(f'"{feat}:before=" + IntToString(nHadFeat{i}) + ":delayed=1"')
+        else:
+            grant_lines += [
+                f"    if (!nHadFeat{i})",
+                "    {",
+                f"        KSE_GrantFeatArrayA({feat}, oTarget);",
+                "    }",
+                f"    int nHasFeat{i} = GetHasFeat({feat}, oTarget);",
+            ]
+            report_parts.append(
+                f'"{feat}:" + IntToString(nHadFeat{i}) + "->" + IntToString(nHasFeat{i})'
+            )
+
+    feats_report_expr = ' + "," + '.join(report_parts)
+    return [
+        *resolve_lines,
+        f"if ({guard})",
+        "{",
+        *grant_lines,
+        f'    KSE_Diag(122, "AP|APPLIED|additional_feats|name={name}|feats=" + {feats_report_expr});',
+        "}",
+    ]
+
+
+def build_trap_block(trap_type, params_str):
+    """Traps action (Options.py's EnableTraps, 2026-09-08) -- ONE
+    consolidated wire action ("trap:<trap_type>:<params_str>", see
+    KotorClient.py's _deliver_item interception and
+    kotor_extender_bridge.py's send_trap) covering all 12 trap items,
+    mirroring additional_feats' shape: the item itself
+    (arm_name="trap:<trap_type>", Items.py's TRAP_ITEMS) is just a
+    marker, and every real specific (which feat/power ids, which
+    companion, how much to reduce a stat by, the new level/XP) is
+    computed client-side from the character's actual live state at the
+    moment of delivery, then passed in here pre-encoded as params_str.
+    PC-only for every trap except remove_companion (which targets
+    whichever companion params_str names, never the PC).
+
+    Every branch below reuses an ALREADY-PROVEN native -- see
+    FutureDesign.md's Traps research entry for exactly which:
+    KSE_SetCredits (credits), KSE_SetCreatureField's CLASS0_LEVEL/
+    CLASS1_LEVEL fields + SetXP (level), KSE_RemoveFeatArrayA (feats),
+    KSE_SetCreatureField's REMOVE_FORCE_POWER field (force powers),
+    EffectAbilityDecrease (Max HP via Constitution, and the 5 standalone
+    ability traps), RemoveAvailableNPC (companion removal, confirmed live
+    to eject an ACTIVE party member, not just mark unavailable), and the
+    existing GetFirstItemInInventory/GetNextItemInInventory/DestroyObject
+    walk (inventory removal, same pattern as ap_remove_test_item.nss).
+    No new native code needed for any of the 12.
+
+    "remove_credits" is deliberately NOT one of the cases below --
+    KotorClient.py calls the ALREADY-EXISTING set_credits action
+    directly for that one (see build_set_credits_block), since it's
+    already an exact byte-for-byte match for what this trap needs.
+    """
+    lines = ["object oPC = GetFirstPC();"]
+
+    if trap_type == "reduce_skill":
+        # Retired cut_level's replacement (2026-09-08) -- cut_level's
+        # SetXP(oPC, new_xp) call silently no-op'd once the character had
+        # already banked XP past the current level's threshold (confirmed
+        # live: level field dropped, XP didn't), leaving level and XP
+        # inconsistent with no reliable fix. EffectSkillDecrease is a
+        # plain vanilla effect with no such threshold -- same pattern
+        # already proven live for the 5 ability traps below.
+        # params_str = "<skill_key>:<decrease_amount>"
+        skill_key, amount = params_str.split(":")
+        skill_const = {
+            "computeruse": "SKILL_COMPUTER_USE", "demolitions": "SKILL_DEMOLITIONS",
+            "stealth": "SKILL_STEALTH", "awareness": "SKILL_AWARENESS",
+            "persuade": "SKILL_PERSUADE", "repair": "SKILL_REPAIR",
+            "security": "SKILL_SECURITY", "treatinjury": "SKILL_TREAT_INJURY",
+        }[skill_key]
+        lines += [
+            f"int nBefore = GetSkillRank({skill_const}, oPC);",
+            f"ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectSkillDecrease({skill_const}, {amount}), oPC);",
+            f"int nAfter = GetSkillRank({skill_const}, oPC);",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill={skill_key}|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+        ]
+
+    elif trap_type == "remove_half_feats":
+        # params_str = "<id1>,<id2>,..." -- already exactly half (or the
+        # whole set minus one), rounded/picked client-side; guarded with
+        # a live GetHasFeat check the same defensive way
+        # build_additional_feats_block's own grants are guarded.
+        ids = [i for i in params_str.split(",") if i]
+        for feat_id in ids:
+            lines += [
+                f"if (GetHasFeat({feat_id}, oPC))",
+                "{",
+                f"    KSE_RemoveFeatArrayA({feat_id}, oPC);",
+                "}",
+            ]
+        lines.append(f'KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_feats|ids={params_str}");')
+
+    elif trap_type == "remove_half_powers":
+        # params_str = "<id1>,<id2>,..." -- spells.2da row ids, same
+        # KSE_FIELD_REMOVE_FORCE_POWER() field write confirmed live in
+        # this project's own retired research arm 47 (add/remove/
+        # remove-again on FORCE_POWER_CURE, all three passed first try).
+        ids = [i for i in params_str.split(",") if i]
+        for power_id in ids:
+            lines += [
+                f"if (GetHasSpell({power_id}, oPC))",
+                "{",
+                f"    KSE_SetCreatureField(oPC, KSE_FIELD_REMOVE_FORCE_POWER(), {power_id});",
+                "}",
+            ]
+        lines.append(f'KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_powers|ids={params_str}");')
+
+    elif trap_type == "cut_max_hp":
+        # params_str = "<con_decrease_amount>" -- already computed
+        # client-side to get as close to half Max HP as this character's
+        # build allows (fixed hit-die term can't be reduced via CON
+        # alone, see FutureDesign.md/Options.py's EnableTraps docstring).
+        # Same EffectAbilityDecrease call confirmed live 2026-09-06 to
+        # correctly recompute Max HP downward, formula-exact.
+        amount = params_str
+        lines += [
+            "int nMaxBefore = GetMaxHitPoints(oPC);",
+            f"ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityDecrease(ABILITY_CONSTITUTION, {amount}), oPC);",
+            "int nMaxAfter = GetMaxHitPoints(oPC);",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=cut_max_hp|maxbefore=" + IntToString(nMaxBefore) + "|maxafter=" + IntToString(nMaxAfter));',
+        ]
+
+    elif trap_type == "remove_companion":
+        # params_str = "<companion_key>" -- one of the 9 real keys (see
+        # _COMPANION_NPC_CONST_ALL), a random currently-recruited one
+        # chosen client-side (KotorClient.py's own _recruited_companions
+        # tracking). RemoveAvailableNPC confirmed live (see
+        # generate_companion_suppressors.py) to eject an ACTIVE party
+        # member outright, not just mark them unavailable -- exactly the
+        # trap behavior wanted, no extra RemovePartyMember call needed.
+        name = params_str
+        npc_const = _COMPANION_NPC_CONST_ALL[name]
+        lines = [  # no oPC needed for this one -- overwrite the default line
+            f"RemoveAvailableNPC({npc_const});",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name={name}");',
+        ]
+
+    elif trap_type == "remove_half_inventory":
+        # params_str = "<tag1>,<tag2>,..." -- backpack-only (equipped
+        # slots never eligible, quest_dependent items never eligible --
+        # both filtered client-side before this fires), already chosen as
+        # half the real backpack contents. One independent walk per tag
+        # (simpler to generate correctly than a single-pass multi-tag
+        # walker, and this only ever fires once per trap): same
+        # find-then-destroy-then-stop pattern as ap_remove_test_item.nss,
+        # deliberately not advancing the iterator once a match is found
+        # (avoids mutating the list mid-walk).
+        tags = [t for t in params_str.split(",") if t]
+        for tag in tags:
+            lines += [
+                "{",
+                "    object oItem = GetFirstItemInInventory(oPC);",
+                "    while (GetIsObjectValid(oItem))",
+                "    {",
+                f'        if (GetTag(oItem) == "{tag}")',
+                "        {",
+                "            DestroyObject(oItem);",
+                "            oItem = OBJECT_INVALID;",
+                "        }",
+                "        else",
+                "        {",
+                "            oItem = GetNextItemInInventory(oPC);",
+                "        }",
+                "    }",
+                "}",
+            ]
+        lines.append(f'KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_inventory|tags={params_str}");')
+
+    elif trap_type in ("reduce_str", "reduce_dex", "reduce_int", "reduce_wis", "reduce_cha"):
+        # params_str = "<decrease_amount>" -- current score minus half,
+        # computed client-side from the already-tracked ABILITYREPORT.
+        # Same EffectAbilityDecrease call as cut_max_hp above, just a
+        # different ability constant -- CON deliberately has no
+        # standalone case here (Cut Max Health in Half already uses it).
+        ability_const = {
+            "reduce_str": "ABILITY_STRENGTH", "reduce_dex": "ABILITY_DEXTERITY",
+            "reduce_int": "ABILITY_INTELLIGENCE", "reduce_wis": "ABILITY_WISDOM",
+            "reduce_cha": "ABILITY_CHARISMA",
+        }[trap_type]
+        amount = params_str
+        lines += [
+            f"int nBefore = GetAbilityScore(oPC, {ability_const});",
+            f"ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityDecrease({ability_const}, {amount}), oPC);",
+            f"int nAfter = GetAbilityScore(oPC, {ability_const});",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type={trap_type}|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+        ]
+
+    else:
+        raise ValueError(f"unknown trap_type: {trap_type}")
+
+    return lines
 
 
 def _nwscript_string_escape(text):
@@ -912,12 +1325,20 @@ def build_notify_chain(texts):
 # Archipelago/worlds/kotor/__init__.py's PLANET_MODULE_PREFIXES (that file
 # and this one are separate packages -- the apworld vs. dev tooling -- not
 # worth a cross-package import for 5 entries that rarely change).
+# 2026-09-08 FIX: "tat_m": "tatooine" was missing entirely -- see the
+# matching fix + full explanation in Archipelago/worlds/kotor/__init__.py's
+# PLANET_MODULE_PREFIXES (this dict's real source-of-truth counterpart).
+# Without it, _planet_for_module() returned None for every Tatooine
+# module, so shop_stock_by_planet.get(None, []) always resolved to an
+# empty catalog -- Tatooine's 2 real stores (tat_m17ab/tat_m17ad) never
+# got restocked with anything.
 _PLANET_PREFIXES = {
     "tar_m": "taris",
     "danm": "dantooine",
     "kas_m": "kashyyyk",
     "manm": "manaan",
     "korr_m": "korriban",
+    "tat_m": "tatooine",
 }
 
 
@@ -993,6 +1414,14 @@ def build_batch_block(batch_items):
                 name, class_name = item["name"], item["class_name"]
                 label, body = "companion_class", build_companion_class_block(name, class_name)
                 lines.append(f"        // companion_class={name}:{class_name}")
+            elif action == "additional_feats":
+                name, feat_ids = item["name"], item["feat_ids"]
+                label, body = "additional_feats", build_additional_feats_block(name, feat_ids)
+                lines.append(f"        // additional_feats={name}:{feat_ids}")
+            elif action == "trap":
+                trap_type, params = item["trap_type"], item["params"]
+                label, body = "trap", build_trap_block(trap_type, params)
+                lines.append(f"        // trap={trap_type}:{params}")
             elif action == "notify":
                 notify_texts.append(item["text"])
                 continue  # handled once, together, after this loop -- not inlined per-item
@@ -1050,6 +1479,16 @@ def main():
         elif a.startswith("companion_class:"):
             _, name, class_name = a.split(":", 2)
             batch_items.append({"action": "companion_class", "name": name, "class_name": class_name})
+        elif a.startswith("additional_feats:"):
+            _, name, feats_csv = a.split(":", 2)
+            batch_items.append({"action": "additional_feats", "name": name, "feat_ids": [int(f) for f in feats_csv.split(",")]})
+        elif a.startswith("trap:"):
+            # trap:<trap_type>:<params> -- params' own internal shape
+            # (comma-list, colon-pair, bare int, companion key) varies by
+            # trap_type, so it's passed through as a raw string and only
+            # build_trap_block() knows how to parse it further.
+            _, trap_type, params = a.split(":", 2)
+            batch_items.append({"action": "trap", "trap_type": trap_type, "params": params})
         elif a.startswith("notify:"):
             # Sliced, not split(":", 1) -- the text itself can legitimately
             # contain colons (e.g. "Received: X (from Y's Z)"), and slicing

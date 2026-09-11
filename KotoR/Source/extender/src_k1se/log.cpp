@@ -4,15 +4,22 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <share.h>   // _wfsopen, _SH_DENYNO -- see g_logFile's open sites below
 
 // -----------------------------------------------------------------------------
 // The log lives OUTSIDE the game directory: writing under Program Files risks
 // permission failures, so we use %LOCALAPPDATA%\KSE\kse.log, falling back to
 // %TEMP% then the current directory.
 //
-// Each line is opened, written, flushed and closed. That is slower than holding
-// the handle open, but it means the log survives a hard crash of the game -- the
-// exact situation where we most need to see how far we got.
+// ONE HANDLE, HELD OPEN FOR THE WHOLE SESSION (changed 2026-09-10 -- see the
+// dated note below the rotation block for what this replaces and why).
+// fflush() after every line is what gives crash-survival: it pushes each line
+// out of the CRT's own buffer into the OS's file cache before the next line is
+// written, which is what a reader needs after the GAME process dies. The OS
+// keeps that data regardless of our handle's state, so nothing here needs the
+// handle to be closed for the data to be durable -- only for the OS's own page
+// cache to itself survive, i.e. no worse than the previous design, and for a
+// vastly more common failure mode (the game process crashing) fully covered.
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
@@ -43,13 +50,53 @@
 // concurrently, which would make the counter under-count further. See the
 // concurrent-writer note on LogRotateNow.
 //
-// WHY THE SLOW WRITE PATH SURVIVES THIS UNCHANGED: open and close per line is what
-// puts every line on disk before the next executes, and that is the only reason a
-// log is readable after the process dies. Making the always-on path cheap would
-// make crash logs lossy, which is a trade and not an optimisation. Rotation adds no
-// syscalls to it, so nothing here erodes that.
+// 2026-09-10: THE OPEN-WRITE-CLOSE-PER-LINE PATH WAS REPLACED, NOT KEPT.
+//
+// Found via a real tester's bug report and confirmed against their own kse.log
+// timestamps (see the project history, not repeated here): the always-on
+// heartbeat/poll cadence should be a steady ~5s, and 62 of 331 ticks in that
+// one session ran over 6s late, several over 30s, the worst over two minutes --
+// with NO area transition and NO orchestrator subprocess anywhere near the
+// worst offenders, ruling out both a loading screen and Python startup as the
+// cause. That leaves this file: fopen+fclose is a full CreateFile+CloseHandle
+// pair, EVERY line, and a game process doing that at a steady rate through a
+// live NWScript dispatcher hook is exactly the pattern real-time antivirus
+// scanning tends to intercept -- and since Log() runs synchronously ON THE
+// GAME'S OWN THREAD (it is called directly from the dispatcher hook, not a
+// background thread), any stall in that one file operation freezes the whole
+// game, including player input, for as long as it takes. That is a materially
+// worse cost than the crash-log durability this design was trading for, and it
+// was paid on EVERY line, not just ones near a crash.
+//
+// The fix keeps the SAME guarantee (every line reaches the OS before the next
+// one is written) via fflush() on a handle held open for the session, instead
+// of a full close+reopen. Durability is unchanged; the repeated CreateFile/
+// CloseHandle pair -- the actual interception surface -- is gone. Rotation
+// still needs the handle explicitly closed before MoveFileExW and reopened
+// after (a move against an open handle without FILE_SHARE_DELETE can fail);
+// see LogRotateNow.
 // -----------------------------------------------------------------------------
 static const long long KSE_LOG_CAP_BYTES = 8LL * 1024 * 1024;
+
+// FOUND LIVE, SAME DAY AS THE FIX THAT NEEDED THIS: plain _wfopen_s(path, L"a")
+// does NOT share the way the old per-line open+close pattern did. Holding that
+// handle open for the whole session locked kse.log so tightly that not even a
+// separate process (a plain `tail` from outside the game) could read it -- and,
+// far more seriously, almost certainly blocked the extender's OWN log-tailer
+// thread from reading the very lines Log()/LogDiag() had just written, which is
+// what actually relays AP|... events to the Python client. First symptom
+// reported: "no heartbeat" -- not because the heartbeat script stopped running,
+// but because nothing could read the file that would prove it was.
+//
+// _wfsopen with _SH_DENYNO requests the same full sharing (read AND write, from
+// other handles AND other processes) that LogRaw's own CreateFileW call already
+// asks for explicitly via FILE_SHARE_READ|FILE_SHARE_WRITE -- this just gets
+// the CRT-level equivalent for the handle Log()/LogDiag() hold open all session,
+// instead of leaving the OS to pick a default that turned out to be exclusive.
+static FILE* OpenLogFileShared(const wchar_t* path)
+{
+    return _wfsopen(path, L"a", _SH_DENYNO);
+}
 
 static CRITICAL_SECTION g_logLock;
 static bool g_logReady = false;
@@ -57,6 +104,8 @@ static wchar_t g_logPath[MAX_PATH];
 static wchar_t g_logPathOld[MAX_PATH];      // kse.log.1 -- the single kept backup
 static long long g_logBytes = 0;            // in-memory; see "COST OF THE CHECK"
 static bool g_logRotating = false;          // reentrancy guard: rotation logs
+static FILE* g_logFile = nullptr;           // held open for the session -- see the
+                                             // 2026-09-10 note above LogCheckRotate
 
 // Which PART of this session the current file holds. Only ONE backup is kept, so a
 // session that rotates TWICE discards its own part 1 -- and without a part number
@@ -116,6 +165,17 @@ static long long LogFileSize(const wchar_t* path)
 // hardening against a case that has never been observed.
 static void LogRotateNow()
 {
+    // The handle MUST be closed before the move: a rename/move against a file
+    // with an open handle that lacks FILE_SHARE_DELETE can fail with a sharing
+    // violation, and fopen's default sharing does not grant delete-sharing.
+    // Closing first is also what flushes any CRT-internal buffering, though in
+    // practice fflush() after every Log()/LogDiag() call already means there is
+    // nothing buffered here to lose.
+    if (g_logFile) {
+        fclose(g_logFile);
+        g_logFile = nullptr;
+    }
+
     // Whether or not the move succeeds, the counter is reset. A failure is almost
     // certainly a file lock, and retrying a failed MoveFile on EVERY line would put
     // a syscall back on the hot path this design exists to keep clear. Growing past
@@ -123,6 +183,11 @@ static void LogRotateNow()
     MoveFileExW(g_logPath, g_logPathOld, MOVEFILE_REPLACE_EXISTING);
     g_logBytes = 0;
     ++g_logPart;
+
+    // Reopen against g_logPath -- MoveFileExW just vacated it (or, on a failed
+    // move, this reopens the still-oversized file and appends to it, which is
+    // the same "growing past the cap is the better failure" trade as above).
+    g_logFile = OpenLogFileShared(g_logPath);
 }
 
 void LogInit()
@@ -143,6 +208,15 @@ void LogInit()
     _snwprintf_s(g_logPath, _countof(g_logPath), _TRUNCATE, L"%s\\kse.log", dir);
     _snwprintf_s(g_logPathOld, _countof(g_logPathOld), _TRUNCATE, L"%s\\kse.log.1", dir);
     g_logReady = true;
+
+    // Opened ONCE here and held for the rest of the process's life (see the
+    // 2026-09-10 note above LogCheckRotate for why this replaced a per-line
+    // open+close). If the byte counter below triggers a startup rotation,
+    // LogRotateNow() closes this same handle, moves the file, and reopens it --
+    // safe to open first because that path already handles an already-open
+    // handle correctly. OpenLogFileShared, not a bare _wfopen_s -- see that
+    // helper's own comment for why (a real live regression, found 2026-09-11).
+    g_logFile = OpenLogFileShared(g_logPath);
 
     SYSTEMTIME st0;
     GetLocalTime(&st0);
@@ -182,19 +256,23 @@ void Log(const char* fmt, ...)
     GetLocalTime(&st);
 
     EnterCriticalSection(&g_logLock);
-    FILE* f = nullptr;
-    if (_wfopen_s(&f, g_logPath, L"a") == 0 && f) {
+    if (g_logFile) {
         // n accumulates the RETURN VALUES of the formatting calls. This is the whole
         // cost of size tracking: no ftell, no GetFileSize, no syscall of any kind.
-        int n = fprintf(f, "[%04d-%02d-%02d %02d:%02d:%02d.%03d] ",
+        int n = fprintf(g_logFile, "[%04d-%02d-%02d %02d:%02d:%02d.%03d] ",
                         st.wYear, st.wMonth, st.wDay,
                         st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
         va_list ap;
         va_start(ap, fmt);
-        int m = vfprintf(f, fmt, ap);
+        int m = vfprintf(g_logFile, fmt, ap);
         va_end(ap);
-        fputc('\n', f);
-        fclose(f);
+        fputc('\n', g_logFile);
+        // fflush(), not fclose()+reopen: this is the whole fix. It pushes the line
+        // to the OS before the next one is written -- the same durability the old
+        // close-per-line design gave -- without the repeated CreateFile/CloseHandle
+        // pair that turned out to be the actual freeze risk. See the 2026-09-10
+        // note above LogCheckRotate.
+        fflush(g_logFile);
 
         if (n > 0) g_logBytes += n;
         if (m > 0) g_logBytes += m;
@@ -312,17 +390,16 @@ void LogDiag(const char* fmt, ...)
     GetLocalTime(&st);
 
     EnterCriticalSection(&g_logLock);
-    FILE* f = nullptr;
-    if (_wfopen_s(&f, g_logPath, L"a") == 0 && f) {
-        int n = fprintf(f, "[%04d-%02d-%02d %02d:%02d:%02d.%03d] ",
+    if (g_logFile) {
+        int n = fprintf(g_logFile, "[%04d-%02d-%02d %02d:%02d:%02d.%03d] ",
                         st.wYear, st.wMonth, st.wDay,
                         st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
         va_list ap;
         va_start(ap, fmt);
-        int m = vfprintf(f, fmt, ap);
+        int m = vfprintf(g_logFile, fmt, ap);
         va_end(ap);
-        fputc('\n', f);
-        fclose(f);
+        fputc('\n', g_logFile);
+        fflush(g_logFile);   // see the matching comment in Log() above
         if (n > 0) g_logBytes += n;
         if (m > 0) g_logBytes += m;
         g_logBytes += 1;
@@ -434,6 +511,28 @@ void LogTesterBlock(KseLoadState state, const char* detail)
             g_logPart > 1 ? g_logPart - 1 : 1);
     }
     Log("=====================");
+}
+
+// -----------------------------------------------------------------------------
+// LogShutdown -- closes the session-long handle before LogRaw writes the final
+// [shutdown] marker through its own, separate handle.
+//
+// Deliberately does NOT take g_logLock, same reasoning as LogRaw immediately
+// below: by DLL_PROCESS_DETACH, Windows has already terminated every other
+// thread, so nothing can be concurrently inside Log()/LogDiag() to race with
+// this close -- but a thread killed WHILE holding the lock would never release
+// it, and EnterCriticalSection here would hang forever, turning a clean exit
+// into the exact hang this teardown path exists to avoid. Not strictly required
+// for data safety (every line is already fflush()'d as it's written -- this is
+// about releasing the handle cleanly, not about not losing anything), but cheap
+// and correct to do anyway.
+// -----------------------------------------------------------------------------
+void LogShutdown()
+{
+    if (g_logFile) {
+        fclose(g_logFile);
+        g_logFile = nullptr;
+    }
 }
 
 // -----------------------------------------------------------------------------

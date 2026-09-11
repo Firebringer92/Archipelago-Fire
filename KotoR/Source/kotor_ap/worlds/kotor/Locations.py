@@ -285,3 +285,33 @@ location_table: typing.Dict[str, LocationData] = {
 
 location_name_to_id: typing.Dict[str, int] = {name: data.id for name, data in location_table.items()}
 lookup_id_to_name: typing.Dict[int, str] = {data.id: name for name, data in location_table.items()}
+
+# Companion personal-subplot locations (2026-09-10) -- each "Ebon Hawk: ..."
+# entry below is real vanilla content gated on a SPECIFIC companion being
+# an active party member when it triggers (5 confirmed directly via a
+# game-wide NCS disassembly scan for IsNPCPartyMember/IsAvailableCreature
+# calls co-occurring with a journal advance; the plain "Ebon Hawk:
+# <Companion>" generic-banter entries included defensively -- same category
+# of risk even unconfirmed, since some companion-talk scripts live in the
+# game's core chitin.key BIFs rather than any module .rim this scan
+# covered). Single source of truth for two consumers: Rules.py's
+# companion_mode=ap_gated self-referential access-rule guard (a
+# companion's own item can't be circularly placed at their own gated
+# check), and __init__.py's _active_locations() companion_mode=none
+# filter (these are location_type="journal", not "companion", so they
+# weren't caught by that filter's original "companion" type check even
+# though companions never joining at all makes them just as permanently
+# uncompletable as the 9 real "Companion Recruited: ..." locations are).
+# Keyed by location name -> the AP item name for the companion it needs.
+COMPANION_SUBPLOT_LOCATIONS: typing.Dict[str, str] = {
+    "Ebon Hawk: Bastila": "Companion: Bastila Shan",
+    "Ebon Hawk: Bastila's Mother": "Companion: Bastila Shan",
+    "Ebon Hawk: Canderous": "Companion: Canderous Ordo",
+    "Ebon Hawk: Jagi's Challenge": "Companion: Canderous Ordo",
+    "Ebon Hawk: Carth": "Companion: Carth Onasi",
+    "Ebon Hawk: HK-47": "Companion: HK-47",
+    "Ebon Hawk: Jolee Bindo": "Companion: Jolee Bindo",
+    "Ebon Hawk: Juhani": "Companion: Juhani",
+    "Ebon Hawk: Threat from Xor": "Companion: Juhani",
+    "Ebon Hawk: Mission's Brother": "Companion: Mission Vao",
+}

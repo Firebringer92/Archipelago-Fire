@@ -33,7 +33,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # Step 1). No shared constant between the two scripts on purpose: bumping
 # one without the other would be a silent mistake either way, so each
 # script's own default should be updated by hand at release time.
-BUNDLE_VERSION = "0.1.3"
+BUNDLE_VERSION = "0.1.4"
 
 # REMINDER: this list does not update itself. Every time a NEW file (not
 # just an edit to an existing one) becomes something a tester needs to run
@@ -64,6 +64,24 @@ FILES = [
     (("extender", "area_trampolines", "_idx_to_name.json"), "extender/area_trampolines/_idx_to_name.json"),
     (("extender", "area_trampolines", "_mapping.json"), "extender/area_trampolines/_mapping.json"),
     (("extender", "area_trampolines", "_shop_map.json"), "extender/area_trampolines/_shop_map.json"),
+    # Found missing 2026-09-10 via a real tester's extender.log: EVERY
+    # trampoline compile failed with `Error: Unable to open the include
+    # file "kse"`, forever -- generate_trampoline_batch.py's SRC_DIR is
+    # extender/area_trampolines (that's the nwnnsscomp cwd, so that's
+    # where a bare #include "kse" resolves from), but only a SEPARATE
+    # copy under extender/scripts_src/ (via the whole-DIRS copy below)
+    # was ever being shipped. kse.nss was never missing from the zip
+    # entirely -- just missing from the ONE specific folder the live
+    # compile step actually reads includes from. Symptom on the tester's
+    # end: KotorClient reports items "armed" (staged for delivery) since
+    # that part genuinely succeeds, but nothing is ever actually granted,
+    # because every regenerated trampoline silently fails to compile and
+    # the stale (or absent) .ncs never changes -- no KSE_Diag call is
+    # possible for a compile that never produced a running script. All 3
+    # dev-tree copies (extender/kse.nss, extender/area_trampolines/kse.nss,
+    # extender/scripts_src/kse.nss) confirmed byte-identical before fixing
+    # this, so shipping the area_trampolines one is not a version-drift risk.
+    (("extender", "area_trampolines", "kse.nss"), "extender/area_trampolines/kse.nss"),
     # 2026-09-08 fix: these 4 used to land in a "KotorClient/" subfolder,
     # requiring a manual "open it, move the 4 files out, delete the empty
     # folder" step (README.md's old Step 1) -- easy to get wrong, and

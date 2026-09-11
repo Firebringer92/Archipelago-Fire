@@ -2,7 +2,7 @@ from BaseClasses import MultiWorld
 from worlds.generic.Rules import set_rule, add_rule
 
 from .Options import Goal
-from .Locations import location_table
+from .Locations import COMPANION_SUBPLOT_LOCATIONS
 
 # 2026-09-08: Progression System's real access-rule layer. Every gate here
 # is confirmed via the game's OWN compiled scripts (raw byte search across
@@ -173,6 +173,58 @@ GENOHARADAN_FINALE_LOCATION = "Genoharadan"
 
 def set_rules(multiworld: MultiWorld, player: int) -> None:
     world = multiworld.worlds[player]
+
+    # Zaalbar/Mission real-game dependency (2026-09-09), applied regardless
+    # of progression_system -- this isn't a Progression System travel gate,
+    # it's a structural vanilla-game fact: confirmed via direct dialogue
+    # tree inspection of tar_m05aa's missdoor_dlg/tar05_ff_dlg/tar05_ff_dlg2
+    # (the 3 conversations covering every way to reach Zaalbar's cage) that
+    # EVERY branch actually freeing him is gated on a Mission-presence
+    # condition (k_ptar_mischk/k_con_missionnpm/k_ptar_miszalchk) -- the
+    # no-Mission branches are dead-end flavor dialogue with no scripts at
+    # all (Zaalbar only speaks Shyriiwook; Mission is his translator). Only
+    # matters when companion_mode=ap_gated: that's the one mode where
+    # "Companion: Mission Vao" is a real item that could otherwise be
+    # placed AT "Companion Recruited: Zaalbar" itself by the fill
+    # algorithm with no rule to prevent it -- an unrecoverable circular
+    # dependency (need Mission in the party to check Zaalbar's location,
+    # need to check Zaalbar's location to receive the item that gets you
+    # Mission). companion_mode=normal needs no rule here: Mission's own
+    # recruit is pure vanilla with no AP item gating it, so the same
+    # real-game dependency is self-enforcing through ordinary play.
+    if world.options.companion_mode == 0:  # ap_gated
+        add_rule(multiworld.get_location("Companion Recruited: Zaalbar", player),
+                  lambda state: state.has("Companion: Mission Vao", player))
+
+    # Companion personal-subplot self-guard (2026-09-10), found while
+    # auditing the game for other companion-dependent checks after the
+    # Zaalbar/Mission fix above. Confirmed via a game-wide NCS disassembly
+    # scan (every module's .rim, ~230 files) for scripts calling
+    # IsNPCPartyMember/IsAvailableCreature with a real NPC_* constant:
+    # each companion's own "Ebon Hawk: ..." personal-subplot journal entry
+    # (Locations.py's "Ebon Hawk" region) requires THAT SAME companion to
+    # be an active party member when their personal-subplot messenger
+    # trigger fires (danm13's k_pdan_trig1301 spawns Bastila's mother's
+    # contact/Canderous's rival Jagi/Mission's brother's contact/Juhani's
+    # nemesis Xor only if that companion is IsNPCPartyMember at that
+    # moment -- confirmed directly in that script's disassembly), and
+    # Juhani's own final-act epilogue slide (unk_m44ac's k_punk_bastesc)
+    # is directly gated on IsNPCPartyMember(Juhani) with no other branch
+    # granting the same journal update. See Locations.py's
+    # COMPANION_SUBPLOT_LOCATIONS for which entries were directly
+    # confirmed this way vs. included defensively, and why (also the
+    # single source of truth for __init__.py's companion_mode=none
+    # location-removal filter, so the two never drift apart). Without
+    # this rule, the fill algorithm could place a companion's own
+    # guaranteed item AT their own personal-subplot check, which needs
+    # that companion already available -- an unrecoverable circular
+    # dependency. Only matters for companion_mode=ap_gated, the one mode
+    # where these items are real gates on availability at all.
+    if world.options.companion_mode == 0:  # ap_gated
+        for loc_name, item_name in COMPANION_SUBPLOT_LOCATIONS.items():
+            add_rule(multiworld.get_location(loc_name, player),
+                      lambda state, item_name=item_name: state.has(item_name, player))
+
     if not world.options.progression_system:
         # Deliberately no access rules -- all locations open from the
         # start, same flat model as before this option existed.
@@ -199,7 +251,18 @@ def set_rules(multiworld: MultiWorld, player: int) -> None:
     # set_rule, since some of these locations (e.g. Manaan's Sea Floor/
     # Kolto Control/Hrakert Rift/Star Map, above) already got an
     # item-specific rule and both need to hold at once.
-    for name, data in location_table.items():
+    #
+    # world._active_locations() (2026-09-10 fix), NOT the raw location_table
+    # import -- a real bug, caught while testing companion_mode=none:
+    # location_table unconditionally includes all 9 "Companion Recruited:
+    # ..." entries, but companion_mode=none never creates Location objects
+    # for them at all (see _active_locations()'s own docstring). Iterating
+    # the raw table here crashed generation outright with progression_system
+    # ALSO on (COMPANION_PLANET_OVERRIDE's HK-47/Jolee entries hit
+    # multiworld.get_location() for a location that was never built) --
+    # every other loop in this function targets a fixed, companion-mode-
+    # agnostic location list, so this is the only one that needed it.
+    for name, data in world._active_locations().items():
         planet = None
         if data.region in PLANET_STARMAP_ITEM:
             planet = data.region

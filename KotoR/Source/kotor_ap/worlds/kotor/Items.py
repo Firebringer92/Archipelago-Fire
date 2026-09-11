@@ -251,6 +251,25 @@ TRAP_ITEMS: typing.Dict[str, ItemData] = {
 }
 item_table.update(TRAP_ITEMS)
 
+# LootMode=destroy/replace safety net (2026-09-09): both modes unconditionally
+# destroy a picked-up non-whitelisted item on the spot (see Options.py's
+# LootMode and scripts/patch_item_suppression.py), and Security Spikes
+# (g_i_secspike01/02) are real, non-quest_dependent, non-whitelisted pickups
+# per gear_items.json -- meaning every spike a player would normally find in
+# the world is silently destroyed under either mode. Security is one of the
+# only skills whose checks (locked doors/containers) consume a physical
+# item to attempt at all, so a player who never buys spikes manually could
+# reach a mandatory locked point with zero in inventory and no way to
+# proceed. Precollected (see __init__.py's generate_early()) rather than
+# pool-placed -- this is a safety net against an option-caused problem, not
+# a real gameplay reward, so it shouldn't compete with the weighted item
+# draw or ever NOT show up when the mode is on. Count of 20 is a deliberate
+# fixed constant (not consumable_stack_count-derived, see KotorClient.py's
+# _do_deliver give_item: parsing) -- comfortably more than a single
+# playthrough would ever need, cheap insurance either way.
+item_table["Starting Item: Security Spikes (Loot Safety Net)"] = ItemData(
+    base_id + 83, ItemClassification.useful, "give_item:g_i_secspike01:20")
+
 # Curated gear (weapons/armor/equipment/consumables) lives in gear_items.json,
 # not here -- it's meant to stay live-editable by hand without a code
 # regeneration step, so it's loaded at runtime instead of baked into this

@@ -332,6 +332,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
         // A stage missing here installs and dispatches fine, but its log simply ends on
         // a routine worker tick with no [shutdown] line, so every save-then-quit result
         // ends ambiguously.
+        //
+        // LogShutdown() first, closing the session-long handle Log()/LogDiag() have
+        // held open (2026-09-10) -- lock-free by design, see its own comment in
+        // log.cpp, same reason KseSt17_ShutdownFlush's marker line goes through the
+        // separate lock-free LogRaw() path rather than Log() itself.
+        __try { LogShutdown(); } __except (EXCEPTION_EXECUTE_HANDLER) { }
         __try { KseSt17_ShutdownFlush(); } __except (EXCEPTION_EXECUTE_HANDLER) { }
     }
 #endif

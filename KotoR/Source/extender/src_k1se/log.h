@@ -5,6 +5,11 @@
 void LogInit();
 void Log(const char* fmt, ...);
 
+// Closes the handle Log()/LogDiag() have held open for the session. Call once,
+// at DLL_PROCESS_DETACH, before LogRaw() writes the final [shutdown] marker.
+// Deliberately lock-free -- see the comment above its definition in log.cpp.
+void LogShutdown();
+
 // Append a pre-formatted line using RAW WIN32 ONLY -- CreateFileW/WriteFile/
 // CloseHandle, no CRT, no critical section, no allocation, no formatting.
 //

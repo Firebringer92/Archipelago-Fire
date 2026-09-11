@@ -7,7 +7,7 @@ from worlds.LauncherComponents import Component, components, Type
 
 from . import EntranceRando
 from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS
-from .Locations import KotorLocation, location_table, location_name_to_id
+from .Locations import KotorLocation, location_table, location_name_to_id, COMPANION_SUBPLOT_LOCATIONS
 from .Options import (
     KotorOptions, STARTING_ABILITY_ARMS, STARTING_SKILL_ARMS,
 )
@@ -149,6 +149,36 @@ GOAL_EVENT_LOCATIONS: typing.Dict[str, str] = {
     "Alignment: Light Side 100": "Reached Light Side 100",
 }
 
+# CompanionMode=ap_gated Mission/Zaalbar dependency (2026-09-09), part 2 of
+# 2 -- Rules.py's set_rules() already guarantees "Companion: Mission Vao"
+# can never be placed AT "Companion Recruited: Zaalbar" itself (the pure
+# circular case), but that alone doesn't stop the general random fill from
+# placing Mission's item behind some check on a LATER planet entirely.
+# Taris is a real one-way point of no return in this game (once you leave
+# for the Ebon Hawk, Taris's own modules are gone for the rest of the
+# playthrough) -- if Mission's item lands anywhere past that departure,
+# the player physically cannot go back for Zaalbar's recruit at all,
+# regardless of what Rules.py's access rule believes is theoretically
+# satisfiable. Since this world's regions are flat/ungated (no real
+# entrance-based reachability model exists to express "before you leave
+# Taris" as an access rule -- see the KotorWorld class docstring), the
+# only way to actually guarantee this is to constrain WHERE the item can
+# be placed, not just what's needed to reach one specific location.
+# "Taris: Escaping Taris" is deliberately excluded -- its own journal
+# completion likely coincides with the departure itself, the exact
+# knife-edge case this is trying to avoid, not a safe margin before it.
+MISSION_ITEM_EXCLUDED_LOCATIONS = {"Taris: Escaping Taris"}
+
+
+def _mission_item_eligible_locations() -> typing.List[str]:
+    """Every location physically completable before Taris's one-way
+    departure (Endar Spire happens first and is equally irreversible, so
+    it's just as safe a candidate) -- sorted for a deterministic
+    self.random.choice() regardless of location_table's own dict order."""
+    return sorted(name for name, data in location_table.items()
+                   if data.region in ("Endar Spire", "Taris")
+                   and name not in MISSION_ITEM_EXCLUDED_LOCATIONS)
+
 # equipment_slot values (gear_items.json) that count as "Armor/Equipment"
 # for item_distribution_type's weighted draw -- everything else with a
 # blank slot is a Consumable, and "Weapon" is its own category. See
@@ -235,15 +265,20 @@ class KotorWorld(World):
     location_name_to_id = location_name_to_id
 
     def _active_locations(self) -> dict:
-        """location_table filtered for companion_mode=none, which
-        removes those 9 locations entirely rather than leaving them
-        permanently uncompletable. Used by both create_regions() and
+        """location_table filtered for companion_mode=none, which removes
+        the 9 "companion" location_type entries AND the 10
+        COMPANION_SUBPLOT_LOCATIONS entries (2026-09-10 fix -- those are
+        location_type="journal", so they weren't caught by the original
+        "companion" type check even though companions never joining at
+        all makes them just as permanently uncompletable) entirely rather
+        than leaving them stuck. Used by both create_regions() and
         create_items() so the pool size always matches what's actually
         placed -- computing this independently in each would risk the two
         silently drifting out of sync."""
         if self.options.companion_mode == 2:  # none
             return {name: data for name, data in location_table.items()
-                     if data.location_type != "companion"}
+                     if data.location_type != "companion"
+                     and name not in COMPANION_SUBPLOT_LOCATIONS}
         return location_table
 
     def create_regions(self) -> None:
@@ -271,6 +306,13 @@ class KotorWorld(World):
                 # goes through item_table like everything else and can't
                 # drift out of sync with it.
                 location.place_locked_item(self.create_item(event_item_name))
+            elif loc_name == self.mission_item_location:
+                # Guarantees "Companion: Mission Vao" lands somewhere still
+                # reachable before Taris's one-way departure -- see
+                # _mission_item_eligible_locations()'s comment. create_items()
+                # excludes this item name from the general weighted pool to
+                # match (it's already placed here, not left for random fill).
+                location.place_locked_item(self.create_item("Companion: Mission Vao"))
 
         # Separate physical-module region graph purely for door/trigger
         # entrance randomization -- does not touch the thematic regions
@@ -344,6 +386,17 @@ class KotorWorld(World):
             for key in COMPANION_CLASS_KEYS:
                 self.companion_class_rolls[key] = self.random.choice(ALL_CLASS_NAMES)
 
+        # Mission/Zaalbar Taris departure guarantee (see
+        # _mission_item_eligible_locations()'s comment above) -- only
+        # meaningful when companion_mode=ap_gated, the one mode where
+        # "Companion: Mission Vao" is a real placeable pool item at all.
+        # Rolled here (not in create_items()) so create_regions() can lock
+        # it in immediately when it builds each location, matching
+        # GOAL_EVENT_LOCATIONS's own ordering.
+        self.mission_item_location: typing.Optional[str] = None
+        if self.options.companion_mode == 0:  # ap_gated
+            self.mission_item_location = self.random.choice(_mission_item_eligible_locations())
+
         for arm_name, option_name in STARTING_ABILITY_ARMS.items():
             points = getattr(self.options, option_name).value
             item_name = arm_name_to_item[arm_name]
@@ -357,12 +410,27 @@ class KotorWorld(World):
             for _ in range(firings):
                 self.multiworld.push_precollected(self.create_item(item_name))
 
+        # LootMode=destroy/replace safety net (2026-09-09): both modes
+        # unconditionally destroy non-whitelisted world pickups, including
+        # Security Spikes (see Items.py's own comment on this item for the
+        # full reasoning) -- precollected here rather than pool-placed so it
+        # can never fail to show up or compete with the weighted item draw.
+        if self.options.loot_mode in (1, 3):  # destroy, replace
+            self.multiworld.push_precollected(
+                self.create_item("Starting Item: Security Spikes (Loot Safety Net)"))
+
     def create_items(self) -> None:
         # -len(GOAL_EVENT_LOCATIONS): those 2 locations got a locked Event
         # item in create_regions() instead of drawing from this pool --
         # without this adjustment the pool would be 2 items short of the
-        # real number of fillable (non-event) location slots.
+        # real number of fillable (non-event) location slots. The extra -1
+        # when companion_mode=ap_gated matches "Companion: Mission Vao"
+        # getting the same locked-in-create_regions() treatment (see
+        # mission_item_location above) -- one more pre-filled location,
+        # one more subtraction, same reasoning.
         active_count = len(self._active_locations()) - len(GOAL_EVENT_LOCATIONS)
+        if self.mission_item_location is not None:
+            active_count -= 1
 
         # Companions (when companion_mode is ap_gated) and the starting_class
         # class item (when starting_class is "jedi_granted") are the only
@@ -376,7 +444,13 @@ class KotorWorld(World):
         # distribution in _distribute_items() instead. Feats are not an AP
         # item at all any more (see Items.py) -- left entirely to normal
         # in-game level-up choices.
-        mandatory_names = COMPANION_ITEM_NAMES if self.options.companion_mode == 0 else []
+        if self.options.companion_mode == 0:  # ap_gated
+            # "Companion: Mission Vao" excluded -- already placed directly
+            # in create_regions() via mission_item_location, not left for
+            # the general weighted fill (see that field's comment above).
+            mandatory_names = [n for n in COMPANION_ITEM_NAMES if n != "Companion: Mission Vao"]
+        else:
+            mandatory_names = []
         if self.options.starting_class == 2:  # jedi_granted
             mandatory_names = mandatory_names + [JEDI_CLASS_ITEMS[self.options.jedi_class.value]]
         # CompanionClass=jedi_companion: same guaranteed-placement guarantee

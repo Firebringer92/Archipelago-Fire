@@ -3,14 +3,13 @@ Shared nwnnsscomp.exe path resolution -- used by every script in this
 folder that shells out to the NWScript compiler (generate_poll_shared.py,
 generate_makejedi_suppressor.py, generate_trampoline_batch.py,
 patch_item_suppression.py, generate_companion_suppressors.py,
-generate_store_suppressors.py). Extracted 2026-09-08 when the exact same
+generate_store_suppressors.py). Extracted when the exact same
 NWNNSSCOMP = r"C:\...\KotOR Scripting Tool\nwnnsscomp.exe" hardcoded
 literal was found duplicated identically across all 6 files.
 
-Why this changed: the new tester installer now bundles nwnnsscomp.exe
-directly into the game folder (redistribution permission confirmed
-directly with the tool's dev, 2026-09-08 -- see FutureDesign.md's Q1,
-previously blocked on unclear rights). So resolution now has to check
+The tester installer bundles nwnnsscomp.exe directly into the game
+folder (redistribution permission confirmed directly with the tool's
+dev). So resolution has to check
 there FIRST, falling back to the old standalone KotOR Scripting Tool
 install for a dev machine (or any tester who installed that separately
 before this existed). Pulled into one shared module rather than fixed in

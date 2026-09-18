@@ -18,13 +18,19 @@ the feature is built around. Additional Enemies is feature-complete and
 rather than grounds for exhaustive per-module testing). See
 [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md) for the consolidated
 technical history (feature decisions, confirmed capabilities, and every
-engine limitation found) that this doc summarizes
+engine limitation found) that this doc summarizes, or the individual
+phase-by-phase logs archived at
+[docs/history/](docs/history/PHASE02.md) (`PHASE02.md`-`PHASE14.md`) for
+the full blow-by-blow. [docs/history/SESSION_STATUS.md](docs/history/SESSION_STATUS.md)
+predates that consolidation and may be stale — prefer
+`DEVELOPMENT_HISTORY.md`/`PHASE14.md` for current status.
 
 This document explains how the whole system fits together and what each
 Python file is for. It does not re-derive the engine-constraint discoveries
 that shaped this design — see
 [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)'s engine-limitations
-section
+section, or [docs/history/PHASE09.md](docs/history/PHASE09.md)-
+[PHASE11.md](docs/history/PHASE11.md) for the original research.
 
 ## 1. What this is
 
@@ -107,6 +113,28 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   Several early research scripts exist specifically because a
   hand-transcribed version turned out to be wrong.
 
+**Code comment conventions** (standard set 2026-09-16, applies going
+forward — most of the codebase predates this and is being brought in line
+gradually, not all at once):
+- A comment explains what the code does, why (when non-obvious), and any
+  real dependency the reader needs to know about — nothing else.
+- No dates, no "(YYYY-MM-DD)" stamps, no "found live," no session
+  narrative. Git history already has the timeline; a comment isn't the
+  place to re-derive it.
+- Never write "at the user's request," "per the user's explicit ask," or
+  any equivalent attribution. It tells a reader nothing about the code
+  and rots the moment anyone other than this project's own maintainer
+  reads it.
+- If a decision needs real justification (an engine limitation, a design
+  tradeoff, a rejected alternative), that justification belongs in this
+  document or `DEVELOPMENT_HISTORY.md` — the comment should be a short
+  pointer to it (e.g. "see DESIGN.md §5.2, `OnOpen` never fires in this
+  engine build"), not a restatement of the investigation inline.
+- Don't reference internal-only files a GitHub reader won't have
+  (`FutureDesign.md`, the memory-file notes, a specific past chat) —
+  point at `DESIGN.md`/`DEVELOPMENT_HISTORY.md`/`docs/history/PHASE*.md`
+  instead, since those actually ship with the repo.
+
 ## 4. File-by-file breakdown
 
 ### 4.1 The Archipelago world (`Archipelago/worlds/kotor/`)
@@ -133,10 +161,16 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   dataclass) with full docstrings. `STARTING_ABILITY_ARMS`/
   `STARTING_SKILL_ARMS` map arm names to their matching starting-boost
   option, shared with `__init__.py`. `ProgressionSystem` (redesigned
-  2026-09-08 after real per-item disassembly, see `Rules.py` below) and
+  2026-09-08 after real per-item disassembly, see `Rules.py` below),
   `EnableTraps` (new 2026-09-08 — 12 one-time punishment items, see
-  `Items.py`/`KotorClient.py` below) are the two newest option classes;
-  both default off.
+  `Items.py`/`KotorClient.py` below), and `NewCompanion` (new 2026-09-14
+  — the HK-47/Meetra Surik swap, see 4.3's `generate_new_companion_
+  assets.py` entry) are the newest option classes; all default off.
+  `_companion_class_keys()` (in `__init__.py`, not this file) is a
+  runtime-conditional list, not a static edit to `COMPANION_CLASS_KEYS` —
+  `new_companion` only makes her eligible for `companion_class`/
+  `additional_feats` when it's actually on, so a vanilla-HK47 seed never
+  picks up class-randomization/feat items meant for a droid.
 - **`Items.py`** — `item_table`: every AP item (skills, companions,
   abilities, class switches, XP/credits filler) plus gear items loaded at
   runtime from `gear_items.json` (only rows flagged `included_as_item`
@@ -152,7 +186,16 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
 - **`Rules.py`** — `set_rules` and `set_completion_rules` (the latter a
   deliberate no-op — the real Goal signal is entirely client-driven via
   `KotorClient.py`'s `_check_goal`/`finished_game`, independent of AP's
-  own completion-condition machinery). `set_rules` was largely
+  own completion-condition machinery). **`Goal`'s `reach_leviathan` option
+  (2026-09-17)**: a shorter alternative to `defeat_malak`, detected off the
+  same already-tracked "Leviathan: Captured by the Leviathan" journal check
+  (no new NWScript/native signal needed). `progression_system` now REQUIRES
+  `goal` to be `defeat_malak` or `reach_leviathan` (enforced as an
+  `OptionError` at generation time, same mechanism as its existing
+  `area_randomizer` incompatibility) — confirmed live that a seed combining
+  `progression_system` with `goal=max_level` left 2 of the 4 Star Maps
+  permanently unfound, since neither `true_balance` nor `max_level` ever
+  requires reaching the Leviathan or later. `set_rules` was largely
   flat/ungated until the Progression System redesign (2026-09-08): real
   per-item disassembly found the 4 star-map quest items are gated by a
   *global flag* (`k_pla_actmap`), not inventory possession, so
@@ -185,18 +228,26 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   inside the apworld for this to work, despite an earlier research note
   assuming it would be.
 - **`EntranceRando.py`** — door/trigger randomization, built on
-  Archipelago's own `entrance_rando.py` engine, run in uncoupled mode.
-  Builds a separate physical-module region graph purely for this purpose
-  (doesn't touch the thematic regions that govern location access). A
-  custom `_ensure_reciprocal_pairing` post-pass forces at least one B->A
-  edge for every placed A->B pair (not real AP `coupled` mode -- that
-  needs matched-by-name reverse entrance/exit pairs this flat
-  156-transition data model doesn't have), so a shuffled door reliably
-  has some way back without needing that bigger data-modeling effort. See
-  its own module docstring, [docs/history/PHASE12.md](docs/history/PHASE12.md)
+  Archipelago's own `entrance_rando.py` engine, run in real AP
+  `coupled=True` mode. Builds a separate physical-module region graph
+  purely for this purpose (doesn't touch the thematic regions that govern
+  location access). 110 of the 118 randomization-eligible transitions
+  have a genuine, individually-identifiable reverse door (matched 1:1, or
+  via a shared destination-waypoint-tag suffix for the 4 Dantooine
+  module-pairs with two doors each way) and are wired as real coupled
+  Entrances; the remaining 8 (no reverse door anywhere in vanilla data)
+  are left fully fixed to their vanilla destination rather than shuffled.
+  Coupled placement can still leave a rare residual orphan (a module with
+  exactly one coupled entrance whose placement failed to get a
+  replacement) -- `_repair_orphaned_modules` patches those after
+  placement by stealing and repointing a well-connected edge, the same
+  technique the old uncoupled-mode `_ensure_full_reachability` used, just
+  scoped to the handful of leftover entries rather than the whole graph.
+  See its own module docstring for the full reverse-door analysis and
+  reachability findings, [docs/history/PHASE12.md](docs/history/PHASE12.md)
   for the exclusion-zone design and the module/dest_module mixup bug, and
-  [docs/history/PHASE13.md](docs/history/PHASE13.md) for the reciprocal
-  pairing feature and the stale-bookkeeping bug found while building it.
+  [docs/history/PHASE13.md](docs/history/PHASE13.md) for the earlier
+  uncoupled-mode reciprocal-pairing feature this design replaced.
 
 ### 4.2 The Python AP client (`Archipelago/` root)
 
@@ -205,7 +256,7 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   extender (`_deliver_item`/`_do_deliver`, with `HEAVY_ARMS`/
   `companion_class:` serialized one-at-a-time through a single choke
   point, `_queue_heavy()`, to avoid a confirmed crash class -- every real
-  entry point that can trigger a heavy send, including the `!ap_apply`
+  entry point that can trigger a heavy send, including the `/ap_apply`
   admin bypass and the `companion_mode=normal` auto-grant, funnels through
   it, not just the real-item path); watches extender events and turns
   them into real `LocationChecks` sends (`_on_extender_event`, via
@@ -217,34 +268,98 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   recompiling and redeploying `ap_poll_shared.ncs` straight to the live
   Override so it always matches the seed being played rather than
   whatever was baked into a prebuilt `dist/Override` at packaging time
-  (see 4.3's packaging note). `!ap_regen_poll` is the manual fallback.
+  (see 4.3's packaging note). `/ap_regen_poll` is the manual fallback.
   Same pattern, same call site, for the Dantooine make-jedi suppression
   wrapper (`regenerate_makejedi_suppressor()`, with the connected seed's
-  `starting_class`; `!ap_regen_makejedi` is its manual fallback) -- see 4.3's
+  `starting_class`; `/ap_regen_makejedi` is its manual fallback) -- see 4.3's
   `generate_makejedi_suppressor.py` entry.
   **2026-09-08 (the "3-step install" plan, Option B)**: the 3 heavier
   per-seed patch scripts (`patch_item_suppression.py`/
-  `patch_door_randomizer.py`/`patch_additional_enemies.py`) are now ALSO
-  auto-invoked on every `Connected`, the same subprocess-wrapper shape as
-  poll_shared/makejedi (`apply_item_suppression()`/`apply_door_randomizer()`/
-  `apply_additional_enemies()`) -- this is what used to be a separate
-  manual README/TESTING.md step. Unlike poll_shared/makejedi (a cheap
-  single-file recompile, safe to always re-run), these 3 do a real
-  per-module RIM sweep with no internal "already applied" short-circuit
-  of their own, so `_apply_seed_patch_if_new()` gates each on
-  `PATCHED_SEEDS_MARKER_PATH` (a small JSON marker recording the last
-  seed_name each was actually applied for) so a reconnect to the SAME
-  seed skips the redundant sweep rather than re-paying its cost on every
-  launch. `!ap_apply_item_suppression`/`!ap_apply_door_randomizer`/
-  `!ap_apply_additional_enemies` are the manual fallbacks, each bypassing
-  the marker to force a clean re-apply.
+  `patch_door_randomizer.py`/`patch_additional_enemies.py`, plus
+  `patch_loot_disturb.py`) are now ALSO auto-invoked on every `Connected`
+  -- this is what used to be a separate manual README/TESTING.md step.
+  Unlike poll_shared/makejedi (a cheap single-file recompile, safe to
+  always re-run), these 4 do a real per-module RIM sweep with no internal
+  "already applied" short-circuit of their own, so `_apply_seed_patch_if_new()`
+  gates each on `PATCHED_SEEDS_MARKER_PATH` (a small JSON marker recording
+  the last seed_name each was actually applied for) so a reconnect to the
+  SAME seed skips the redundant sweep rather than re-paying its cost on
+  every launch.
+  **SEQUENCED, not independent (2026-09-15 fix, real data-loss bug
+  closed)**: all 4 share the exact same backup directory
+  (`extender/backup/modules/`). `patch_additional_enemies.py`/
+  `patch_door_randomizer.py`/`patch_item_suppression.py` always read/write
+  the live `.rim` directly (their backup is purely a `--restore`
+  snapshot), but `patch_loot_disturb.py`'s module-RIM path is the one
+  outlier: it reads FROM the backup instead of live whenever one already
+  exists, specifically so a second loot_disturb run doesn't compound its
+  own prior edits. Dispatching all 4 as independent, unordered
+  `run_in_executor` calls (the original shape) meant they could genuinely
+  race as separate OS subprocesses -- if `additional_enemies` happened to
+  run first (creating that shared backup as a side effect of placing new
+  enemies into a module's live GIT), `loot_disturb` running concurrently
+  or after would read that backup -- the PRISTINE, pre-additional-enemies
+  state -- and overwrite live with a version that silently erases every
+  enemy additional_enemies had just placed. `KotorClient.py` now runs all
+  4 sequentially in a single executor task
+  (`_apply_module_rim_patches_in_order()`), `loot_disturb` always first,
+  closing this off structurally rather than by luck of subprocess timing.
+  `/ap_patch_all` (renamed from `!ap_apply_all` 2026-09-15; originally
+  2026-09-13, replacing the earlier separate `!ap_apply_item_suppression`/
+  `!ap_apply_door_randomizer`/`!ap_apply_additional_enemies` fallbacks
+  with one combined command) is the manual fallback, bypassing the marker
+  to force a clean re-apply. **Also fixed 2026-09-15**: the command
+  handler used to call `apply_all_patches()` directly on the event loop
+  thread with no executor dispatch at all, blocking the entire client
+  (network heartbeat included) for the full combined runtime of 4
+  subprocess-based RIM sweeps -- now dispatched via `run_in_executor` like
+  everything else, result logged via `game_events_logger` instead of
+  blocking. Pairs with `/ap_restore_all` (renamed from
+  `!ap_revert_game_files`, same 2026-09-15 pass -- it had the identical
+  blocking flaw, fixed the same way), which reverts everything back to
+  vanilla in one call -- the real use case being two different player
+  YAMLs' seeds tested on the same local KOTOR install, where switching
+  which slot's patches are active needs a clean revert in between.
+  **Output simplified the same night** (user's explicit ask): each
+  command now returns short, player-facing status lines instead of raw
+  per-script stdout -- `/ap_restore_all` a single restored-file count,
+  `/ap_patch_all` one `Patching <name> - Status: DONE/FAILED` line per
+  distinct file operation (Loot Mode is deliberately two lines, the main
+  static-edit pass and the Endar Spire starting locker fix, since
+  `patch_loot_disturb.py` genuinely performs both as separate operations
+  in one subprocess call) plus a final "ready to launch" summary line.
+  `/ap_patch_all` also gained a **Jedi Suppression** line
+  (`regenerate_makejedi_suppressor()`) that it never covered before at
+  all -- a real gap, since the seed's `starting_class` can differ between
+  test slots the same way `loot_mode` does. Deliberately still does NOT
+  cover New Companion's asset deploy (`apply_new_companion_assets()`) --
+  it has no `--restore` counterpart, so adding it to `/ap_patch_all` alone
+  would let that command deploy something `/ap_restore_all` can't clean
+  back up; tracked as a known, low-risk gap in `MODE_DEPENDENCIES.md`
+  rather than fixed, since New Companion already re-syncs correctly on
+  every real Connect regardless of either admin command.
+  `apply_new_companion_assets()`/`_apply_new_companion_assets_and_log()`
+  (2026-09-14) run `generate_new_companion_assets.py` the same
+  not-seed-gated way as Galactic Shop, every `Connected` — see 4.3.
+  `self.location_tracker.set_new_companion(...)` fires in the same
+  `Connected` handler, right after `write_slot_data_for_patch_scripts()`,
+  correcting the companion-index collision noted in 4.3's entry.
+  A separate, small diagnostic (not a safeguard) added the same day:
+  `arm_orchestrator.py`'s pending-queue-bloat warning (40+ entries) used
+  to only reach that script's own stdout, which the C extender discards
+  on a successful exit — traced end to end and fixed by appending an
+  `AP|WARNING|QUEUE_BLOAT|<n>` line directly to `kse.log` (the file the
+  extender's log-tail thread already watches for any `AP|` marker
+  regardless of writer), so it reaches the client through the
+  already-working relay; `_on_extender_event` now surfaces it on the main
+  visible tab, not the buried Heartbeat one.
   New-character safeguard (`_evaluate_character_safety`, 2026-09-02):
   pauses every delivery/reconciliation action if the connected
   character's name has never appeared in the delivery log AND they're
   above level 1 (a real level-1 character is always waved through
   automatically) -- protects against silently dumping the full delivery
   backlog onto an unexpected character (wrong save loaded, etc.).
-  `!ap_confirm_character` overrides it once a human confirms. See
+  `/ap_confirm_character` overrides it once a human confirms. See
   `TESTING.md`'s "New-character safeguard" section.
   `_resolve_trap()` (2026-09-08) implements all 12 Traps items'
   one-time-only computation (each gated by the existing delivery log, no
@@ -268,6 +383,14 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   and sends corrective `APPLY`/`APPLYVALUE` calls to close any deficit.
   Deliberately scoped to safely-repeatable additive grants only (skills,
   credits, the two idempotent companion adds) plus the special XP clamp.
+  **XP-clamp staleness fix (2026-09-17)**: the clamp used to run on every
+  `AREA` event whenever `experience_mode != 0`, including before any real
+  `XPREPORT` had ever been seen this connection — comparing a stale/
+  default `current_scalar` against the real in-game XP and clamping it
+  down incorrectly. Gated on a new `_xp_seen_since_reset` flag (set only
+  when an actual `XPREPORT` event has been parsed, reset alongside
+  `reset_live_state()`) so the clamp can't fire on data it never actually
+  received.
 - **`kotor_location_tracker.py`** — `LocationTracker`: turns raw
   `CHECK|JOURNAL`/`CHECK|COMPANION`/`CHECK|AREA`/`ALIGNMENT` events into
   real AP location IDs, reading `ctx.checked_locations` as the single
@@ -300,6 +423,26 @@ Override; re-run after changing their inputs):
 - `generate_companion_suppressors.py` / `generate_store_suppressors.py`
   — preserve-and-chain wrapper pairs for companion recruitment and store
   markers.
+- `generate_council_gate_trampolines.py` (2026-09-17) — compiles
+  `ap_companion_gate.nss` (a shared, `#include`-only "secondary brain,"
+  deliberately separate from `ap_poll_shared.nss`) into the trampolines
+  for a small family of vanilla scenes that expect Bastila and/or Carth
+  to already be present as active party members (the Dantooine Jedi
+  Council wrap-up, the Taris Hideout escape-plan scene) — under
+  `companion_mode=ap_gated`/`none`, before either companion's real item
+  has arrived, the scene's own `IsAvailableCreature` gate can never pass
+  otherwise, a real story stall. Temporarily grants+benches+reverts
+  around calling the real original script, guarded by a busy flag
+  (`GetLocalBoolean`/`SetLocalBoolean` on the module — K1's local storage
+  is index-based, not string-keyed) against the same physical trigger
+  firing multiple times in a burst, which is confirmed to otherwise race
+  the grant/revert against itself and leave a companion permanently
+  seated without ever having received their real item. Handles a genuine
+  cross-module resref collision (`k_pdan_cut01`-`cut06` are different
+  real compiled scripts in `danm13` vs `danm14ab`, resolved at runtime via
+  `GetModuleFileName()`). See `docs/MODE_DEPENDENCIES.md` for the full
+  investigation, including the separate, unrelated "CutStart" engine bug
+  this family was initially (incorrectly) suspected of causing.
 - `generate_makejedi_suppressor.py` (2026-09-02) — same preserve-and-chain
   pattern, for Dantooine's real "become a Jedi" trial-completion script
   (`k_pdan_makejedi`). Confirmed via `read_ncs()` that the vanilla script
@@ -316,7 +459,7 @@ Override; re-run after changing their inputs):
   lightsaber-resref/`dan_wanderhound` block is cosmetic cutscene setup,
   not an item grant (no `CreateItemOnObject` anywhere near it).
   `KotorClient.py` regenerates/redeploys this on every `Connected` with
-  the real connected seed's `starting_class` (`!ap_regen_makejedi` is the
+  the real connected seed's `starting_class` (`/ap_regen_makejedi` is the
   manual fallback), same pattern as `ap_poll_shared.ncs`.
 - `build_area_graph.py` / `build_door_graph.py` — static connectivity
   data: which covered areas are directly reachable from which (used for
@@ -343,33 +486,88 @@ Override; re-run after changing their inputs):
 **Live pipeline — per-seed, game-file-level patchers** (not part of
 NWScript generation; directly rewrite RIM files for one specific
 generated seed, gated on that seed's options):
-- `patch_item_suppression.py` — wires `Mod_OnAcquirItem` (RIM edit for
-  ~106 modules with an empty slot; Override-wrapper for 11 with an
-  existing vanilla script) to handle non-whitelisted pickups per the
-  seed's single `loot_mode` option (`Options.py`'s `LootMode`), one of 4
-  modes (normal/destroy/bonus/replace). Both `replace` AND `bonus`
-  (redesigned 2026-08-31, superseding an intermediate heartbeat-scan
-  version) guard on the same shape of fix: a per-tag HELD-QUANTITY delta
-  against `KSE_SetData`, checked once per real `Mod_OnAcquirItem` EVENT
-  rather than on any kind of timer -- immune to the engine's own item-
-  reacquisition re-firing by construction, since a spurious re-fire
-  produces zero quantity delta for that one tag. `replace` destroys +
-  immediately grants a 1:1 swap; `bonus` feeds the genuine delta into a
-  persistent `pickup_running_count` and grants one item every time that
-  crosses a multiple of 5, aggregate across all suppress-eligible tags
-  combined. `replace`/`bonus` each
-  generate their own `GetRandomLootItem()` NWScript function (a flat
-  `Random(N)`-indexed if/else chain over the real 577-item
-  `shop_randomize` pool) in their respective files, kept in sync by hand
-  since they're separate generated `.nss` files. The RIM edit for
-  empty-slot modules only ever needs to happen once regardless of mode
-  (it just points at a fixed shared resref); only that resref's Override
-  *content* changes per mode. Falls back to precompiled copies (one per
-  non-skip mode) when `nwnnsscomp.exe` isn't present, so a tester's
-  machine doesn't need the compiler.
-  `apply_progression_checkpoint_wrappers()` (2026-09-08) is a separate,
-  smaller mechanism for the Progression System's 4 suppress-at-source
-  items (Sith Armor/Papers, Shield Codes, Enviro Suit): extracts each
+- `patch_loot_disturb.py` — Loot Mode (destroy/bonus/replace), on its
+  **3rd design** as of 2026-09-13 (updated 2026-09-14 for the Endar Spire
+  starting-locker fix below): pure STATIC template-data edits applied
+  before the game ever loads, no runtime script or script-hook field of
+  any kind. Replaces two earlier designs in order: (1) `Mod_OnAcquirItem`
+  (`patch_item_suppression.py`'s original mechanism — re-fires for
+  already-held items, ruled out for reuse anywhere); (2) `OnInvDisturbed`/
+  `ScriptDisturbed` (this file's own first design — structurally sound for
+  placeables, but a real dead end for creature corpse loot: confirmed live
+  that `ScriptDisturbed` never fires at all when looting a dead creature's
+  body, only while the creature is alive, which is fatal since most of
+  this game's real loot comes from killing enemies). The static-edit
+  design works because a creature/placeable template's `ItemList` is just
+  GFF data, no different in kind from any other field this project already
+  edits directly — editing it once at patch time and depositing the result
+  as a global Override file means the modified loot is just *there* the
+  moment that module next loads, same as any other vanilla placement: no
+  event, no process-level cache, **no relaunch requirement at all** (a
+  real usability win over both earlier designs — takes effect on a plain
+  reload, including of an already-running game).
+  - **destroy**: delete every non-whitelisted `ItemList` entry from every
+    loot-bearing template (chitin first, then every module `.rim`
+    including each module's own `_s.rim` companion — some real loot, e.g.
+    `end_m01aa`'s `rsldcrps002` corpse, lives only in the `_s.rim`).
+  - **replace**: same scan, swap each non-whitelisted entry for a
+    seed-deterministic random pick from the loot pool instead of deleting
+    it (own `GetRandomLootItem()`-equivalent static pick over the real
+    `shop_randomize` pool).
+  - **bonus**: leave all original items untouched, add ONE extra
+    seed-deterministic item to every template that already has at least
+    one (fires far more often than the old per-5-real-pickups milestone
+    design — user's own explicit simplification, cadence over exact
+    matching).
+  **Equipped-gear suppression** (`_process_equipment()`, 2026-09-15): a
+  creature's equipped weapon/armor (`utc.equipment`/`Equip_ItemList`) is a
+  completely separate GFF field from carried inventory (`ItemList`) —
+  found live as a real gap (a Sith trooper's carried vibrosword survives
+  destroy mode untouched since it was never carried inventory to begin
+  with). destroy and replace both flip the equipped item's `Dropable` flag
+  to `False` rather than removing/swapping it, since actually changing
+  equipment would visibly alter the creature's appearance/combat animation
+  (fighting bare-handed); replace additionally can't safely reuse the
+  random loot pool here since it mixes weapons/armor/medpacs with no
+  slot-type filtering. bonus mode leaves equipment untouched entirely,
+  consistent with never removing existing loot. Narrow in practice — only
+  one creature in the entire base game (`n_calonord`, Calo Nord) has a
+  genuinely droppable equipped item at all.
+  Also carries forward Progression System's Sith Armor/Shield Codes
+  always-suppress-at-source check (the 2 of its 8 items whose real
+  vanilla acquisition is a genuine container/corpse pickup) as the same
+  unconditional static removal, independent of `loot_mode`, gated only on
+  `progression_system`. `granted_exempt_` bookkeeping (needed by both
+  earlier runtime designs to protect an AP-granted item from immediate
+  re-suppression) is gone — this file never touches anything delivered
+  through the AP item pipeline any more, so there's no overlap to guard.
+  Idempotent by construction: every run re-derives each template's final
+  state from the PRISTINE source, never from a previously-deployed
+  Override copy of its own (`discover_chitin_templates()` reads via the
+  chitin `FileResource`'s own `.data()`, not `Installation.resource()`,
+  specifically to avoid reading back its own prior output as if it were
+  pristine). `_loot_static_manifest.json` tracks exactly which Override
+  files this script has deployed, so `--restore` and a mode/seed switch
+  both know precisely what to remove without guessing at another
+  feature's legitimate Override content by name collision.
+  **Endar Spire starting locker** (`ensure_starting_locker_gear()`,
+  2026-09-14): `footlker001` in `end_m01aa_s.rim` is set to exactly
+  `STARTING_LOCKER_KIT` (clothing, a blaster pistol, a short sword, 10
+  Computer Spikes) whenever a loot mode is active, replacing real vanilla
+  contents that included an extra medpac and no pistol at all — a full
+  replace, not additive. Edits the module RIM directly (never Override —
+  `footlker001` is one of 58 real BioWare name collisions reused with
+  different contents across other modules), idempotent, and restores true
+  vanilla contents when `loot_mode` is off. Replaces the retired "Loot
+  Safety Net" AP-item precollection with a permanent, seed-independent
+  world-content fix instead.
+  `patch_item_suppression.py` itself is NOT fully retired: its
+  `apply_progression_checkpoint_wrappers()` mechanism, below, is a
+  completely separate thing that never went through `Mod_OnAcquirItem` at
+  all, and still lives there.
+  `apply_progression_checkpoint_wrappers()` (2026-09-08) is a separate
+  mechanism for the Progression System's other 6 suppress-at-source items
+  (Sith Papers, Enviro Suit, the 4 Star Maps): extracts each
   real checkpoint script's TRUE original directly from chitin via
   `Installation(game_dir).resource(name, ResourceType.NCS)`, writes it as
   `apo_<name>_orig.ncs`, and deploys a small gate-and-delegate wrapper
@@ -392,12 +590,69 @@ generated seed, gated on that seed's options):
   `seed_name` so a reconnect reproduces identical placements.
   Live-tested at both extremes; `random_sane` itself not yet separately
   exercised (mechanically identical minus the category filter).
+- `generate_new_companion_assets.py` (2026-09-14, live-tested) — the
+  `new_companion` option: replaces HK-47 with a new
+  human companion, Meetra Surik (Jedi Sentinel), in his exact party slot
+  (his Tag stays `"HK47"` — load-bearing for a game-wide, generic
+  9-companion tag-exclusion check every companion is subject to, and for
+  the codegen below that resolves her by that same tag). Deploys 3 pieces
+  every `Connected` (not seed-gated — has to restore vanilla just as
+  reliably as it installs the swap):
+  - `p_meetra.utc` — her level-1 stat block, ability scores/skills/combat-
+    tuning fields taken from Bastila's own real template (same class,
+    Jedi Sentinel) wherever a field doesn't scale with level; HP/FP/
+    feats/starting Force powers independently re-derived for level 1
+    specifically (`classes.2da`'s hit die/force die + CON/WIS modifiers;
+    the "4 mandatory Jedi feats + Sentinel signature" recipe already used
+    by `companion_class` conversions, matching real cross-class feat data
+    from `feat.2da`; the 5 "base tier" starting Force powers `spells.2da`
+    shows are outside the normal level-6+ learn list, i.e. the standard
+    from-creation Jedi kit).
+  - The vanilla Tatooine recruit trigger's dual variant
+    (`extender/scripts_src/apo_hk47_vanilla.ncs` vs. `apo_hk47_new.ncs`,
+    precompiled and checked in, no compiler needed at runtime — same
+    convention `patch_item_suppression.py`'s own mode variants use).
+    Reconstructed the real vanilla script's NWScript source from a fresh
+    disassembly, confirmed byte-identical to the true original via a
+    compile+disassemble+diff pass (0 of 38 opcodes differ) before forking
+    it — the new variant differs from vanilla by exactly that one
+    template-resref string, nothing else.
+  - Her placeholder Ebon Hawk greeting (`k_hmee_dialog.dlg`, one line, no
+    replies) — replaces her entire personal subplot, which is cut
+    entirely for this option.
+  Wired into `KotorClient.py` (`apply_new_companion_assets()`/
+  `_apply_new_companion_assets_and_log()`, `/ap_apply_new_companion` manual
+  fallback), same not-seed-gated shape as `patch_galactic_shop.py`.
+  Because AP's item/location name-to-id mapping is a static, class-level
+  table shared by every seed of this world (not per-player), "renaming"
+  HK-47's item/location to say "New Companion" couldn't be a live string
+  swap on the existing entries — `Items.py`/`Locations.py` instead carry a
+  second, permanently-named item/location pair (`"Companion: New
+  Companion"`/`"Companion Recruited: New Companion"`), with `__init__.py`
+  choosing which of the two is actually active per seed (same shape
+  `_active_locations()` already uses for `companion_mode=none`). Two real
+  bugs this surfaced and fixed before any live testing: (1) `Rules.py`'s
+  ap_gated subplot self-guard iterated locations directly rather than
+  through `_active_locations()`, which would have crashed generation
+  outright the moment `companion_mode=ap_gated` + `new_companion=on` were
+  combined together; (2) `kotor_location_tracker.py`'s `LocationTracker`
+  built its companion-index from the raw, unfiltered `location_table` at
+  import time, before any seed's `new_companion` value was known, so it
+  needed a `set_new_companion()` correction fired on `Connected` (see
+  4.2) or it would report the wrong location name for whichever setting
+  didn't win dict-iteration-order by default.
 
 **Distribution/packaging** (for getting a fresh install running without
 the full dev toolchain — see `README.md`):
 - `package_dist.py` — collects the always-on generated Override content
   into `dist/Override/`, deriving the exact file list from the generator
-  scripts' own data so it can't silently drift.
+  scripts' own data so it can't silently drift. **`EXTRA_RAW_FILES`
+  (2026-09-17)** ships a small set of non-`.ncs` files verbatim (never
+  compiled) from `extender/raw_override_files/` — currently the 4
+  replacement `.dlg` files that fix the "CutStart" engine bug (see
+  `docs/MODE_DEPENDENCIES.md`), sourced from the repo itself rather than
+  a dev machine's live game install, since they're static and
+  seed-independent.
 - `setup_game.py` — tester-facing: copies `dist/Override/` into a real
   install. Pure standard library, no `pykotor`/compiler needed.
 - `install_playerbundle.py` (2026-09-08, the "3-step install" plan's

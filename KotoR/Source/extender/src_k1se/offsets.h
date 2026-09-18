@@ -122,10 +122,10 @@ static const uintptr_t KSE_CEXOSTR_GETLEN_RVA = 0x005e5790u - 0x00400000u; // 0x
 
 static const uintptr_t KSE_OBJ_ROOT_RVA     = 0x007a39fcu - 0x00400000u; // 0x003a39fc
 static const uintptr_t KSE_OBJ_TABLE_GET_RVA= 0x004aed70u - 0x00400000u; // 0x000aed70
-// KOTOR AP ADDITION, TEMPORARY (credits chain confirmation, 2026-09-03):
+// KOTOR AP ADDITION, TEMPORARY (credits chain confirmation):
 // second candidate for the credits HUD code's call target, tried after
 // KSE_OBJ_TABLE_GET_RVA was confirmed NOT to be it (live test returned
-// garbage -- see FutureDesign.md). KSE_OBJ_TABLE_GET_RVA returns a TABLE
+// garbage). KSE_OBJ_TABLE_GET_RVA returns a TABLE
 // that needs a further KSE_OBJ_RESOLVE_RVA(table, objectId, &obj) step
 // with an explicit object id (see KSE_FEAT_ID's chain above) -- but the
 // raw disassembly of the credits HUD code showed only ONE call whose
@@ -316,19 +316,40 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 // Offsets confirmed via live differential-scan testing against a real running
 // game (Cheat Engine, cross-referenced on multiple creatures/species), NOT
 // derived from disassembly the way the K1SE offsets above were -- treat these
-// as empirically confirmed rather than source-verified. See this project's
-// own memory notes (kotor_engine_constraints.md) for the full test history.
+// as empirically confirmed rather than source-verified.
 // -----------------------------------------------------------------------------
 // KSE_DUMPSB_ID (638, generic statBlock hex dumper) and KSE_CREDITS_CHAIN_ID
 // (606, read-only credits-chain diagnostic) were both TEMPORARY research
-// hosts, removed 2026-09-06 once the research they supported concluded and
+// hosts, removed once the research they supported concluded and
 // shipped as real natives/offsets. Archived at
 // extender/research_archive/kse_hook_temp_natives_2026-09-06.cpp.txt. Both
 // IDs (638, 606) are now unclaimed again -- do not reuse without re-running
 // scan_opcode_usage.py fresh, per this project's own opcode-safety discipline.
 
+// KOTOR AP ADDITION: item-object-id resolve diagnostic, for
+// loot-window memory-hunting research. REUSES host 638 (freed above when
+// KseDumpStatBlock was archived) -- confirmed still unclaimed via a fresh
+// grep of this file and kse_hook.cpp immediately before reuse (not a full
+// scan_opcode_usage.py re-run, but sufficient given nothing else in this
+// codebase currently references it). Same (object,int,int) void-returning
+// SWMG_SetGunBankTarget shape KseDumpStatBlock used -- object arg discarded,
+// first int is the object id to resolve, second int unused/reserved.
+//
+// Resolves a script object id through the SAME chain KSE_FEAT_ID/KSE_FIELD_ID
+// use (object root -> seed -> KSE_OBJ_TABLE_GET_RVA -> KSE_OBJ_RESOLVE_RVA),
+// but stops at the raw resolved pointer -- deliberately SKIPS the
+// creature-specific vtable get-stats step (KSE_VT_GETSTATS_OFF) those hosts
+// perform next, since an item is not a creature and that call would return
+// NULL for it. Reads the item struct fields confirmed via Cheat Engine
+// research (type @ +0x0C matches real baseitems.2da row ids;
+// quantity @ +0x28C matches real held stack sizes -- both cross-verified
+// against actual in-game items), logging the result to kse.log rather than returning it structured,
+// since this is a one-shot verification tool, not a shipping feature.
+#define KSE_RESOLVE_ITEM_ID 638   // void SWMG_SetGunBankTarget(object,int,int);
+                                  // object discarded, int1=objectId, int2=unused.
+
 // KOTOR AP ADDITION (not part of upstream K1SE): SetCredits -- the real,
-// write-capable promotion of the old credits-chain diagnostic (2026-09-03).
+// write-capable promotion of the old credits-chain diagnostic.
 // Resolves pRes via the SAME confirmed chain, then writes the caller's
 // value directly to [pRes+0xFC] -- an exact, bidirectional set, unlike the
 // old GiveGoldToCreature/TakeGoldFromCreature dance (TakeGoldFromCreature
@@ -336,8 +357,8 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 // only ever top credits up, never reduce them). See
 // generate_trampoline_batch.py's build_set_credits_block().
 #define KSE_SET_CREDITS_ID 683  // int SWMG_GetSoundFrequency(object,int)->int;
-                           // confirmed 0 real callers via scan_opcode_usage.py
-                           // (2026-09-03), not claimed by any other KSE_*_ID
+                           // confirmed 0 real callers via scan_opcode_usage.py,
+                           // not claimed by any other KSE_*_ID
                            // in this file -- used as (object oPC [unused,
                            // discarded for stack balance], int nValue).
 
@@ -361,9 +382,8 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 #define KSE_FIELD_ADD_FORCE_POWER    6   // nValue = spells.2da row id. Searches
                                           // the known-powers array first; if the
                                           // id is already present, no-ops (a real
-                                          // duplicate grant was live-tested
-                                          // 2026-09-06 and confirmed harmless, but
-                                          // skipping it anyway keeps count/capacity
+                                          // duplicate grant was confirmed harmless,
+                                          // but skipping it anyway keeps count/capacity
                                           // sane). Appends at [count] and increments
                                           // count if not present and count < capacity
                                           // (16, observed fixed on every creature).
@@ -373,15 +393,33 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
                                           // decrements count. If NOT found, safely
                                           // no-ops (explicitly required -- must not
                                           // crash or corrupt count on a missing id).
+#define KSE_FIELD_XP 8   // raw XP, 4-byte int, same statBlock as CLASS0_LEVEL/FORCE
+                          // (not KseField_Obj() -- see KSE_STATS_XP_OFF below).
+                          // Added to bypass native SetXP()'s apparent
+                          // refusal to lower XP below the current level's already-
+                          // banked threshold (the reason the original "Cut Level in
+                          // Half" trap was retired: the level dropped, the XP didn't).
+                          // A raw memory write has no such validation to race
+                          // against; caller is responsible for also writing a
+                          // matching CLASS0_LEVEL via a separate call so the two
+                          // stay consistent (this project's own XP->level table
+                          // is kotor_reconciliation.py's _EXPTABLE).
 
 #define KSE_STATS_CLASS0_TYPE_OFF  0xa7
 #define KSE_STATS_CLASS0_LEVEL_OFF 0xa8
 #define KSE_STATS_CLASS1_TYPE_OFF  0xcf
 #define KSE_STATS_CLASS1_LEVEL_OFF 0xd0
 #define KSE_STATS_FORCE_OFF        0x124
+// CONFIRMED via a live memory dump at
+// the resolved statBlock matching the real XPREPORT value exactly (323175),
+// used at the time purely as a validation landmark for a DIFFERENT research
+// question (confirming an object was really the stat block), not built out as
+// a usable field until now. READ was proven that day; WRITE was never tried
+// until this addition -- test live before trusting it the way CLASS0_LEVEL/
+// FORCE are already trusted.
+#define KSE_STATS_XP_OFF           0x68
 
-// Current HP -- CONFIRMED 2026-09-06 via live differential testing (see
-// FutureDesign.md's HP research entry for the full derivation) to live at
+// Current HP -- CONFIRMED via live differential testing to live at
 // this offset from KseField_Obj()'s object (the raw resolved engine
 // object, one step EARLIER in the resolution chain than every other
 // field above, which all use KseField_StatBlock()'s further-dereferenced
@@ -392,14 +430,14 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 // was confirmed correct. Max HP has NO equivalent field anywhere
 // (confirmed absent via a thorough double-diff of both objects across a
 // real Max HP change) -- it must be computed from class/level/CON, not
-// read from a fixed offset; see FutureDesign.md for the confirmed
-// formula and confirmed alternative (EffectAbilityIncrease/Decrease
+// read from a fixed offset (KotorClient.py's _compute_max_hp holds the
+// confirmed formula). Confirmed alternative: EffectAbilityIncrease/Decrease
 // correctly triggers the engine's own Max HP recalculation, both
-// directions, including proper current-HP clamping on a decrease).
+// directions, including proper current-HP clamping on a decrease.
 #define KSE_OBJ_CURRENT_HP_OFF     0xDC
 
-// Force Powers (known-list) category record -- CONFIRMED 2026-09-06 (see
-// FutureDesign.md) at a fixed offset from KseField_StatBlock()'s object,
+// Force Powers (known-list) category record -- CONFIRMED at a
+// fixed offset from KseField_StatBlock()'s object,
 // same base every other field above uses. Category 1 is confirmed to be
 // the Force Powers list; category 0 exists (2 total categories on every
 // creature tested) but is unidentified -- not needed for this feature.
@@ -414,12 +452,12 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 #define KSE_CATEGORY_CAP_OFF   0x08
 
 // -----------------------------------------------------------------------------
-// KOTOR AP ADDITION (2026-09-06): one new getter for Current HP, chosen the
+// KOTOR AP ADDITION: one new getter for Current HP, chosen the
 // same way every prior opcode choice in this project was --
 // scripts/scan_opcode_usage.py re-run fresh against all 77 SWMG_ candidate
 // ids, filtered against BOTH K1SE's own already-claimed list (583, 584,
 // 618, 622, 627, 631-634, 640, 685-687) and this project's own (606, 638,
-// 683, 688). NOTE: an earlier pass this same night picked 588/589 for this
+// 683, 688). NOTE: an earlier pass picked 588/589 for this
 // purpose without checking their declared nwscript.nss signatures --
 // both turned out to be zero-argument functions
 // (SWMG_GetLastBulletHitTarget/Shooter), incompatible with the needed

@@ -32,7 +32,7 @@ SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 # Bastila, 1 Canderous, 2 Carth, 3 HK-47, 4 Jolee, 5 Juhani, 6 Mission,
 # 7 T3-M4, 8 Zaalbar.
 COMPANIONS = [
-    # Confirmed live module is tar_m03af, NOT tar_m03aa -- tar03_bastila.dlg
+    # Confirmed module is tar_m03af, NOT tar_m03aa -- tar03_bastila.dlg
     # (the real join conversation) only exists in tar_m03af; tar_m03aa's
     # copy of k_ptar_bastpart is unused leftover content.
     ("bastila", "tar_m03af", "k_ptar_bastpart", "NPC_BASTILA", 29, 0),
@@ -52,13 +52,13 @@ WRAPPER_TEMPLATE = """// Suppression wrapper for {name}'s real story recruitment
 // actually sticks -- the real grant will come from AP later, through the
 // existing companion apply script (phase 06).
 //
-// GUARD (added 2026-08-31): if {npc_const} is ALREADY available when this
-// fires, our own companion_{name} AP arm already ran (early item, or an
-// admin re-grant) and {name} is already an active party member. Confirmed
-// live: running apo_{name}_orig + RemoveAvailableNPC on an
-// already-recruited companion kicks them OUT of the active party --
-// RemoveAvailableNPC is not the harmless no-op on an active member that
-// the vanilla script assumes. So skip the vanilla script and the
+// GUARD: if {npc_const} is ALREADY available when this fires, our own
+// companion_{name} AP arm already ran (early item, or an admin re-grant)
+// and {name} is already an active party member. Running apo_{name}_orig
+// + RemoveAvailableNPC on an already-recruited companion kicks them OUT
+// of the active party -- RemoveAvailableNPC is not the harmless no-op on
+// an active member that the vanilla script assumes. So skip the vanilla
+// script and the
 // RemoveAvailableNPC in that case; the AP location check still fires
 // either way below, since reaching this trigger is the check regardless
 // of whether recruitment logic needs to run.

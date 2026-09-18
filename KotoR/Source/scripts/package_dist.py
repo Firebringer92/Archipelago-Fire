@@ -13,8 +13,8 @@ per-tester variation. That's what makes it safe to build once (on a dev
 machine that already has the full toolchain) and just ship the resulting
 bytes.
 
-**Exception, found live 2026-08-31**: ap_poll_shared.ncs is NOT actually
-seed-independent -- its content branches on loot_mode/area_randomizer
+**Exception**: ap_poll_shared.ncs is NOT actually seed-independent --
+its content branches on loot_mode/area_randomizer
 (see generate_poll_shared.py's CheckPickupCount/CheckPlanetAvailability
 gating). This script bakes in whichever of those happened to be true on
 THIS packager's machine at packaging time, not the eventual tester's own
@@ -61,17 +61,78 @@ from generate_store_suppressors import STORES
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 MAPPING_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_mapping.json")
 DEFAULT_DIST_DIR = os.path.join(REPO_ROOT, "dist", "Override")
+RAW_OVERRIDE_FILES_DIR = os.path.join(REPO_ROOT, "extender", "raw_override_files")
 
 ALWAYS_ON_EXTRA = ["ap_heartbeat", "ap_poll_shared"]
 
+# Non-.ncs raw files that must ship in Override verbatim (full filename,
+# including extension -- unlike everything else here, these are never
+# compiled, just copied byte-for-byte). Read from RAW_OVERRIDE_FILES_DIR in
+# the repo itself, not source_override, since these are static and
+# seed-independent (unlike ap_poll_shared.ncs above) -- a dev machine's live
+# Override folder isn't a reliable source of truth for anything meant to
+# persist across sessions. Currently: the community "KotOR 1 Fixed Cutscene
+# Files for KSE" .dlg replacements (tk102, starwarsknights.com/tools.php),
+# which fix a real, confirmed engine bug this project's own
+# jedi_start=granted option triggers -- a PC whose Class0Type is set
+# directly to a Jedi class (bypassing the 3 original base classes
+# entirely, the exact same condition a save editor causes) hangs at a
+# "CutStart" object during any of several scripted cutscenes. See
+# docs/MODE_DEPENDENCIES.md for the full investigation.
+EXTRA_RAW_FILES = [
+    "cut00_convers.dlg", "k_player_dialog.dlg",
+    "m12aa_c06.dlg", "tar02_carth022.dlg",
+]
+
 # Hand-written companion-recruit guards (not generator-produced, so
 # collect_expected_resrefs() can't discover them from COMPANIONS/STORES --
-# found missing from dist/Override entirely on 2026-09-02, meaning every
-# prior packaged release was silently shipping the pre-fix
-# early-recruit-removes-companion bug). k_ptar_addcarth/k_ptar_candadd are
+# must be listed explicitly here or a packaged release silently ships the
+# pre-fix early-recruit-removes-companion bug). k_ptar_addcarth/k_ptar_candadd are
 # the hand-patched vanilla recruit scripts; apo_carth_orig/apo_cand_orig
 # are their preserved originals.
-HAND_WRITTEN_EXTRA = ["k_ptar_addcarth", "apo_carth_orig", "k_ptar_candadd", "apo_cand_orig"]
+#
+# k_ptar_carbas_en/apo_carbast_orig: the Taris Hideout "escape plan" scene's
+# OnEnter wrapper (trigger tar02_carbas) and its preserved original -- see
+# docs/MODE_DEPENDENCIES.md for the companion_mode=ap_gated/none story-stall
+# this fixes (both Bastila and Carth's own availability could be suppressed
+# by the time the player returns here, permanently failing the vanilla
+# IsAvailableCreature gate this scene needs to start).
+#
+# k_psta_init_cart/apo_stainit_cart_orig: Star Forge trigger
+# k45_init_carth's OnEnter wrapper and preserved original -- same
+# unguarded-SpawnAvailableNPC crash class as k_punk_41aa_en (Unknown
+# World), found via a full-game audit, see docs/MODE_DEPENDENCIES.md.
+#
+# k_ptar_openbase/apo_openbase_orig: Taris Sith Base entrance trigger
+# tar02_openbase's OnEnter wrapper and preserved original -- the ONLY
+# door into the Sith Base (tar02_sithdoor) has no Security-skill option
+# at all and only ever unlocks for a PC actively controlling T3-M4;
+# under companion_mode=ap_gated/none this was a permanent main-story
+# soft-lock, live-reported by the user. See docs/MODE_DEPENDENCIES.md.
+#
+# k_ptar_startconv/apo_startconv_orig: the Undercity sewer forcefield
+# console's (tar05_ffcontrol) OnUsed wrapper and preserved original --
+# the sole "back way" into the Black Vulkar Base, gated on Mission Vao
+# specifically with no Security bypass, same story-soft-lock risk under
+# companion_mode=ap_gated/none. See docs/MODE_DEPENDENCIES.md.
+HAND_WRITTEN_EXTRA = [
+    "k_ptar_addcarth", "apo_carth_orig", "k_ptar_candadd", "apo_cand_orig",
+    "k_ptar_carbas_en", "apo_carbast_orig",
+    "k_psta_init_cart", "apo_stainit_cart_orig",
+    "k_ptar_openbase", "apo_openbase_orig",
+    "k_ptar_startconv", "apo_startconv_orig",
+    "k_ptar_davatk_en", "apo_davatk_en_orig",
+    "k_ren_taris03", "apo_taris03_orig",
+    "k_ren_levescape", "apo_levescape_orig",
+    "k_ren_unkturret", "apo_unkturret_orig",
+    "k_pdan_addbast", "apo_addbast_orig",
+    "k_pdan_cut01", "apo_danm13_cut01_orig", "apo_danm14ab_cut01_orig",
+    "k_pdan_cut02", "apo_danm13_cut02_orig", "apo_danm14ab_cut02_orig",
+    "k_pdan_cut03", "apo_danm13_cut03_orig", "apo_danm14ab_cut03_orig",
+    "k_pdan_cut04", "apo_danm13_cut04_orig", "apo_danm14ab_cut04_orig",
+    "k_pdan_cut05", "apo_danm13_cut05_orig", "apo_danm14ab_cut05_orig",
+    "k_pdan_cut06", "apo_danm13_cut06_orig", "apo_danm14ab_cut06_orig",
+]
 
 
 def collect_expected_resrefs():
@@ -99,16 +160,14 @@ def collect_expected_resrefs():
 
 
 def _check_shop_stock_clean():
-    """Real bug found live, 2026-08-29: this script copies whatever's
-    CURRENTLY deployed on the dev's live game install -- it doesn't
-    regenerate anything itself. If _shop_stock.json (extender/area_trampolines/)
-    has any per-seed content in it when this runs (leftover from live
-    testing, not reset), that content gets baked into the "always-on"
-    trampolines this script copies and silently ships to EVERY tester who
-    uses the documented setup_game.py path, regardless of their own seed's
-    real shop randomization. Confirmed live: dist/Override's
-    k_ptar_02aa_en.ncs shipped with 30 hardcoded resrefs from a leftover
-    testing session. This is a loud warning, not a silent skip -- the
+    """This script copies whatever's CURRENTLY deployed on the dev's live
+    game install -- it doesn't regenerate anything itself. If
+    _shop_stock.json (extender/area_trampolines/) has any per-seed
+    content in it when this runs (leftover from live testing, not
+    reset), that content gets baked into the "always-on" trampolines
+    this script copies and silently ships to EVERY tester who uses the
+    documented setup_game.py path, regardless of their own seed's real
+    shop randomization. This is a loud warning, not a silent skip -- the
     operator needs to actually reset (see below) and redeploy before
     re-running this script, not just acknowledge the warning."""
     shop_stock_path = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_shop_stock.json")
@@ -126,8 +185,8 @@ def _check_shop_stock_clean():
         print()
         print("Copying now would bake this into the 'always-on' dist/Override")
         print("baseline and ship it to EVERY tester, regardless of their own")
-        print("seed's real shop randomization -- this exact bug shipped once")
-        print("already (2026-08-26). Reset it first:")
+        print("seed's real shop randomization -- this exact bug has shipped")
+        print("before. Reset it first:")
         print('  echo {} > "' + shop_stock_path + '"')
         print("  python generate_trampoline_batch.py --all")
         print("  (redeploy the regenerated .ncs files to your live game's Override,")
@@ -164,11 +223,25 @@ def main():
         copied += 1
 
     print(f"Copied {copied}/{len(resrefs)} files -> {args.dist_dir}")
-    if missing:
-        print(f"\nMISSING {len(missing)} expected file(s) -- source install is out of date, "
-              f"re-run the generator scripts against it first:")
+
+    raw_copied = 0
+    raw_missing = []
+    for fname in EXTRA_RAW_FILES:
+        src = os.path.join(RAW_OVERRIDE_FILES_DIR, fname)
+        if not os.path.exists(src):
+            raw_missing.append(fname)
+            continue
+        shutil.copy2(src, os.path.join(args.dist_dir, fname))
+        raw_copied += 1
+    print(f"Copied {raw_copied}/{len(EXTRA_RAW_FILES)} raw file(s) -> {args.dist_dir}")
+
+    if missing or raw_missing:
+        print(f"\nMISSING {len(missing) + len(raw_missing)} expected file(s) -- source install is out of date, "
+              f"re-run the generator scripts (or re-deploy the raw files) against it first:")
         for r in missing:
             print(f"  {r}.ncs")
+        for f in raw_missing:
+            print(f"  {f}")
         sys.exit(1)
 
 

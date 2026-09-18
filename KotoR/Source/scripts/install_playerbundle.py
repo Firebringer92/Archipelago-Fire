@@ -1,6 +1,6 @@
 r"""
-The "Step 2" installer from the 3-step install vision (see FutureDesign.md's
-"PLAN: simplified installation" entry). Run this from WITHIN an already-
+The "Step 2" installer of the 3-step install (unzip the PlayerBundle, run
+this, drop the apworld into custom_worlds). Run this from WITHIN an already-
 extracted PlayerBundle folder (the zip package_playerbundle.py builds) --
 it does everything a tester used to do by hand across README.md's old
 Steps 2-5:
@@ -13,8 +13,7 @@ Steps 2-5:
     3 patch scripts and 4 NWScript generators look for it).
   - Installs the merged binkw32.dll proxy (same operation as
     extender/install.ps1 -Install, reimplemented natively here in Python
-    rather than shelling out to PowerShell -- see this project's own Q3
-    research in FutureDesign.md for why: Python is already a hard,
+    rather than shelling out to PowerShell, because Python is already a hard,
     unavoidable dependency for this whole project, PowerShell isn't.
     install.ps1 itself is left in place, untouched, as a standalone
     fallback/dev tool -- this is a deliberate, small, accepted duplication
@@ -26,10 +25,9 @@ Steps 2-5:
     interpreter runs this installer -- the same interpreter KotorClient.py
     and the 2 pykotor-dependent patch scripts need to run under later.
   - Writes an install-path marker file (%LOCALAPPDATA%\KotorAP\install_path.txt)
-    recording where this PlayerBundle folder lives -- not consumed yet
-    (this is for the not-yet-built apworld Launcher-button registration,
-    Q2 in FutureDesign.md, so that work doesn't need its own coordination
-    step once it exists).
+    recording where this PlayerBundle folder lives -- consumed by the
+    apworld's "KOTOR Client" Launcher button (worlds/kotor/__init__.py's
+    launch_kotor_client) to find KotorClient.py.
   - Records everything it touched into a manifest
     (%LOCALAPPDATA%\KotorAP\install_manifest.json) so --uninstall can
     cleanly reverse it later -- notably, an Override file that already
@@ -188,8 +186,8 @@ def _copy_nwnnsscomp(game_dir: str) -> bool:
 
 
 def _pip_install_pykotor() -> None:
-    print("Installing pykotor (needed by patch_item_suppression.py/patch_door_randomizer.py/"
-          "patch_additional_enemies.py) ...")
+    print("Installing pykotor (needed by patch_loot_disturb.py/patch_item_suppression.py/"
+          "patch_door_randomizer.py/patch_additional_enemies.py) ...")
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "setuptools<81", "pykotor"],
         capture_output=True, text=True,
@@ -205,17 +203,17 @@ def _write_state(manifest: dict) -> None:
     os.makedirs(KOTORAP_STATE_DIR, exist_ok=True)
     with open(INSTALL_PATH_MARKER, "w", encoding="utf-8") as f:
         f.write(REPO_ROOT)
-    # 2026-09-09 fix, found live: the Launcher's "KOTOR Client" button
-    # (worlds/kotor/__init__.py's launch_kotor_client) used to trust
-    # sys.executable to find a real python interpreter -- fine when
-    # THIS script runs it (a real interpreter, per Install.bat), but the
-    # button itself runs inside the compiled Archipelago Launcher .exe,
-    # where sys.executable is the FROZEN LAUNCHER'S OWN exe path, not a
-    # python interpreter at all. Confirmed live: clicking the button just
-    # relaunched a confused second Launcher instance instead of
-    # KotorClient.py. Recording the REAL interpreter that ran this
-    # installer (always a genuine python.exe, since Install.bat invokes
-    # `py -3`/`python`) so the button can reuse it instead of guessing.
+    # The Launcher's "KOTOR Client" button (worlds/kotor/__init__.py's
+    # launch_kotor_client) must not trust sys.executable to find a real
+    # python interpreter -- fine when THIS script runs it (a real
+    # interpreter, per Install.bat), but the button itself runs inside
+    # the compiled Archipelago Launcher .exe, where sys.executable is the
+    # FROZEN LAUNCHER'S OWN exe path, not a python interpreter at all
+    # (using it there would just relaunch a confused second Launcher
+    # instance instead of KotorClient.py). Recording the REAL interpreter
+    # that ran this installer (always a genuine python.exe, since
+    # Install.bat invokes `py -3`/`python`) so the button can reuse it
+    # instead of guessing.
     with open(PYTHON_PATH_MARKER, "w", encoding="utf-8") as f:
         f.write(sys.executable)
     with open(INSTALL_MANIFEST, "w", encoding="utf-8") as f:
@@ -268,9 +266,16 @@ def uninstall() -> None:
     game_dir = manifest["game_dir"]
     print(f"Uninstalling from {game_dir} (recorded at install time) ...\n")
 
-    for name in ("patch_item_suppression.py", "patch_door_randomizer.py", "patch_additional_enemies.py"):
+    # patch_loot_disturb.py (Loot Mode's static-template-edit mechanism,
+    # see its own docstring) must be included here -- omitting it would
+    # leave every loose Override template file it generates behind on
+    # uninstall. Also passes --game-dir explicitly: omitting it would
+    # make --restore target the hardcoded default install path instead of
+    # manifest["game_dir"], silently wrong for anyone who installed to a
+    # non-default KOTOR location.
+    for name in ("patch_loot_disturb.py", "patch_item_suppression.py", "patch_door_randomizer.py", "patch_additional_enemies.py"):
         result = subprocess.run(
-            [sys.executable, os.path.join(SCRIPT_DIR, name), "--restore"],
+            [sys.executable, os.path.join(SCRIPT_DIR, name), "--restore", f"--game-dir={game_dir}"],
             capture_output=True, text=True,
         )
         print(result.stdout.strip() or f"{name} --restore: done")

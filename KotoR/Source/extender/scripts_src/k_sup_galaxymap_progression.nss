@@ -1,4 +1,4 @@
-// Progression System travel gate (2026-09-08) -- the vanilla galaxy map
+// Progression System travel gate -- the vanilla galaxy map
 // script (preserved as apo_k_sup_galaxymap_orig) has NO destination
 // availability check of its own; every planet is selectable from the
 // start (confirmed via full disassembly -- GetSelectedPlanet() is called
@@ -20,22 +20,35 @@
 // Near-certain (it almost certainly just reads current GUI selection
 // state, not a one-shot consumed event), but flagged for a live test
 // before shipping.
+//
+// Checks a LocalBoolean bit on a dedicated marker item
+// (ap_progress_marker) instead of the old KSE_HasData("granted_exempt_")
+// flag -- that in-DLL store doesn't survive a game restart. LocalBoolean
+// on an object is genuinely save-persistent. See
+// scripts/generate_trampoline_batch.py's STARPAD_MARKER_BIT for the bit
+// assignment (must match) and patch_item_suppression.py's
+// PROGRESS_MARKER_RESREF comment for the full reasoning.
 #include "kse"
 
 void main()
 {
     int nSelected = GetSelectedPlanet();
-    string sFlag = "";
+    int nBit = -1;
 
-    if (nSelected == 4)      sFlag = "granted_exempt_tat_starpad";
-    else if (nSelected == 5) sFlag = "granted_exempt_kas_starpad";
-    else if (nSelected == 6) sFlag = "granted_exempt_man_starpad";
-    else if (nSelected == 7) sFlag = "granted_exempt_kor_starpad";
+    if (nSelected == 4)      nBit = 0; // tat_starpad
+    else if (nSelected == 5) nBit = 1; // kas_starpad
+    else if (nSelected == 6) nBit = 2; // man_starpad
+    else if (nSelected == 7) nBit = 3; // kor_starpad
 
-    if (sFlag != "" && !KSE_HasData(sFlag))
+    if (nBit != -1)
     {
-        KSE_Diag(130, "AP|PROGRESSION_BLOCKED|galaxymap|planet=" + IntToString(nSelected));
-        return;
+        object oMarker = GetItemPossessedBy(GetFirstPC(), "ap_progress_marker");
+        int nGranted = GetIsObjectValid(oMarker) && GetLocalBoolean(oMarker, nBit);
+        if (!nGranted)
+        {
+            KSE_Diag(130, "AP|PROGRESSION_BLOCKED|galaxymap|planet=" + IntToString(nSelected));
+            return;
+        }
     }
 
     ExecuteScript("apo_k_sup_galaxymap_orig", OBJECT_SELF);

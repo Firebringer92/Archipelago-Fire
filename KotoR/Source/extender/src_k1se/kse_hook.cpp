@@ -1543,11 +1543,11 @@ static volatile LONG g_fieldWrites = 0;
 
 // KseResolveObj -- the FIRST half of the object-resolution chain: turns an
 // NWScript object id into the raw, resolved engine object ("obj" in this
-// project's own research notes -- see FutureDesign.md's HP research entry).
+// project's own research notes).
 // This is NOT the creature's stat block yet -- KseField_Obj/KseField_StatBlock
 // below each take it one step further, to whichever destination they need.
-// Split out 2026-09-06 so Current HP (which lives on "obj" itself, at
-// +0xDC -- confirmed live, see FutureDesign.md) has its own real resolver,
+// Split out so Current HP (which lives on "obj" itself, at
+// +0xDC -- confirmed) has its own real resolver,
 // not just a comment fragment of KseField_StatBlock's.
 static void* KseResolveObj(int objId, const char** why)
 {
@@ -1568,9 +1568,9 @@ static void* KseResolveObj(int objId, const char** why)
 }
 
 // KseField_Obj -- the raw resolved object itself, no further dereferencing.
-// Current HP lives here directly at +0xDC (confirmed live, 2026-09-06 --
-// see FutureDesign.md's HP research entry: definitively NOT on statBlock,
-// NOT computed like Max HP, a real static field on THIS object).
+// Current HP lives here directly at +0xDC (confirmed
+// definitively NOT on statBlock, NOT computed like Max HP, a real static
+// field on THIS object).
 static void* KseField_Obj(int objId, const char** why)
 {
     return KseResolveObj(objId, why);
@@ -1602,6 +1602,7 @@ static int KseFieldOffset(int nFieldType)
     case KSE_FIELD_CLASS1_TYPE:  return KSE_STATS_CLASS1_TYPE_OFF;
     case KSE_FIELD_CLASS1_LEVEL: return KSE_STATS_CLASS1_LEVEL_OFF;
     case KSE_FIELD_FORCE:        return KSE_STATS_FORCE_OFF;
+    case KSE_FIELD_XP:           return KSE_STATS_XP_OFF;
     default:                     return -1;
     }
 }
@@ -1613,6 +1614,7 @@ static const char* KseFieldName(int nFieldType)
     case KSE_FIELD_CLASS1_TYPE:  return "CLASS1_TYPE";
     case KSE_FIELD_CLASS1_LEVEL: return "CLASS1_LEVEL";
     case KSE_FIELD_FORCE:        return "FORCE";
+    case KSE_FIELD_XP:           return "XP";
     default:                     return "?";
     }
 }
@@ -1625,7 +1627,9 @@ static void KseField_Core(void* statBlock, int nFieldType, int nValue)
         return;
     }
     BYTE* slot = reinterpret_cast<BYTE*>(statBlock) + off;
-    if (nFieldType == KSE_FIELD_FORCE) {
+    if (nFieldType == KSE_FIELD_FORCE || nFieldType == KSE_FIELD_XP) {
+        // XP shares FORCE's 4-byte int write -- a raw XP value (e.g. 323175)
+        // can't fit in the default 1-byte path below.
         int oldVal = *reinterpret_cast<int*>(slot);
         *reinterpret_cast<int*>(slot) = nValue;    // <-- THE WRITE: 4-byte int, fixed slot
         Log("K1SE SetCreatureField %s : %d -> %d [write #%ld]",
@@ -1638,12 +1642,12 @@ static void KseField_Core(void* statBlock, int nFieldType, int nValue)
     }
 }
 
-// KOTOR AP ADDITION (2026-09-06): Add/Remove Force Power, sharing host 688
+// KOTOR AP ADDITION: Add/Remove Force Power, sharing host 688
 // rather than claiming a new opcode -- see offsets.h's KSE_FIELD_ADD_FORCE_POWER
 // / KSE_FIELD_REMOVE_FORCE_POWER comments for the field-type contract. Operates
 // on the confirmed known-powers array record (statBlock+0x8C+category*40).
 // Add does its own search-before-append (skip if already known -- a real
-// duplicate-grant test on 2026-09-06 confirmed this would otherwise be
+// duplicate-grant test confirmed this would otherwise be
 // harmless anyway, but skipping keeps count/capacity honest). Remove
 // safely no-ops if the id isn't found, as explicitly required.
 static void KseForcePowerOp(void* statBlock, int nFieldType, int spellId)
@@ -1733,7 +1737,7 @@ extern "C" int __stdcall KseSetCreatureField(int argCount)
 }
 
 // -------- host 617: int SWMG_GetMaxHitPoints(object oFollower)->int ------------
-// KOTOR AP ADDITION (2026-09-06): Current HP getter -- see offsets.h's
+// KOTOR AP ADDITION: Current HP getter -- see offsets.h's
 // KSE_OBJ_CURRENT_HP_OFF comment for the confirmed offset/derivation. Uses
 // KseField_Obj() (the raw resolved object), NOT KseField_StatBlock() --
 // Current HP is one step earlier in the resolution chain than every other
@@ -1761,7 +1765,7 @@ extern "C" int __stdcall KseGetCurrentHP(int argCount)
 }
 
 // KseDumpStatBlock (host 638) and KseTestCreditsChain (host 606) -- both
-// TEMPORARY research diagnostics -- were removed 2026-09-06 once the
+// TEMPORARY research diagnostics -- were removed once the
 // research they supported concluded and shipped as real natives/offsets.
 // Archived verbatim at
 // extender/research_archive/kse_hook_temp_natives_2026-09-06.cpp.txt.
@@ -1820,6 +1824,73 @@ extern "C" int __stdcall KseSetCredits(int argCount)
         pRes, before, after, nValue, (long)InterlockedIncrement(&g_fieldWrites));
     setRetInt(KseVM(), nullptr, after);
     return 0;
+}
+
+// -------- host 638: void SWMG_SetGunBankTarget(object,int,int) -----------------
+// KOTOR AP ADDITION (loot-window memory-hunting research): see
+// offsets.h's KSE_RESOLVE_ITEM_ID comment for the full design writeup. Resolves
+// a raw object id (found via the container's item-reference-list-shaped record)
+// and logs its type/quantity fields if resolution
+// succeeds -- a one-shot verification tool, not a shipping feature, so it only
+// ever logs; it never writes anything and never needs a return value.
+//
+// EXTENDED (same session): nObjectId==0 is now a sentinel meaning "resolve the
+// OBJECT argument's own id instead of a separate hardcoded one" -- lets a
+// caller pass a REAL NWScript object reference (e.g. GetObjectByTag(...)) and
+// get back a guaranteed-correct resolved pointer, no candidate-hunting needed.
+// The object argument's id was already being extracted via getObject() for
+// every call (previously discarded) -- this just uses it when no explicit id
+// was given, rather than adding a second native/opcode for the same chain.
+extern "C" int __stdcall KseResolveItemId(int argCount)
+{
+    if (argCount != 3) { Log("K1SE ANOMALY resolveitem: argCount=%d (declared 3)", argCount); return -1; }
+    BYTE* base = KseImageBase();
+    KseGetFn getObject = reinterpret_cast<KseGetFn>(base + KSE_GET_OBJECT_RVA);
+    KseGetFn getInt    = reinterpret_cast<KseGetFn>(base + KSE_GET_INT_RVA);
+
+    int objFromArg = 0, explicitId = 0, unused = 0;   // declaration order: object, int, int
+    if (!getObject(KseVM(), nullptr, &objFromArg)) { Log("K1SE ANOMALY resolveitem: get.object failed"); return -1; }
+    if (!getInt(KseVM(), nullptr, &explicitId))    { Log("K1SE ANOMALY resolveitem: get.int (objectId) failed"); return -1; }
+    if (!getInt(KseVM(), nullptr, &unused))        { Log("K1SE ANOMALY resolveitem: get.int (unused) failed"); return -1; }
+
+    int objectId = (explicitId != 0) ? explicitId : objFromArg;
+    Log("K1SE RESOLVEITEM source=%s objFromArg=%d explicitId=%d -> using id=%d",
+        (explicitId != 0 ? "explicit-int" : "object-arg"), objFromArg, explicitId, objectId);
+
+    // Steps (a)-(c) only -- same chain KSE_FEAT_ID/KSE_FIELD_ID use, but
+    // deliberately stopping BEFORE their creature-specific vtable get-stats
+    // step, since an item is not a creature and that call would just return
+    // NULL for it. `obj` itself is already the right base for the item
+    // struct offsets below.
+    void* root = *reinterpret_cast<void**>(base + KSE_OBJ_ROOT_RVA);
+    if (!root) { Log("K1SE RESOLVEITEM id=%d: object root null", objectId); return 0; }
+    void* seed = *reinterpret_cast<void**>(reinterpret_cast<BYTE*>(root) + 8);
+    if (!seed) { Log("K1SE RESOLVEITEM id=%d: object seed null", objectId); return 0; }
+
+    typedef void* (__fastcall *KseObjTableFn)(void* thisptr, void* edx);
+    typedef unsigned char (__fastcall *KseResolveObjFn)(void* thisptr, void* edx, int id, void** out);
+    KseObjTableFn getTable = reinterpret_cast<KseObjTableFn>(base + KSE_OBJ_TABLE_GET_RVA);
+    void* table = getTable(seed, nullptr);
+    if (!table) { Log("K1SE RESOLVEITEM id=%d: object table null", objectId); return 0; }
+
+    KseResolveObjFn resolve = reinterpret_cast<KseResolveObjFn>(base + KSE_OBJ_RESOLVE_RVA);
+    void* obj = nullptr;
+    unsigned char rc = resolve(table, nullptr, objectId, &obj);
+    unsigned char okByte = *reinterpret_cast<unsigned char*>(base + KSE_RESOLVE_OK_RVA);
+    if (rc != okByte || !obj) {
+        Log("K1SE RESOLVEITEM id=%d: resolve failed (rc=%u okByte=%u obj=%p)", objectId, rc, okByte, obj);
+        return 0;
+    }
+
+    // Item struct offsets confirmed via Cheat Engine research --
+    // NOT part of K1SE's own creature-stat-block layout. Both are
+    // real 4-byte DWORD reads (confirmed via the original community CT
+    // table's own disassembly, "mov ecx,[edi+0x0C]"/"mov ecx,[edi+0x28C]"),
+    // not narrower byte-sized fields with 3 bytes of coincidental padding.
+    int type = *reinterpret_cast<int*>(reinterpret_cast<BYTE*>(obj) + 0x0C);
+    int qty  = *reinterpret_cast<int*>(reinterpret_cast<BYTE*>(obj) + 0x28C);
+    Log("K1SE RESOLVEITEM id=%d -> obj=%p type=%d qty=%d", objectId, obj, type, qty);
+    return 1;
 }
 
 #endif
@@ -2501,6 +2572,9 @@ __declspec(naked) static void Kse19_Detour()
         // KOTOR AP ADDITION (real credits write) -- host 683.
         cmp  dword ptr [esp + 4], KSE_SET_CREDITS_ID
         je   k19_setcredits
+        // KOTOR AP ADDITION (item-id resolve diagnostic, memory-hunting session) -- host 638.
+        cmp  dword ptr [esp + 4], KSE_RESOLVE_ITEM_ID
+        je   k19_resolveitem
 
         jmp  dword ptr [g_trampoline]
 
@@ -2512,6 +2586,9 @@ __declspec(naked) static void Kse19_Detour()
                    ret  8
     k19_setcredits: push dword ptr [esp + 8]
                    call KseSetCredits
+                   ret  8
+    k19_resolveitem: push dword ptr [esp + 8]
+                   call KseResolveItemId
                    ret  8
     k19_featread:  push dword ptr [esp + 8]
                    call KseFeatRead

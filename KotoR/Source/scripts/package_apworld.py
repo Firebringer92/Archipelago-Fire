@@ -5,7 +5,7 @@ zip containing the world's package plus an archipelago.json manifest),
 loaded by dropping it into Archipelago\custom_worlds\ instead of unpacking
 loose files into Archipelago\worlds\kotor\ directly.
 
-Why this exists (2026-08-31): Generate.py itself is 100% stock, unmodified
+Why this exists: Generate.py itself is 100% stock, unmodified
 Archipelago -- verified via `git diff` against the exact upstream commit
 this repo tracks. The ONLY thing that actually determines a KOTOR seed's
 generation (item placement, location mapping, slot_data content) is
@@ -48,7 +48,7 @@ DEFAULT_OUT = os.path.join(REPO_ROOT, "dist", "kotor.apworld")
 # player can compare to confirm they're running the same generation logic.
 # No existing version tracking anywhere in worlds/kotor/ before this
 # script -- starting fresh at 0.1.0 for the first packaged release.
-WORLD_VERSION = "0.1.4"
+WORLD_VERSION = "0.1.5"
 
 GAME_NAME = "KotOR"
 
@@ -61,10 +61,10 @@ def main():
     parser.add_argument("--min-ap-version", default=None,
                          help="Override minimum_ap_version instead of auto-detecting this machine's own "
                               "Archipelago core version. Use this to pin against a real tester's actual "
-                              "(possibly older) core -- e.g. 2026-09-04: this repo's own core was 0.6.8 "
-                              "but a tester's freshly-updated official Archipelago was only 0.6.7, so the "
-                              "apworld auto-rejected as 'too old' even though nothing KOTOR-specific "
-                              "actually needed 0.6.8. minimum_ap_version is purely a load-time gate, not a "
+                              "(possibly older) core -- this repo's own dev-machine core can be newer than "
+                              "a tester's official Archipelago install, which would otherwise auto-reject "
+                              "the apworld as 'too old' even though nothing KOTOR-specific actually needs "
+                              "the newer version. minimum_ap_version is purely a load-time gate, not a "
                               "guarantee the code path was exercised on that exact core -- lowering it is "
                               "low-risk (worst case: a real Python error instead of a clean rejection, if "
                               "something genuinely new IS relied upon), not a correctness claim.")

@@ -1441,7 +1441,7 @@ void CheckClasses()
     KSE_Diag(65, sReport);
 }
 
-// Traps feature (2026-09-08) -- reports every feat.2da id the character
+// Traps feature -- reports every feat.2da id the character
 // currently holds (KSE_GetFeatAcquired is per-id membership only, there's
 // no 'list all feats' native), so the client can pick half at random for
 // the Remove Half Known Feats trap without guessing at what's held.
@@ -1576,9 +1576,21 @@ void CheckFeats()
 
 // Same shape as CheckFeats() above, for spells.2da (force powers) --
 // GetHasSpell is likewise per-id membership only.
+//
+// GUARD: same reasoning as CheckForce()'s guard below --
+// GetHasSpell() running fine on a PERMANENTLY non-Jedi character (a
+// null/empty known-powers array is a well-defined state) does not prove
+// it's safe on a character that was JUST raw-multiclassed via
+// AddMultiClass() and never went through a real level-up -- that's a
+// different internal state, and this native has never been proven safe
+// against it specifically.
 void CheckForcePowers()
 {
     object oPC = GetFirstPC();
+    int nJediTotal = GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC)
+        + GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC)
+        + GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC);
+    if (nJediTotal == 1) return;
     string sHeld = "";
     if (GetHasSpell(4, oPC)) sHeld += "4,";
     if (GetHasSpell(6, oPC)) sHeld += "6,";
@@ -1657,74 +1669,23 @@ void CheckSkills()
     KSE_Diag(28, sReport);
 }
 
-// Same stateless design as CheckXP() -- the game doesn't decide what's
-// legitimate, it just honestly reports current inventory (backpack +
-// equipped slots) every poll. The AP client correlates this against its
-// own memory (starting kit, AP grants, and STOREOPENED snapshots from
-// ap_store suppressors) to decide what should be removed. Backpack items
-// use GetFirstItemInInventory/GetNextItemInInventory; GetFirstItemInInventory
-// does NOT include equipped gear, so equipped slots are checked separately.
-void CheckInventory()
-{
-    object oPC = GetFirstPC();
-    string sReport = "AP|INVENTORY|";
-
-    object oItem = GetFirstItemInInventory(oPC);
-    while (GetIsObjectValid(oItem))
-    {
-        sReport = sReport + GetTag(oItem) + ":" + IntToString(GetItemStackSize(oItem)) + ",";
-        oItem = GetNextItemInInventory(oPC);
-    }
-
-    object oEq;
-    oEq = GetItemInSlot(INVENTORY_SLOT_HEAD, oPC);
-    if (GetIsObjectValid(oEq))
-    {
-        sReport = sReport + "EQ_HEAD:" + GetTag(oEq) + ",";
-    }
-    oEq = GetItemInSlot(INVENTORY_SLOT_BODY, oPC);
-    if (GetIsObjectValid(oEq))
-    {
-        sReport = sReport + "EQ_BODY:" + GetTag(oEq) + ",";
-    }
-    oEq = GetItemInSlot(INVENTORY_SLOT_HANDS, oPC);
-    if (GetIsObjectValid(oEq))
-    {
-        sReport = sReport + "EQ_HANDS:" + GetTag(oEq) + ",";
-    }
-    oEq = GetItemInSlot(INVENTORY_SLOT_RIGHTWEAPON, oPC);
-    if (GetIsObjectValid(oEq))
-    {
-        sReport = sReport + "EQ_RWEAPON:" + GetTag(oEq) + ",";
-    }
-    oEq = GetItemInSlot(INVENTORY_SLOT_LEFTWEAPON, oPC);
-    if (GetIsObjectValid(oEq))
-    {
-        sReport = sReport + "EQ_LWEAPON:" + GetTag(oEq) + ",";
-    }
-    oEq = GetItemInSlot(INVENTORY_SLOT_LEFTARM, oPC);
-    if (GetIsObjectValid(oEq))
-    {
-        sReport = sReport + "EQ_LARM:" + GetTag(oEq) + ",";
-    }
-    oEq = GetItemInSlot(INVENTORY_SLOT_RIGHTARM, oPC);
-    if (GetIsObjectValid(oEq))
-    {
-        sReport = sReport + "EQ_RARM:" + GetTag(oEq) + ",";
-    }
-    oEq = GetItemInSlot(INVENTORY_SLOT_IMPLANT, oPC);
-    if (GetIsObjectValid(oEq))
-    {
-        sReport = sReport + "EQ_IMPLANT:" + GetTag(oEq) + ",";
-    }
-    oEq = GetItemInSlot(INVENTORY_SLOT_BELT, oPC);
-    if (GetIsObjectValid(oEq))
-    {
-        sReport = sReport + "EQ_BELT:" + GetTag(oEq) + ",";
-    }
-
-    KSE_Diag(26, sReport);
-}
+// No CheckInventory() here: it used to build ONE giant string
+// via repeated concatenation across the whole backpack + equipped slots
+// (sReport = sReport + GetTag(oItem) + ...), reported as AP|INVENTORY|...
+// every poll. NWScript's own string type
+// has a hard ~512-byte engine limit, and a real 28+-item backpack
+// truncates mid-word well before the scan finishes. This silently lost
+// data for ANY tag near the end of a large enough backpack (see
+// CheckBountyCount() below for its targeted
+// single-tag replacement, which can't hit this limit since it only ever
+// emits a bounded integer, never a per-item concatenation). The only other
+// consumer, kotor_reconciliation.py's current_inventory (Remove Half
+// Inventory trap), no longer needs a live poll at all -- that trap now
+// does its own on-demand inventory walk + native random selection
+// entirely in NWScript at delivery time (see generate_trampoline_batch.py's
+// build_trap_block, remove_half_inventory branch), so dropping this
+// function removes a full inventory walk + string build from every single
+// 5-second heartbeat tick with no functional loss.
 
 // DeathLink outgoing half. Same stateless design as everything else here --
 // just honestly reports whether the PC is currently dead every poll, no
@@ -1738,6 +1699,37 @@ void CheckDeath()
     if (GetIsDead(oPC))
     {
         KSE_Diag(64, "AP|CHECK|DEATH");
+    }
+}
+
+// Bounty Card count -- replaces the old AP|INVENTORY-based
+// _bounty_card_count parsing, which relied on CheckInventory()'s giant
+// concatenated string (see the comment above for the 512-byte
+// truncation this hit). This scans for exactly ONE tag and emits a
+// single bounded integer, never a per-item string build, so it can't hit
+// that limit no matter how large the backpack is. Only generated when
+// additional_enemies_mode != 0 for this seed -- bounty carriers don't
+// exist at all otherwise, so the scan would be pure waste.
+void CheckBountyCount()
+{
+    object oPC = GetFirstPC();
+    int nCount = 0;
+    object oItem = GetFirstItemInInventory(oPC);
+    while (GetIsObjectValid(oItem))
+    {
+        if (GetTag(oItem) == "ap_bounty_card") nCount = nCount + GetItemStackSize(oItem);
+        oItem = GetNextItemInInventory(oPC);
+    }
+
+    // Only report on an actual change -- same only-when-it-moves shape as
+    // the rest of this file's stateful checks, avoids re-sending an
+    // unchanged count every 5s for as long as the player holds any cards.
+    int nLast = -1;
+    if (KSE_HasData("bounty_last_count")) nLast = StringToInt(KSE_GetData("bounty_last_count"));
+    if (nCount != nLast)
+    {
+        KSE_SetData("bounty_last_count", IntToString(nCount));
+        KSE_Diag(157, "AP|BOUNTY|COUNT|" + IntToString(nCount));
     }
 }
 
@@ -1778,6 +1770,37 @@ void CheckLevel()
     KSE_Diag(85, "AP|LEVELREPORT|" + IntToString(GetHitDice(oPC)));
 }
 
+// Feeds the delevel reconciler's Force-point scaling (see
+// kotor_reconciliation.py's _FORCE_RE/current_force) -- GetCurrentForcePoints()/
+// GetMaxForcePoints() and GetLevelByClass() above are real standard
+// natives, no new offset/native needed just to READ these.
+//
+// GUARD: GetCurrentForcePoints()/
+// GetMaxForcePoints() crash the game when called on the PC immediately
+// after a raw AddMultiClass()+CLASS1_LEVEL=1 grant (class_consular),
+// before any real UI level-up has happened -- the crash fires
+// on this poll's own automatic next tick, not any player action (no
+// character sheet/inventory/Force Powers screen needs to be opened, and the class
+// change need never even be visually seen before the crash). Matches this
+// project's own earlier companion-class-switch finding that a freshly
+// multiclassed slot's underlying Force-power data isn't allocated until a
+// real level-up runs -- these two natives apparently need to walk that
+// same not-yet-allocated structure, unlike a raw KSE_FIELD_FORCE offset
+// read/write, which doesn't. Skip while any Jedi slot is fresh (total
+// Jedi levels == 1) -- exactly the dangerous state, and not useful data
+// anyway since every real formula data point so far came from levels well
+// past this point.
+void CheckForce()
+{
+    object oPC = GetFirstPC();
+    int nJediTotal = GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC)
+        + GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC)
+        + GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC);
+    if (nJediTotal == 1) return;
+    KSE_Diag(137, "AP|FORCEREPORT|current=" + IntToString(GetCurrentForcePoints(oPC))
+        + "|max=" + IntToString(GetMaxForcePoints(oPC)));
+}
+
 void main()
 {
     CheckQuests();
@@ -1785,7 +1808,6 @@ void main()
     CheckJournal();
     CheckXP();
     CheckCredits();
-    CheckInventory();
     CheckAbilityScores();
     CheckClasses();
     CheckFeats();
@@ -1793,9 +1815,11 @@ void main()
     CheckCharacterName();
     CheckSkills();
     CheckDeath();
+    CheckBountyCount();
     CheckAlignment();
     CheckGoal();
     CheckLevel();
+    CheckForce();
 
     // Self-healing heartbeat restart, staleness-based (not a one-shot flag).
     // Confirmed this session: a same-process in-game Load Game silently kills

@@ -367,9 +367,9 @@ void KSE_RemoveFeatArrayA(int nFeat, object oCreature = OBJECT_SELF) { _kse_remo
 // KOTOR AP ADDITION (not part of upstream K1SE) -- SetCreatureField.
 //
 // A generic fixed-slot writer for class type, class level, and Force points --
-// the class/level/Force offsets this project's own live testing confirmed
-// (see kotor_engine_constraints.md in project memory for the full test
-// history). Same one-write-per-call discipline as KSE_AdjustCreatureSkills
+// the class/level/Force offsets this project's own testing confirmed
+// (a companion converted to a working Level 20 Guardian
+// with 76 Force Points). Same one-write-per-call discipline as KSE_AdjustCreatureSkills
 // above: no lists, no counts, no capacity, just a value written to a slot
 // the engine's own reader already reads.
 //
@@ -391,6 +391,19 @@ int KSE_FIELD_ADD_FORCE_POWER()    { return 6; }  // nValue = spells.2da row id.
                                                    // No-ops if already known.
 int KSE_FIELD_REMOVE_FORCE_POWER() { return 7; }  // nValue = spells.2da row id.
                                                    // No-ops if not known.
+int KSE_FIELD_XP()                 { return 8; }  // raw XP, 4-byte int, same
+                                                   // statBlock as CLASS0_LEVEL/
+                                                   // FORCE. Added to
+                                                   // bypass native SetXP()'s
+                                                   // refusal to lower XP below
+                                                   // the current level's banked
+                                                   // threshold -- see offsets.h's
+                                                   // KSE_STATS_XP_OFF comment.
+                                                   // Used by the delevel
+                                                   // reconciler fix -- pair
+                                                   // with a KSE_FIELD_CLASS0_LEVEL
+                                                   // write so level and XP never
+                                                   // go out of sync.
 
 void KSE_SetCreatureField(object oCreature, int nFieldType, int nValue)
 {
@@ -398,10 +411,10 @@ void KSE_SetCreatureField(object oCreature, int nFieldType, int nValue)
 }
 
 // -----------------------------------------------------------------------------
-// KOTOR AP ADDITION (2026-09-06): Current HP getter -- the read-side
+// KOTOR AP ADDITION: Current HP getter -- the read-side
 // counterpart to KSE_FIELD_CURRENT_HP() above. Max HP has NO equivalent
 // native: it has no memory field at all (confirmed via a thorough double-
-// diff, see FutureDesign.md), and is computed instead from class/level/CON
+// diff), and is computed instead from class/level/CON
 // -- read it with the standard GetMaxHitPoints(). Current and Max Force
 // Points also need no new native -- GetCurrentForcePoints()/
 // GetMaxForcePoints() already work; only the write side
@@ -409,7 +422,7 @@ void KSE_SetCreatureField(object oCreature, int nFieldType, int nValue)
 //
 // ACTION 617 -- SWMG_GetMaxHitPoints's (object)->int shape carries it
 // exactly. Confirmed zero real callers via scan_opcode_usage.py
-// (2026-09-06) and not claimed by any other KSE host (see offsets.h's
+// and not claimed by any other KSE host (see offsets.h's
 // KSE_GETCURRENTHP_ID comment).
 int KSE_GetCurrentHP(object oCreature)
 {
@@ -417,15 +430,32 @@ int KSE_GetCurrentHP(object oCreature)
 }
 
 // KSE_DumpStatBlock (ACTION 638) and KSE_TestCreditsChain (ACTION 606) --
-// both TEMPORARY research wrappers -- were removed 2026-09-06 once the
+// both TEMPORARY research wrappers -- were removed once the
 // research they supported concluded and shipped as real natives/offsets.
 // Archived at extender/research_archive/kse_hook_temp_natives_2026-09-06.cpp.txt.
 // Both underlying ACTION ids are unclaimed again -- do not reuse without
 // re-running scan_opcode_usage.py fresh.
 
+// KOTOR AP ADDITION (TEMPORARY research wrapper -- loot-window
+// memory-hunting research): reuses ACTION 638, freed above.
+// oPC is unused/discarded (kept only because it's part of the hijacked
+// host's real signature); nObjectId is the raw script object id to
+// resolve (found via a container's item-reference-list-shaped record);
+// nUnused is reserved. Resolves the id through the same object-table
+// chain KSE_SetCreatureField/KSE_GetFeatAcquired use, stopping at the raw
+// pointer (skips their creature-specific vtable step, since an item isn't
+// a creature), then logs its type/quantity fields to
+// kse.log. One-shot verification tool, not a shipping feature -- retire
+// (leave the ACTION id gap, don't renumber) once this research concludes,
+// same convention as every other retired KSE host in this project.
+void KSE_ResolveItemId(object oPC, int nObjectId, int nUnused)
+{
+    SWMG_SetGunBankTarget(oPC, nObjectId, nUnused);
+}
+
 // -----------------------------------------------------------------------------
 // KOTOR AP ADDITION (not part of upstream K1SE): SetCredits -- the real,
-// write-capable promotion of the old credits-chain diagnostic (2026-09-03).
+// write-capable promotion of the old credits-chain diagnostic.
 // Resolves pRes via the same confirmed chain and writes nValue directly to
 // [pRes+0xFC] -- an exact, bidirectional set. Replaces the old
 // GiveGoldToCreature/TakeGoldFromCreature dance (TakeGoldFromCreature is a
@@ -437,7 +467,7 @@ int KSE_GetCurrentHP(object oCreature)
 //
 // ACTION 683 -- SWMG_GetSoundFrequency's (object,int)->int shape carries
 // it exactly. Confirmed zero real callers via scan_opcode_usage.py
-// (2026-09-03) and not claimed by any other KSE host (see offsets.h's
+// and not claimed by any other KSE host (see offsets.h's
 // KSE_SET_CREDITS_ID comment).
 int KSE_SetCredits(object oPC, int nValue)
 {

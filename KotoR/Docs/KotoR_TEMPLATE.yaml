@@ -99,12 +99,24 @@ KotOR:
   #             removed from the pool entirely.
   companion_mode: ap_gated
 
+  # Replaces HK-47 with a new human companion, in his exact party slot -- a swap, not an addition. His
+  # recruitment mechanism (the Tatooine droid-purchase trigger) is
+  # unchanged; only who you get is different. His personal Ebon Hawk
+  # subplot is removed and replaced with a single placeholder greeting.
+  # When on, the AP-facing item/location names for his companion check
+  # (relevant under companion_mode=ap_gated) read "New Companion" instead
+  # of "HK-47". She's also folded into companion_class/additional_feats
+  # like the other 7 non-droid companions.
+  # false (default): vanilla HK-47, unchanged.
+  new_companion: false
+
   # --- Extra features (quest-item gating, traps, enemies) -------------------
 
   # Whether "Additional Feats" items exist in the pool at all. When on, one
   # such item is placed per eligible character (the PC, plus all 7 non-droid
   # companions unless companion_mode is "none" -- HK-47/T3-M4 are droids and
-  # never eligible). Receiving one doesn't grant anything immediately -- 3
+  # never eligible; if new_companion is on, then new companion is eligible
+  # HK-47's place). Receiving one doesn't grant anything immediately -- 3
   # random feats (weapon/armor proficiencies and class signature abilities,
   # from a fixed pool) are picked once that character is actually recruited
   # and their class has settled.
@@ -121,23 +133,32 @@ KotOR:
   # false (default): vanilla -- all 8 items behave normally, no gating.
   # INCOMPATIBLE with area_randomizer below -- enabling both raises an error
   # at generation time.
+  # ALSO REQUIRES goal (below) to be defeat_malak or reach_leviathan --
+  # true_balance and max_level don't require ever reaching the Leviathan or
+  # later, so the Star Maps this option gates could go permanently unfound.
+  # Enabling both raises an error at generation time.
   progression_system: false
 
-  # Whether "Trap" items exist in the pool at all. When on, 12 trap items
-  # take the place of 12 ordinary filler items. Each one does something
-  # purely punishing to the PC (never companions, except as the deliberate
-  # target of "remove a companion"), once only, no re-triggering. The 12:
-  # Remove All Credits, Reduce a Skill, Remove Half Known Feats, Remove Half
-  # Known Force Powers, Cut Max Health in Half (best-effort via
-  # Constitution -- KOTOR has no direct Max HP field, so an exact 50% cut
-  # isn't always reachable), Remove a Companion (random currently-recruited
-  # one, no-op if none recruited yet), Remove Half Inventory Items (backpack
-  # only, quest items never eligible), and one item each for
-  # Strength/Dexterity/Intelligence/Wisdom/Charisma that halves that score
-  # (no standalone Constitution item -- Cut Max Health already uses it). A
-  # trap with nothing to halve (0 or 1 of something) just does nothing.
-  # false (default): no trap items exist.
-  enable_traps: false
+  # Whether "Trap" items exist in the pool, and how many. Each trap does
+  # something purely punishing to the PC (never companions, except as the
+  # deliberate target of "remove a companion"), once only, no re-triggering.
+  # The 12 types: Remove All Credits, Reduce a Skill, Remove Half Known
+  # Feats, Remove Half Known Force Powers, Cut Max Health in Half
+  # (best-effort via Constitution -- KOTOR has no direct Max HP field, so an
+  # exact 50% cut isn't always reachable), Remove a Companion (random
+  # currently-recruited one, no-op if none recruited yet), Remove Half
+  # Inventory Items (backpack only, quest items never eligible), and one
+  # item each for Strength/Dexterity/Intelligence/Wisdom/Charisma that
+  # halves that score (no standalone Constitution item -- Cut Max Health
+  # already uses it). A trap with nothing to halve just does nothing.
+  #   off (default):  no trap items exist.
+  #   item_filler:    traps are one more weighted category of the normal
+  #                   item distribution (see trap_weight below) -- how many
+  #                   you get scales with the pool, and types can repeat.
+  #   fixed_amount:   exactly 12 traps, one of each type, always.
+  # (`true`/`false` still work here and mean fixed_amount/off.)
+  # Valid: off, item_filler, fixed_amount
+  enable_traps: off
 
   # Adds brand-new hostile creatures alongside whatever's already placed in
   # an area -- existing enemies/scripts/encounters are never touched or
@@ -192,7 +213,8 @@ KotOR:
 
   # XP granted per YOUR OWN completed check, when experience_mode is
   # ap_limited. Range: 1-20000. Default 600 -- at full completion (~200
-  # real locations checked), that's ~120,000 XP which is around level 16 
+  # real locations checked), that's ~120,000 XP which is around level 16
+  # Would suggest bumping limit/item higher if you are not interested in a challenge. 
   experience_limiter: 600
 
   # XP granted per "Experience Points" item received, when experience_mode
@@ -200,6 +222,7 @@ KotOR:
   # item distribution below, a full playthrough draws ~32 of these, landing
   # around 128,000 total XP (around level 16-17) , not a forced
   # grind to the level-20 cap and not a stalled-out early game either.
+
   experience_item: 4000
 
   #Developer Note - due to the way delivery of information between kotor client and game is handled
@@ -247,6 +270,10 @@ KotOR:
   # without an equipment slot) you get per item, capped by that item's own
   # real in-game stack limit either way. Range: 1-99. Equipment (weapons,
   # armor, wearables) always grants exactly 1 regardless of this.
+  # NOTE: this only affects AP item GRANTS (a consumable arriving through
+  # the multiworld). It has no effect on shop stock (shop_item_count below)
+  # or consumables found/looted in the world (loot_mode below) -- those are
+  # separate mechanisms and always use the item's own real vanilla quantity.
   consumable_stack_count: 10
 
   # Whether shops get restocked with a curated random selection at all.
@@ -260,19 +287,20 @@ KotOR:
   # Range: 1-30.
   shop_item_count: 30
 
-  # What happens to a picked-up item NOT on the AP-allowed list
+  # What happens to a loot in the game world. 
   # (quest-critical items are always left alone regardless of this option).
   #   normal (default): untouched -- pure vanilla, nothing wired up at all.
-  #   destroy:          the pickup is destroyed immediately, no replacement.
-  #   bonus:            the pickup is kept; separately, one random item
+  #   destroy:          Most loot is destroyed excluding quest items and scripted loot
+  #   bonus:            one random item
   #                     (drawn from the same shop_randomize pool that
   #                     stocks shops) is granted every time a running count
   #                     of genuine non-whitelisted finds crosses a new
   #                     multiple of 5.
-  #   replace:          the pickup is destroyed and immediately replaced
+  #   replace:          available loot in the game is replaced at random
   #                     with one random item from the same pool, 1-for-1.
   # This is a real, game-file-level patch applied once by
   # scripts/patch_item_suppression.py (see README) -- this option only
+  # Some game is left on vanilla due to scripting limitations
   # takes effect once that patch step has actually been run for your seed.
   # Valid: normal, destroy, bonus, replace
   loot_mode: normal
@@ -286,40 +314,45 @@ KotOR:
   #   normal (default):    a fixed, project-chosen baseline distribution
   #                         (see the weights below) -- a sensible mix that
   #                         doesn't need any tuning.
-  #   player_decided:      uses the 7 weight options below instead of the
+  #   player_decided:      uses the 8 weight options below instead of the
   #                         fixed baseline.
-  #   randomized:           same as player_decided, but the 7 weights are
+  #   randomized:           same as player_decided, but the 8 weights are
   #                         randomly generated per seed instead.
   item_distribution_type: normal
 
   # Relative weights for item_distribution_type: player_decided (ignored
-  # otherwise -- "normal" always uses this same 30/20/30/20/10/5/5
+  # otherwise -- "normal" always uses this same 20/20/30/40/40/20/20/1
   # baseline internally). These do NOT need to add up to 100 -- they're
   # relative to each other, so doubling every value produces the same
   # distribution. A category with nothing real to draw from (e.g.
-  # exp_weight when experience_mode is off) is skipped automatically
-  # and the rest renormalized. Range: 0-100 each. Skill/Ability default low
-  # on purpose -- meant to show up occasionally, not dominate the pool.
-  weapon_weight: 30
+  # exp_weight when experience_mode is off, or trap_weight unless
+  # enable_traps is item_filler) is skipped automatically and the rest
+  # renormalized. Range: 0-100 each. Skill/Ability/Trap default low on
+  # purpose -- meant to show up occasionally, not dominate the pool.
+  # NOTE on consumable_weight specifically: this only controls how many
+  # consumable AP item GRANTS show up in the pool -- not shop stock
+  # (shop_item_count above) or consumables found/looted in the world
+  # (loot_mode above), which are separate mechanisms with their own controls.
+  weapon_weight: 20
   armor_weight: 20
   consumable_weight: 30
-  exp_weight: 20
-  credit_weight: 10
-  skill_weight: 5
-  ability_weight: 5
+  exp_weight: 40
+  credit_weight: 40
+  skill_weight: 20
+  ability_weight: 20
+  trap_weight: 1
 
 
   # --- Area randomizer -------------------------------------------------------
 
   # Whether doors and area-transition triggers are shuffled to lead
-  # somewhere other than their vanilla destination (uncoupled -- the door
-  # you leave through isn't guaranteed to lead back where you entered).
-  # A handful of transitions have no real vanilla entry point anywhere in
-  # the game's own data and are left on their normal exit automatically --
-  # that's expected, not a bug. This is a real, game-file-level patch
-  # applied once by scripts/patch_door_randomizer.py (see README) -- this
-  # option only takes effect once that patch step has actually been run
-  # for your seed.
+  # somewhere other than their vanilla destination. Most doors (110 of
+  # 156) are genuinely coupled -- walk through a shuffled door and you can
+  # always walk straight back out the same way. 
+  # This is a real, game-file-level patch applied once by
+  # scripts/patch_door_randomizer.py (see README) -- this option only
+  # takes effect once that patch step has actually been run for your seed.
+  # Balance is not guranteed and is not compatible with progression system.
   area_randomizer: false
 
 
@@ -333,6 +366,8 @@ KotOR:
   #                 - not simultaneously
   #   max_level:    won on reaching character level 20, KOTOR's real
   #                level cap.
+  #   reach_leviathan: won the moment you're captured aboard the Leviathan --
+  #               
   goal: defeat_malak
 
 
@@ -342,6 +377,29 @@ KotOR:
 
   # Developer Note: This currently only kills the player character on loading to new area,
   # if you have a companion this will not kill you and only drop the PC to 1 health 
-  # WOrks same as if you character dies in combat as soon as combat is over you get resurreced if one character is alive
+  # Works same as if you character dies in combat as soon as combat is over you get resurreced if one character is alive
   # this is a known design gap. Not currently called out as a bug
+  # death link only is fired if your player character dies. Not if a companion dies.
   death_link: false
+
+  # TrapLink: like DeathLink, for traps -- and genuinely cross-game (any
+  # AP world using the same "TrapLink" Bounce convention, e.g. Super Mario
+  # World). When a trap hits you, every other TrapLink player in the
+  # multiworld gets one too -- and vice versa. Each recipient rolls their
+  # OWN random trap type; the other game's specific trap is never read or
+  # translated, just used as a "something bad happened" signal. A linked
+  # trap is never sent back out again. Ignored entirely if enable_traps is
+  # off for you.
+  trap_link: false
+
+  # Galactic Shop: one crate in the Ebon Hawk's cargo hold (renamed
+  # "Galactic Shop") becomes a trade box shared with every other KOTOR
+  # player in this multiworld -- KOTOR-exclusive, unlike TrapLink above
+  # (only other KOTOR slots can deposit/receive). Put an item in -> it
+  # goes into the shared pool and you get a Galactic Coin. Put a coin in
+  # -> you get a random item some OTHER player deposited (never your own;
+  # a Medpac if nobody has left anything). What you get arrives on your
+  # next area transition, and the KOTOR Client must be connected to the
+  # server when you use the box (offline uses are remembered and settled
+  # on the next connect).
+  galactic_shop: false

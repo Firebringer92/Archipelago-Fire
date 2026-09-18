@@ -14,8 +14,8 @@ from .Options import (
 from .Rules import set_rules, set_completion_rules
 
 # Registers a "KOTOR Client" button in the Archipelago Launcher, the
-# `x2wotc`/`tits_the_3rd`-style pattern confirmed working (2026-09-07
-# research, see FutureDesign.md's Q2) by reading those two real installed
+# `x2wotc`/`tits_the_3rd`-style pattern confirmed working
+# by reading those two real installed
 # third-party apworlds' own __init__.py directly. KOTOR's own client is
 # NOT bundled into this apworld and run in-process the way theirs are --
 # KotorClient.py's whole job is bridging to a SEPARATELY installed
@@ -42,11 +42,10 @@ def launch_kotor_client(*args: str) -> None:
 
     with open(marker_path, encoding="utf-8") as f:
         install_path = f.read().strip()
-    # 2026-09-09 fix, found live: KotorClient.py used to ship in a
-    # "KotorClient\" subfolder -- that layout was fixed (package_playerbundle.py
-    # now puts it at the Client folder root, see that script's own fix note),
-    # but this path was never updated to match, so the button always failed
-    # its own isfile check silently.
+    # KotorClient.py ships at the Client folder root (see
+    # package_playerbundle.py), not a "KotorClient\" subfolder -- this
+    # path must match that layout or the button's isfile check below
+    # fails silently.
     kotor_client_path = os.path.join(install_path, "KotorClient.py")
     if not os.path.isfile(kotor_client_path):
         print(f"KOTOR Client: the recorded install path ({install_path!r}) doesn't have "
@@ -54,10 +53,10 @@ def launch_kotor_client(*args: str) -> None:
               f"Re-run Install.bat to fix this.")
         return
 
-    # 2026-09-09 fix, found live: this button runs INSIDE the compiled
+    # This button runs INSIDE the compiled
     # Archipelago Launcher .exe, where sys.executable is the frozen
-    # Launcher's OWN exe path, not a python interpreter -- confirmed live,
-    # clicking the button just relaunched a second, confused Launcher
+    # Launcher's OWN exe path, not a python interpreter -- using it
+    # directly would just relaunch a second, confused Launcher
     # instance instead of KotorClient.py (a real python.exe would run this
     # fine; a frozen app's sys.executable never is one). Use the real
     # interpreter install_playerbundle.py recorded when it ran (always a
@@ -79,7 +78,7 @@ def launch_kotor_client(*args: str) -> None:
         print(f"KOTOR Client: no recorded python interpreter -- falling back to {python_exe!r}, "
               f"which may not work if this is a frozen app. Re-run Install.bat to fix this.")
 
-    # 2026-09-09 fix, found live: even with the right interpreter, a raw
+    # Even with the right interpreter, a raw
     # `Popen([python_exe, ...])` window closes the instant the process
     # exits -- if KotorClient.py crashes on startup (e.g. GUI mode's Kivy
     # dependency missing/broken), the window flashes and closes before
@@ -127,6 +126,17 @@ COMPANION_ITEM_NAMES = [
 # that mode). Keys match KotorClient.py's COMPANION_IDX_TO_ARM suffix
 # ("companion_<key>") and generate_trampoline_batch.py's _COMPANION_TAGS.
 COMPANION_CLASS_KEYS = ["bastila", "canderous", "carth", "jolee", "juhani", "mission", "zaalbar"]
+# Deliberately NOT edited to add "hk47" directly -- this list (and the
+# additional_feats eligibility list, which reuses it) must stay conditional
+# on new_companion, not static, or vanilla HK-47 (a droid, in seeds where
+# the replacement isn't even selected) would incorrectly become eligible
+# for class randomization/Additional Feats. See KotorWorld._companion_class_keys().
+# Her internal key stays "hk47" (matches every arm/tag/NPC-const token
+# elsewhere in this codebase) even though her AP-facing name is "New
+# Companion" -- COMPANION_CLASS_DISPLAY_NAMES is the one place that needs
+# an explicit override, since "hk47".capitalize() would otherwise produce
+# the broken-looking "Hk47" in a generated item name.
+COMPANION_CLASS_DISPLAY_NAMES = {"hk47": "New Companion"}
 NON_JEDI_COMPANION_KEYS = ["carth", "canderous", "zaalbar", "mission"]
 BASE_CLASS_NAMES = ["soldier", "scout", "scoundrel"]
 JEDI_CLASS_NAMES = ["guardian", "consular", "sentinel"]
@@ -149,7 +159,7 @@ GOAL_EVENT_LOCATIONS: typing.Dict[str, str] = {
     "Alignment: Light Side 100": "Reached Light Side 100",
 }
 
-# CompanionMode=ap_gated Mission/Zaalbar dependency (2026-09-09), part 2 of
+# CompanionMode=ap_gated Mission/Zaalbar dependency, part 2 of
 # 2 -- Rules.py's set_rules() already guarantees "Companion: Mission Vao"
 # can never be placed AT "Companion Recruited: Zaalbar" itself (the pure
 # circular case), but that alone doesn't stop the general random fill from
@@ -167,7 +177,21 @@ GOAL_EVENT_LOCATIONS: typing.Dict[str, str] = {
 # "Taris: Escaping Taris" is deliberately excluded -- its own journal
 # completion likely coincides with the departure itself, the exact
 # knife-edge case this is trying to avoid, not a safe margin before it.
-MISSION_ITEM_EXCLUDED_LOCATIONS = {"Taris: Escaping Taris"}
+#
+# "Taris: Inside the Vulkar Base" is excluded for the same reason, found
+# live: its own journal completion (tar_vulkarbase, global.jrl) requires
+# having ALREADY infiltrated the Black Vulkar Base, and confirmed via
+# disassembly that BOTH of the base's two real entrances (front door
+# tar03_blkdoor, back-way forcefield console tar05_ffcontrol) require
+# Mission Vao specifically to open on first entry -- the front door only
+# ever unlocks from INSIDE the base, an unrelated chicken-and-egg, and
+# the forcefield has no Security-skill bypass (lockable=FALSE). So under
+# companion_mode=ap_gated, if Mission's own recruit item landed here, no
+# player could ever reach the location that grants it -- a genuine
+# permanent story soft-lock, not just an inconvenience. A live safety
+# net for seeds already generated before this fix exists too (see
+# extender/scripts_src/k_ptar_startconv.nss).
+MISSION_ITEM_EXCLUDED_LOCATIONS = {"Taris: Escaping Taris", "Taris: Inside the Vulkar Base"}
 
 
 def _mission_item_eligible_locations() -> typing.List[str]:
@@ -193,7 +217,7 @@ _ARMOR_SLOTS = {"Arm", "Belt", "Body", "Hands", "Hands/Implant", "Head", "Implan
 # real module prefixes EntranceRando.py already relies on elsewhere in
 # this file.
 #
-# 2026-09-08 FIX: Tatooine ("tatooine") was missing entirely -- confirmed
+# FIX: Tatooine ("tatooine") was missing entirely -- confirmed
 # a real bug, not by-design scope: tat_m17ab/tat_m17ad genuinely have
 # real store objects (see extender/area_trampolines/_shop_map.json), but
 # with this key absent, _shop_stock() below never generated a "tatooine"
@@ -222,6 +246,10 @@ PLANET_MODULE_PREFIXES: typing.Dict[str, str] = {
 _DEFAULT_DISTRIBUTION_WEIGHTS: typing.Dict[str, int] = {
     "weapon": 30, "armor": 20, "consumable": 30,
     "exp": 20, "credit": 10, "skill": 5, "ability": 5,
+    # Only ever biddable when Traps=item_filler (the category's candidate
+    # list is empty otherwise and _distribute_items drops it) -- so this
+    # baseline changes nothing for off/fixed_amount seeds.
+    "trap": 5,
 }
 
 
@@ -264,22 +292,65 @@ class KotorWorld(World):
     item_name_to_id = item_name_to_id
     location_name_to_id = location_name_to_id
 
+    def _companion_class_keys(self) -> list:
+        """COMPANION_CLASS_KEYS, plus "hk47" when new_companion is on. Must
+        be computed per-call (not a static list edit) so a seed where the
+        replacement isn't selected never makes vanilla HK-47 (a droid)
+        eligible for class randomization/Additional Feats -- see
+        COMPANION_CLASS_KEYS's own comment. Used by generate_early()'s
+        no_jedi/randomize_all rolls and by create_items()'s Additional
+        Feats eligibility list; NOT used for jedi_companion (mode 2), which
+        keeps its own separate NON_JEDI_COMPANION_KEYS untouched by design."""
+        keys = list(COMPANION_CLASS_KEYS)
+        if self.options.new_companion:
+            keys.append("hk47")
+        return keys
+
     def _active_locations(self) -> dict:
         """location_table filtered for companion_mode=none, which removes
         the 9 "companion" location_type entries AND the 10
-        COMPANION_SUBPLOT_LOCATIONS entries (2026-09-10 fix -- those are
-        location_type="journal", so they weren't caught by the original
-        "companion" type check even though companions never joining at
-        all makes them just as permanently uncompletable) entirely rather
-        than leaving them stuck. Used by both create_regions() and
-        create_items() so the pool size always matches what's actually
-        placed -- computing this independently in each would risk the two
-        silently drifting out of sync."""
+        COMPANION_SUBPLOT_LOCATIONS entries (those are
+        location_type="journal", so they aren't caught by the
+        "companion" type check alone, even though companions never joining
+        at all makes them just as permanently uncompletable) entirely
+        rather than leaving them stuck. Also filters the 40 "bounty" locations
+        when additional_enemies is off -- with no additional
+        enemies placed at all, no bounty card can ever be carried, so
+        these would otherwise be 40 permanently-uncompletable locations,
+        same shape as the companion_mode=none case. Used by both
+        create_regions() and create_items() so the pool size always
+        matches what's actually placed -- computing this independently in
+        each would risk the two silently drifting out of sync."""
+        result = location_table
         if self.options.companion_mode == 2:  # none
-            return {name: data for name, data in location_table.items()
-                     if data.location_type != "companion"
-                     and name not in COMPANION_SUBPLOT_LOCATIONS}
-        return location_table
+            result = {name: data for name, data in result.items()
+                       if data.location_type != "companion"
+                       and name not in COMPANION_SUBPLOT_LOCATIONS}
+        if self.options.additional_enemies == 0:  # off
+            result = {name: data for name, data in result.items()
+                       if data.location_type != "bounty"}
+        # new_companion: "Companion Recruited: HK-47" and
+        # "Companion Recruited: New Companion" share the same companion_idx
+        # (both fire off IsAvailableCreature(3) -- see Locations.py), so
+        # exactly one of the two must be active, never both/neither, or
+        # active_count (create_items()) and the real fillable location
+        # count would drift apart. "Ebon Hawk: HK-47" is dropped outright
+        # (no new_companion equivalent) when the replacement is selected --
+        # her personal subplot dialogue that used to complete it is gone,
+        # replaced with a single placeholder greeting, so the check would
+        # otherwise sit permanently uncompletable (same failure shape as
+        # the companion_mode=none journal-location bug above, this time
+        # self-inflicted by the dialogue cut rather than her never joining
+        # at all). When companion_mode=none has already stripped all
+        # companion-type/subplot locations above, these two filters are a
+        # harmless no-op against an already-absent name.
+        if self.options.new_companion:
+            result = {name: data for name, data in result.items()
+                       if name not in ("Companion Recruited: HK-47", "Ebon Hawk: HK-47")}
+        else:
+            result = {name: data for name, data in result.items()
+                       if name != "Companion Recruited: New Companion"}
+        return result
 
     def create_regions(self) -> None:
         menu = Region("Menu", self.player, self.multiworld)
@@ -331,7 +402,7 @@ class KotorWorld(World):
         return KotorItem(name, data.classification, data.code, self.player)
 
     def generate_early(self) -> None:
-        # 2026-09-08: Progression System's real access-rule layer (see
+        # Progression System's real access-rule layer (see
         # Rules.py) depends entirely on knowing which real locations sit
         # on which side of each gate -- area_randomizer scrambling door/
         # entrance connections makes that reasoning impossible (a location
@@ -345,6 +416,21 @@ class KotorWorld(World):
                 f"[KotOR - '{self.player_name}'] Progression System and Area Randomizer cannot both be "
                 "enabled -- Progression System's access rules depend on the vanilla area layout to know "
                 "which locations are actually behind each gate, which Area Randomizer scrambles.")
+
+        # Confirmed live: a real seed combining progression_system with
+        # goal=max_level left 2 of the 4 Star Maps permanently unfound --
+        # nothing in that goal ever requires reaching the Leviathan or
+        # later, so there's no narrative pull to go find them. Restricting
+        # to the two goals that actually require completing the gated
+        # content (defeat_malak requires it directly; reach_leviathan is
+        # gated behind all 4 Star Maps via Rules.py, see
+        # ProgressionSystem's own docstring) closes that gap at generation
+        # time rather than leaving it as a possible dead-end mid-seed.
+        if self.options.progression_system and self.options.goal not in (0, 3):  # defeat_malak, reach_leviathan
+            raise OptionError(
+                f"[KotOR - '{self.player_name}'] Progression System requires goal to be defeat_malak or "
+                "reach_leviathan -- true_balance and max_level don't require ever reaching the Leviathan "
+                "or later, so the Star Maps this option gates could go permanently unfound.")
 
         """Precollected (starting-inventory) items: the starting_class
         choice (only when starting_class is "jedi_start" -- "jedi_granted"
@@ -376,14 +462,18 @@ class KotorWorld(World):
         self.companion_class_rolls: typing.Dict[str, str] = {}
         self.jedi_companion_items: typing.Dict[str, str] = {}
         mode = self.options.companion_class.value
+        # jedi_companion (mode 2) deliberately keeps iterating the static
+        # NON_JEDI_COMPANION_KEYS, NOT self._companion_class_keys() -- per
+        # design, new_companion has no effect on this mode (she's not one
+        # of the 4 target companions it converts).
         if mode == 1:  # no_jedi
-            for key in COMPANION_CLASS_KEYS:
+            for key in self._companion_class_keys():
                 self.companion_class_rolls[key] = self.random.choice(BASE_CLASS_NAMES)
         elif mode == 2:  # jedi_companion
             for key in NON_JEDI_COMPANION_KEYS:
                 self.jedi_companion_items[key] = self.random.choice(JEDI_CLASS_NAMES)
         elif mode == 3:  # randomize_all
-            for key in COMPANION_CLASS_KEYS:
+            for key in self._companion_class_keys():
                 self.companion_class_rolls[key] = self.random.choice(ALL_CLASS_NAMES)
 
         # Mission/Zaalbar Taris departure guarantee (see
@@ -410,14 +500,20 @@ class KotorWorld(World):
             for _ in range(firings):
                 self.multiworld.push_precollected(self.create_item(item_name))
 
-        # LootMode=destroy/replace safety net (2026-09-09): both modes
-        # unconditionally destroy non-whitelisted world pickups, including
-        # Security Spikes (see Items.py's own comment on this item for the
-        # full reasoning) -- precollected here rather than pool-placed so it
-        # can never fail to show up or compete with the weighted item draw.
-        if self.options.loot_mode in (1, 3):  # destroy, replace
-            self.multiworld.push_precollected(
-                self.create_item("Starting Item: Security Spikes (Loot Safety Net)"))
+        # No LootMode=destroy/replace safety net here (AP-
+        # granted precollected items) -- replaced by directly
+        # baking Security Spikes into the Endar Spire's own starting
+        # locker (footlker001, end_m01aa_s.rim) at patch time instead, see
+        # patch_loot_disturb.py's ensure_starting_locker_gear(). Real
+        # motivation: this precollected burst was firing as a big batch of
+        # simultaneous grants on every fresh-character connect, which was
+        # confusing to observe live and unnecessary now that the actual
+        # vanilla locker can just be guaranteed correct directly. The
+        # other 3 (Computer Spikes/Vibroblade/Clothing) were already
+        # covered by the real vanilla locker contents once footlker001/
+        # footlker003 were excluded from loot suppression entirely (see
+        # PLACEABLE_EXCLUDE) -- only Security Spikes was never actually a
+        # vanilla item there, hence the one direct addition.
 
     def create_items(self) -> None:
         # -len(GOAL_EVENT_LOCATIONS): those 2 locations got a locked Event
@@ -448,7 +544,17 @@ class KotorWorld(World):
             # "Companion: Mission Vao" excluded -- already placed directly
             # in create_regions() via mission_item_location, not left for
             # the general weighted fill (see that field's comment above).
-            mandatory_names = [n for n in COMPANION_ITEM_NAMES if n != "Companion: Mission Vao"]
+            # new_companion: swap "Companion: HK-47" for
+            # "Companion: New Companion" -- exactly one of the two is ever
+            # placed, matching _active_locations()'s companion-location
+            # swap above (both key off the same companion_idx=3 signal).
+            companion_names = COMPANION_ITEM_NAMES
+            if self.options.new_companion:
+                companion_names = [
+                    "Companion: New Companion" if n == "Companion: HK-47" else n
+                    for n in companion_names
+                ]
+            mandatory_names = [n for n in companion_names if n != "Companion: Mission Vao"]
         else:
             mandatory_names = []
         if self.options.starting_class == 2:  # jedi_granted
@@ -460,7 +566,7 @@ class KotorWorld(World):
         for key, class_name in self.jedi_companion_items.items():
             mandatory_names = mandatory_names + [f"Jedi Training: {key.capitalize()} ({class_name.capitalize()})"]
 
-        # AdditionalFeats (2026-09-07): guaranteed placement, same reasoning
+        # AdditionalFeats: guaranteed placement, same reasoning
         # as the Jedi Training items above -- a fixed count tied directly to
         # the option, not subject to the weighted _distribute_items() draw.
         # 1 item (PC only) when companion_mode is "none" (no companions
@@ -471,17 +577,24 @@ class KotorWorld(World):
         if self.options.additional_feats:
             mandatory_names = mandatory_names + ["Additional Feats Character: PC"]
             if self.options.companion_mode != 2:  # not "none"
+                # self._companion_class_keys(), not the raw COMPANION_CLASS_KEYS
+                # constant, so new_companion=on makes her eligible here too.
+                # COMPANION_CLASS_DISPLAY_NAMES.get(key, ...)
+                # falls back to .capitalize() for every real name (unaffected),
+                # and only overrides "hk47" -- ".capitalize()" alone would
+                # produce the broken-looking "Additional Feats Character: Hk47".
                 mandatory_names = mandatory_names + [
-                    f"Additional Feats Character: {key.capitalize()}" for key in COMPANION_CLASS_KEYS
+                    f"Additional Feats Character: {COMPANION_CLASS_DISPLAY_NAMES.get(key, key.capitalize())}"
+                    for key in self._companion_class_keys()
                 ]
 
-        # ProgressionSystem (2026-09-08): all 8 items are guaranteed
+        # ProgressionSystem: all 8 items are guaranteed
         # placement, same reasoning as Additional Feats above -- these
         # carry real access rules (Rules.py), so unlike a weighted-draw
         # item there's no sense in which "maybe it doesn't appear this
         # seed" would even be coherent; the rules assume all 8 exist.
         # (Originally 10 -- Tatooine Desert Map and Star Map (Dantooine)
-        # dropped 2026-09-08 after tracing each one's real checkpoint
+        # dropped after tracing each one's real checkpoint
         # script; see Items.py's comment on the item table and Rules.py.)
         if self.options.progression_system:
             mandatory_names = mandatory_names + [
@@ -492,13 +605,15 @@ class KotorWorld(World):
                 "Progression Item: Star Map (Korriban)",
             ]
 
-        # EnableTraps (2026-09-08): all 12 items guaranteed placement, same
-        # reasoning as Additional Feats/Progression System above -- "always
-        # exactly 12 exist when the option is on," not a weighted-chance
-        # draw. See Items.py's TRAP_ITEMS for the full list/arm_name
-        # mapping and Options.py's EnableTraps docstring for what each one
-        # does.
-        if self.options.enable_traps:
+        # Traps=fixed_amount: all 12
+        # items guaranteed placement, same reasoning as Additional Feats/
+        # Progression System above -- "always exactly 12 exist," not a
+        # weighted-chance draw. item_filler mode is handled inside
+        # _distribute_items() as its own weighted category instead (see
+        # the "trap" entry there); off adds nothing anywhere. See Items.py's
+        # TRAP_ITEMS for the full list/arm_name mapping and Options.py's
+        # Traps docstring for what each one does.
+        if self.options.enable_traps == 2:  # fixed_amount
             mandatory_names = mandatory_names + list(TRAP_ITEMS.keys())
 
         pool = [self.create_item(name) for name in mandatory_names]
@@ -542,8 +657,9 @@ class KotorWorld(World):
     def _distribute_items(self, needed: int) -> typing.List[KotorItem]:
         """Fills `needed` pool slots -- almost the entire pool, since only
         companions are ever separately guaranteed (see create_items()) --
-        by drawing from 7 weighted categories: Weapons, Armor/Equipment,
-        Consumables, EXP, Credits, Skills, Abilities. "normal" uses a
+        by drawing from 8 weighted categories: Weapons, Armor/Equipment,
+        Consumables, EXP, Credits, Skills, Abilities, Traps (the last only
+        when Traps=item_filler). "normal" uses a
         fixed baseline (_DEFAULT_DISTRIBUTION_WEIGHTS); "player_decided"
         reads the matching weight options instead; "randomized" rolls its
         own per-seed. Weights are relative, not required to sum to 100. A
@@ -566,6 +682,14 @@ class KotorWorld(World):
             "credit": ["Republic Credits"] if self.options.credit_mode == 2 else [],
             "skill": skill_pool,
             "ability": ability_pool,
+            # Traps=item_filler: the 12 trap types become a
+            # weighted category like any other, drawn WITH replacement --
+            # the same trap type can land more than once in a seed (each
+            # copy is a distinct delivery; the client's per-(character,
+            # index) dedup keys on the item index, not the name). Empty for
+            # off (no traps anywhere) and fixed_amount (create_items()
+            # already placed exactly 12 as mandatory items).
+            "trap": list(TRAP_ITEMS.keys()) if self.options.enable_traps == 1 else [],
         }
 
         dist_type = self.options.item_distribution_type.value
@@ -582,6 +706,7 @@ class KotorWorld(World):
                 "credit": self.options.credit_weight.value,
                 "skill": self.options.skill_weight.value,
                 "ability": self.options.ability_weight.value,
+                "trap": self.options.trap_weight.value,
             }
 
         available = {k: w for k, w in weights.items() if w > 0 and categories[k]}
@@ -615,6 +740,7 @@ class KotorWorld(World):
         pool alone."""
         return {
             "companion_mode": self.options.companion_mode.value,
+            "new_companion": bool(self.options.new_companion),
             "starting_class": self.options.starting_class.value,
             "experience_mode": self.options.experience_mode.value,
             "experience_limiter": self.options.experience_limiter.value,
@@ -623,6 +749,16 @@ class KotorWorld(World):
             "credit_limiter": self.options.credit_limiter.value,
             "credit_item": self.options.credit_item.value,
             "death_link": bool(self.options.death_link),
+            # TrapLink (KotorClient.py adds/removes the
+            # "TrapLink" connection tag from this, exactly like death_link
+            # above drives update_death_link), the raw Traps mode (0=off/
+            # 1=item_filler/2=fixed_amount -- an incoming linked trap is
+            # ignored when 0), and Galactic Shop (drives the local
+            # patch_galactic_shop.py module edit on Connect, same seed-gated
+            # pattern as loot_mode/door_mapping below).
+            "trap_link": bool(self.options.trap_link),
+            "traps_mode": self.options.enable_traps.value,
+            "galactic_shop": bool(self.options.galactic_shop),
             "receive_inventory_items": bool(self.options.receive_inventory_items),
             "consumable_stack_count": self.options.consumable_stack_count.value,
             "shop_item_count": self.options.shop_item_count.value,
@@ -636,7 +772,7 @@ class KotorWorld(World):
             # got placed (see create_items()), not sent here. Empty dict
             # for off/jedi_companion.
             "companion_class_rolls": self.companion_class_rolls,
-            # 2026-09-07 addition: the raw mode value itself (0=off/1=no_jedi/
+            # The raw mode value itself (0=off/1=no_jedi/
             # 2=jedi_companion/3=randomize_all) -- companion_class_rolls alone
             # can't distinguish "off" from "jedi_companion" (both leave it
             # empty), which the Additional Feats feature's class-finalization
@@ -644,17 +780,19 @@ class KotorWorld(World):
             # companion DOES have a class change still coming, just not
             # reflected in companion_class_rolls; off means none ever will).
             "companion_class_mode": self.options.companion_class.value,
-            # 2026-09-08: Additional Enemies mode (0=off/1=area_appropriate/
-            # 2=random_sane/3=fully_random) -- read by the local, tester-run
-            # patch script (not yet built) that consumes
+            # Additional Enemies mode (0=off/1=area_appropriate/
+            # 2=random_sane/3=fully_random) -- read by the local,
+            # tester-run scripts/patch_additional_enemies.py, which consumes
             # extender/area_trampolines/_enemy_spawn_points.json +
             # _enemy_cr_bands.json, same seed-gated pattern as loot_mode/
             # door_mapping above (not baked into the item pool -- this is a
             # pure area modification, no AP items involved).
             "additional_enemies_mode": self.options.additional_enemies.value,
-            # 2026-09-08: whether Progression System is active -- the
-            # local KotorClient.py/patch_progression_system.py (not yet
-            # built) needs this before it suppresses any of the 10 real
+            # Whether Progression System is active -- the
+            # local KotorClient.py (via patch_item_suppression.py's
+            # checkpoint wrappers and patch_loot_disturb.py's
+            # progression_resrefs handling) needs this before it suppresses
+            # any of the 10 real
             # quest items' vanilla acquisition scripts, same seed-gated
             # pattern as loot_mode/door_mapping/additional_enemies_mode
             # above.
@@ -669,12 +807,12 @@ class KotorWorld(World):
         by every shop (see Options.py's ShopItemCount).
 
         ALWAYS returns all 5 planet keys, even when shop_randomizer is off
-        (empty list per planet then) -- 2026-08-29, fixing a real bug found
-        live: this used to return {} when shop_randomizer was off, and
-        KotorClient.py skipped sending anything at all for an empty dict,
-        which meant _shop_stock.json (a file that persists across
+        (empty list per planet then): returning {} instead when
+        shop_randomizer is off would make KotorClient.py skip sending
+        anything at all for an empty dict, which would mean
+        _shop_stock.json (a file that persists across
         sessions/seeds on the player's machine, not tied to any one
-        connection) never got cleared when reconnecting to a
+        connection) never gets cleared when reconnecting to a
         shop_randomizer=off seed after previously playing one with it on --
         stale stock from the OLD seed would silently keep populating any
         store the player walked into. Returning real (even if empty) lists

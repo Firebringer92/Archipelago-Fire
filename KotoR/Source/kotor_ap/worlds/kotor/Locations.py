@@ -7,16 +7,38 @@ class LocationData(typing.NamedTuple):
     id: int
     region: str = "Adventure"
     location_type: str = "journal"  # "journal", "companion", "area", "alignment",
-    # "alignment_bonus", "level", or "malak_defeated" -- see
+    # "alignment_bonus", "level", "malak_defeated", or "bounty" -- see
     # kotor_location_tracker.py's LocationTracker.__init__ for how each is
     # consumed; every field below is read directly from there, this is not
     # a schema this file invented independently.
     # journal: the journal tag (KOTOR's own quest identifier, e.g.
-    # "dan_romance") and the stage value that means "complete" -- the
-    # highest real value found for that tag across every script/dialogue
-    # that actually sets it (see scripts/scan_journal_values.py and
-    # scan_journal_dlg_values.py; global.jrl's own documented entries
-    # turned out to be unreliable and are NOT what these are built from).
+    # "dan_romance") and the stage value that means "complete" -- built
+    # from the highest real value found for that tag across every
+    # script/dialogue that actually sets it (see scripts/scan_journal_
+    # values.py and scan_journal_dlg_values.py; global.jrl's own
+    # documented entries turned out to be unreliable for finding real
+    # in-game stage numbers and are NOT what these are built from).
+    #
+    # CONFIRMED FLAW in "highest value" for a BRANCHING quest (multiple
+    # mutually exclusive real endings, e.g. "gave the item to NPC A" vs
+    # "gave it to NPC B instead"): the scan's own methodology picks
+    # whichever ending happens to have the higher stage number,
+    # permanently excluding every other valid ending -- found via
+    # "Taris: Rakghoul Serum" (target was 20, the "sold to Zax" ending;
+    # a player choosing the "gave to Zelka" ending at stage 10 could
+    # never complete this check at all). The location tracker's own
+    # journal comparison is `value >= target` (kotor_location_tracker.py),
+    # not an exact match, so the fix for a branching quest is to use the
+    # LOWEST of the real ending stage numbers as target, not the highest
+    # -- every other ending's higher stage number still satisfies `>=`
+    # automatically. This must be confirmed per-quest against the real
+    # global.jrl `End` flags (which stages are genuine endings, not just
+    # the highest value some script sets) -- don't assume the pattern
+    # without checking, since global.jrl's own numbers are separately
+    # documented above as unreliable for the OTHER purpose (finding the
+    # true max value), but its `End` flag is exactly what identifies
+    # which stages are real completions, which is the piece "highest
+    # value scanned" alone can't tell you.
     journal_tag: str = ""
     journal_target: int = 0
     # companion: NPC_* index (nwscript.nss), fires the first time
@@ -34,6 +56,10 @@ class LocationData(typing.NamedTuple):
     alignment_bonus: str = ""
     # level: character level 2-20 (1 is the starting value, not tracked).
     level_value: int = -1
+    # bounty: how many Additional Enemies bounty cards the player must be
+    # carrying (1-40) -- a plain count threshold, same shape as level_value,
+    # just driven by inventory count instead of character level.
+    bounty_value: int = -1
 
 
 class KotorLocation(Location):
@@ -45,10 +71,10 @@ class KotorLocation(Location):
 # incident where a version of this script that DIDN'T cover every location
 # type below silently wiped 33 of them on a re-run).
 #
-# Seven location types, all detected the same way client-side (the game
-# reports raw state every poll via CHECK|.../ALIGNMENT/LEVELREPORT events;
-# the client tracks what's already been converted into a check and fires
-# on first occurrence -- see kotor_location_tracker.py):
+# Eight location types, all detected the same way client-side (the game
+# reports raw state every poll via CHECK|.../ALIGNMENT/LEVELREPORT/INVENTORY
+# events; the client tracks what's already been converted into a check and
+# fires on first occurrence -- see kotor_location_tracker.py):
 #   - journal: 100 real quest-completion checks spanning every planet
 #   - companion: 9 checks, one per companion, firing when they'd first
 #     become available (recruitment point reached)
@@ -58,63 +84,65 @@ class KotorLocation(Location):
 #     redeemed_sith)
 #   - level: character levels 2-20 (1 is the starting value)
 #   - malak_defeated: one-shot, Malak's defeat
+#   - bounty: 40 checks, one per Additional Enemies bounty card carried
+#     (only active when additional_enemies isn't off)
 base_id = 9210000
 
 location_table: typing.Dict[str, LocationData] = {
     "Dantooine: Dead Settler": LocationData(base_id + 0, region="Dantooine", location_type="journal", journal_tag="dan_casus", journal_target=20),
-    "Dantooine: Missing Companion": LocationData(base_id + 1, region="Dantooine", location_type="journal", journal_tag="dan_companion", journal_target=36),
+    "Dantooine: Missing Companion": LocationData(base_id + 1, region="Dantooine", location_type="journal", journal_tag="dan_companion", journal_target=31),
     "Dantooine: The Jedi Council": LocationData(base_id + 2, region="Dantooine", location_type="journal", journal_tag="dan_council", journal_target=20),
-    "Dantooine: Murdered Settler": LocationData(base_id + 3, region="Dantooine", location_type="journal", journal_tag="dan_murder", journal_target=99),
+    "Dantooine: Murdered Settler": LocationData(base_id + 3, region="Dantooine", location_type="journal", journal_tag="dan_murder", journal_target=70),
     "Dantooine: Mandalorian Raiders": LocationData(base_id + 4, region="Dantooine", location_type="journal", journal_tag="dan_raiders", journal_target=40),
-    "Dantooine: Sandral-Matale Feud": LocationData(base_id + 5, region="Dantooine", location_type="journal", journal_tag="dan_romance", journal_target=68),
+    "Dantooine: Sandral-Matale Feud": LocationData(base_id + 5, region="Dantooine", location_type="journal", journal_tag="dan_romance", journal_target=60),
     "Dantooine: Investigate Ruins": LocationData(base_id + 6, region="Dantooine", location_type="journal", journal_tag="dan_ruins", journal_target=20),
     "Dantooine: Jedi Trials": LocationData(base_id + 7, region="Dantooine", location_type="journal", journal_tag="dan_trials", journal_target=50),
     "Ebon Hawk: Unfinished Business": LocationData(base_id + 8, region="Ebon Hawk", location_type="journal", journal_tag="ebo46_unfinishedbusiness", journal_target=30),
     "Ebon Hawk: Dwindling Supplies": LocationData(base_id + 9, region="Ebon Hawk", location_type="journal", journal_tag="ebo_supplies", journal_target=99),
     "Ebon Hawk: The Ebon Hawk": LocationData(base_id + 10, region="Ebon Hawk", location_type="journal", journal_tag="k_ebonhawk", journal_target=1),
-    "Ebon Hawk: Jagi's Challenge": LocationData(base_id + 11, region="Ebon Hawk", location_type="journal", journal_tag="k_jagi", journal_target=25),
+    "Ebon Hawk: Jagi's Challenge": LocationData(base_id + 11, region="Ebon Hawk", location_type="journal", journal_tag="k_jagi", journal_target=20),
     "Ebon Hawk: Mission's Brother": LocationData(base_id + 12, region="Ebon Hawk", location_type="journal", journal_tag="k_missbroth", journal_target=99),
     "Ebon Hawk: Pazaak Rules": LocationData(base_id + 13, region="Ebon Hawk", location_type="journal", journal_tag="k_pazaak", journal_target=99),
-    "Ebon Hawk: The Trouble With Gizka": LocationData(base_id + 14, region="Ebon Hawk", location_type="journal", journal_tag="k_pebo_gizkatrouble", journal_target=30),
-    "Ebon Hawk: Strange Stowaway": LocationData(base_id + 15, region="Ebon Hawk", location_type="journal", journal_tag="k_pebo_stowaway", journal_target=99),
+    "Ebon Hawk: The Trouble With Gizka": LocationData(base_id + 14, region="Ebon Hawk", location_type="journal", journal_tag="k_pebo_gizkatrouble", journal_target=20),
+    "Ebon Hawk: Strange Stowaway": LocationData(base_id + 15, region="Ebon Hawk", location_type="journal", journal_tag="k_pebo_stowaway", journal_target=40),
     "Ebon Hawk: Rapid Transit System": LocationData(base_id + 16, region="Ebon Hawk", location_type="journal", journal_tag="k_rapidtransit", journal_target=99),
     "Ebon Hawk: Bastila": LocationData(base_id + 17, region="Ebon Hawk", location_type="journal", journal_tag="k_swg_bastilatalk", journal_target=100),
     "Ebon Hawk: Canderous": LocationData(base_id + 18, region="Ebon Hawk", location_type="journal", journal_tag="k_swg_canderous", journal_target=120),
     "Ebon Hawk: Carth": LocationData(base_id + 19, region="Ebon Hawk", location_type="journal", journal_tag="k_swg_carthtalk", journal_target=99),
-    "Ebon Hawk: Bastila's Mother": LocationData(base_id + 20, region="Ebon Hawk", location_type="journal", journal_tag="k_swg_helenatalk", journal_target=50),
+    "Ebon Hawk: Bastila's Mother": LocationData(base_id + 20, region="Ebon Hawk", location_type="journal", journal_tag="k_swg_helenatalk", journal_target=40),
     "Ebon Hawk: HK-47": LocationData(base_id + 21, region="Ebon Hawk", location_type="journal", journal_tag="k_swg_hk47talk", journal_target=60),
     "Ebon Hawk: Jolee Bindo": LocationData(base_id + 22, region="Ebon Hawk", location_type="journal", journal_tag="k_swg_joleetalk", journal_target=99),
     "Ebon Hawk: Juhani": LocationData(base_id + 23, region="Ebon Hawk", location_type="journal", journal_tag="k_swg_juhani", journal_target=120),
-    "Ebon Hawk: Threat from Xor": LocationData(base_id + 24, region="Ebon Hawk", location_type="journal", journal_tag="k_xor", journal_target=25),
+    "Ebon Hawk: Threat from Xor": LocationData(base_id + 24, region="Ebon Hawk", location_type="journal", journal_tag="k_xor", journal_target=20),
     "Endar Spire: Attack on the Endar Spire": LocationData(base_id + 25, region="Endar Spire", location_type="journal", journal_tag="end_attack", journal_target=99),
-    "General: The Code of the Sith": LocationData(base_id + 26, region="General", location_type="journal", journal_tag="Category000", journal_target=30),
+    "General: The Code of the Sith": LocationData(base_id + 26, region="General", location_type="journal", journal_tag="Category000", journal_target=20),
     "General: Premium Merchant": LocationData(base_id + 27, region="General", location_type="journal", journal_tag="main_premium", journal_target=20),
     "Genoharadan: Ithorak": LocationData(base_id + 28, region="Genoharadan", location_type="journal", journal_tag="Geno_Ithorak", journal_target=99),
-    "Genoharadan: Lorgal": LocationData(base_id + 29, region="Genoharadan", location_type="journal", journal_tag="Geno_Lorgal", journal_target=99),
+    "Genoharadan: Lorgal": LocationData(base_id + 29, region="Genoharadan", location_type="journal", journal_tag="Geno_Lorgal", journal_target=98),
     "Genoharadan: Rulan": LocationData(base_id + 30, region="Genoharadan", location_type="journal", journal_tag="Geno_Rulan", journal_target=99),
     "Genoharadan: Vorn": LocationData(base_id + 31, region="Genoharadan", location_type="journal", journal_tag="Geno_Vorn", journal_target=99),
-    "Genoharadan: Zuulan": LocationData(base_id + 32, region="Genoharadan", location_type="journal", journal_tag="Geno_Zuulan", journal_target=100),
-    "Genoharadan": LocationData(base_id + 33, region="Genoharadan", location_type="journal", journal_tag="Genoharadan", journal_target=102),
-    "Kashyyyk: Honest Debt": LocationData(base_id + 34, region="Kashyyyk", location_type="journal", journal_tag="kas22_EliMatton", journal_target=80),
+    "Genoharadan: Zuulan": LocationData(base_id + 32, region="Genoharadan", location_type="journal", journal_tag="Geno_Zuulan", journal_target=99),
+    "Genoharadan": LocationData(base_id + 33, region="Genoharadan", location_type="journal", journal_tag="Genoharadan", journal_target=98),
+    "Kashyyyk: Honest Debt": LocationData(base_id + 34, region="Kashyyyk", location_type="journal", journal_tag="kas22_EliMatton", journal_target=50),
     "Kashyyyk: Star Map: Kashyyyk": LocationData(base_id + 35, region="Kashyyyk", location_type="journal", journal_tag="kas22_starmap", journal_target=70),
-    "Kashyyyk: Chieftain in Need": LocationData(base_id + 36, region="Kashyyyk", location_type="journal", journal_tag="kas23_mainwookplot", journal_target=150),
-    "Kashyyyk: A Wookiee Lost": LocationData(base_id + 37, region="Kashyyyk", location_type="journal", journal_tag="kas23_rorworr", journal_target=80),
+    "Kashyyyk: Chieftain in Need": LocationData(base_id + 36, region="Kashyyyk", location_type="journal", journal_tag="kas23_mainwookplot", journal_target=130),
+    "Kashyyyk: A Wookiee Lost": LocationData(base_id + 37, region="Kashyyyk", location_type="journal", journal_tag="kas23_rorworr", journal_target=60),
     "Kashyyyk: Jolee's Request": LocationData(base_id + 38, region="Kashyyyk", location_type="journal", journal_tag="kas24_removepoachers", journal_target=40),
     "Kashyyyk: Tach Poaching": LocationData(base_id + 39, region="Kashyyyk", location_type="journal", journal_tag="kas24_tachpoaching", journal_target=50),
     "Kashyyyk: Hidden Hunters": LocationData(base_id + 40, region="Kashyyyk", location_type="journal", journal_tag="kas25_mandalorians", journal_target=70),
-    "Korriban: A Doubting Sith": LocationData(base_id + 41, region="Korriban", location_type="journal", journal_tag="kor25_doubtsith", journal_target=50),
+    "Korriban: A Doubting Sith": LocationData(base_id + 41, region="Korriban", location_type="journal", journal_tag="kor25_doubtsith", journal_target=20),
     "Korriban: Enter the Sith Academy": LocationData(base_id + 42, region="Korriban", location_type="journal", journal_tag="kor33_enteracademy", journal_target=50),
     "Korriban: Star Map: Korriban": LocationData(base_id + 43, region="Korriban", location_type="journal", journal_tag="kor33_findstarmap", journal_target=40),
-    "Korriban: Aiding Lashowe": LocationData(base_id + 44, region="Korriban", location_type="journal", journal_tag="kor35_aidlashowe", journal_target=60),
+    "Korriban: Aiding Lashowe": LocationData(base_id + 44, region="Korriban", location_type="journal", journal_tag="kor35_aidlashowe", journal_target=35),
     "Korriban: The Double-Cross": LocationData(base_id + 45, region="Korriban", location_type="journal", journal_tag="kor35_doublecross", journal_target=30),
-    "Korriban: The Double-Double-Cross": LocationData(base_id + 46, region="Korriban", location_type="journal", journal_tag="kor35_doublecross2", journal_target=40),
-    "Korriban: Finding Dustil": LocationData(base_id + 47, region="Korriban", location_type="journal", journal_tag="kor35_findingdustil", journal_target=40),
-    "Korriban: The Mandalorian Weapons Cache": LocationData(base_id + 48, region="Korriban", location_type="journal", journal_tag="kor35_mandalorian", journal_target=60),
-    "Korriban: Renegade Sith": LocationData(base_id + 49, region="Korriban", location_type="journal", journal_tag="kor35_renegadesith", journal_target=60),
-    "Korriban: The Way of the Sith": LocationData(base_id + 50, region="Korriban", location_type="journal", journal_tag="kor35_waysith", journal_target=60),
-    "Korriban: The Sword of Ajunta Pall": LocationData(base_id + 51, region="Korriban", location_type="journal", journal_tag="kor37_ajuntapall", journal_target=60),
+    "Korriban: The Double-Double-Cross": LocationData(base_id + 46, region="Korriban", location_type="journal", journal_tag="kor35_doublecross2", journal_target=20),
+    "Korriban: Finding Dustil": LocationData(base_id + 47, region="Korriban", location_type="journal", journal_tag="kor35_findingdustil", journal_target=30),
+    "Korriban: The Mandalorian Weapons Cache": LocationData(base_id + 48, region="Korriban", location_type="journal", journal_tag="kor35_mandalorian", journal_target=50),
+    "Korriban: Renegade Sith": LocationData(base_id + 49, region="Korriban", location_type="journal", journal_tag="kor35_renegadesith", journal_target=40),
+    "Korriban: The Way of the Sith": LocationData(base_id + 50, region="Korriban", location_type="journal", journal_tag="kor35_waysith", journal_target=50),
+    "Korriban: The Sword of Ajunta Pall": LocationData(base_id + 51, region="Korriban", location_type="journal", journal_tag="kor37_ajuntapall", journal_target=40),
     "Korriban: The Hermit in the Hills": LocationData(base_id + 52, region="Korriban", location_type="journal", journal_tag="kor38_hermit", journal_target=40),
-    "Korriban: Rogue Droid": LocationData(base_id + 53, region="Korriban", location_type="journal", journal_tag="kor38_roguedroid", journal_target=50),
+    "Korriban: Rogue Droid": LocationData(base_id + 53, region="Korriban", location_type="journal", journal_tag="kor38_roguedroid", journal_target=20),
     "Leviathan: Captured by the Leviathan": LocationData(base_id + 54, region="Leviathan", location_type="journal", journal_tag="lev_captured", journal_target=99),
     "Manaan: Manaan Swoop Races": LocationData(base_id + 55, region="Manaan", location_type="journal", journal_tag="Man26ab_swoopraces", journal_target=80),
     "Manaan: Star Map: Manaan": LocationData(base_id + 56, region="Manaan", location_type="journal", journal_tag="man26_starmap", journal_target=40),
@@ -124,47 +152,63 @@ location_table: typing.Dict[str, LocationData] = {
     "Manaan: Gluupor the Rodian": LocationData(base_id + 60, region="Manaan", location_type="journal", journal_tag="man_gluupor", journal_target=20),
     "Manaan: Ignus the Hotel Owner": LocationData(base_id + 61, region="Manaan", location_type="journal", journal_tag="man_ignus", journal_target=20),
     "Manaan: Republic Hiring Mercenaries": LocationData(base_id + 62, region="Manaan", location_type="journal", journal_tag="man_merc", journal_target=20),
-    "Manaan: Missing Selkath": LocationData(base_id + 63, region="Manaan", location_type="journal", journal_tag="man_missing", journal_target=48),
-    "Manaan: Sunry Murder Trial": LocationData(base_id + 64, region="Manaan", location_type="journal", journal_tag="man_murder", journal_target=56),
-    "Manaan: Mission for the Republic": LocationData(base_id + 65, region="Manaan", location_type="journal", journal_tag="man_planet", journal_target=75),
+    "Manaan: Missing Selkath": LocationData(base_id + 63, region="Manaan", location_type="journal", journal_tag="man_missing", journal_target=40),
+    "Manaan: Sunry Murder Trial": LocationData(base_id + 64, region="Manaan", location_type="journal", journal_tag="man_murder", journal_target=50),
+    "Manaan: Mission for the Republic": LocationData(base_id + 65, region="Manaan", location_type="journal", journal_tag="man_planet", journal_target=70),
     "Manaan: Sunry's Story": LocationData(base_id + 66, region="Manaan", location_type="journal", journal_tag="man_sunry", journal_target=30),
     "Sith Base: The Final Confrontation": LocationData(base_id + 67, region="Sith Base", location_type="journal", journal_tag="sta_confront", journal_target=11),
-    "Star Forge: A Quest for the Star Forge": LocationData(base_id + 68, region="Star Forge", location_type="journal", journal_tag="k_starforge", journal_target=75),
+    "Star Forge: A Quest for the Star Forge": LocationData(base_id + 68, region="Star Forge", location_type="journal", journal_tag="k_starforge", journal_target=70),
     "Taris: The Search for Bastila": LocationData(base_id + 69, region="Taris", location_type="journal", journal_tag="tar_bastsearch", journal_target=99),
     "Taris: Bendak's Bounty": LocationData(base_id + 70, region="Taris", location_type="journal", journal_tag="tar_bendakbounty", journal_target=99),
     "Taris: Purchasing a Droid": LocationData(base_id + 71, region="Taris", location_type="journal", journal_tag="tar_buydroid", journal_target=99),
-    "Taris: Dia's Bounty": LocationData(base_id + 72, region="Taris", location_type="journal", journal_tag="tar_diabounty", journal_target=99),
+    "Taris: Dia's Bounty": LocationData(base_id + 72, region="Taris", location_type="journal", journal_tag="tar_diabounty", journal_target=98),
     "Taris: The Duel Ring": LocationData(base_id + 73, region="Taris", location_type="journal", journal_tag="tar_duelring", journal_target=99),
     "Taris: Escaping Taris": LocationData(base_id + 74, region="Taris", location_type="journal", journal_tag="tar_escape", journal_target=99),
-    "Taris: Infected Outcasts": LocationData(base_id + 75, region="Taris", location_type="journal", journal_tag="tar_infectedoutcasts", journal_target=99),
-    "Taris: Largo's Bounty": LocationData(base_id + 76, region="Taris", location_type="journal", journal_tag="tar_largobounty", journal_target=99),
-    "Taris: Matrik's Bounty": LocationData(base_id + 77, region="Taris", location_type="journal", journal_tag="tar_matrik", journal_target=99),
+    "Taris: Infected Outcasts": LocationData(base_id + 75, region="Taris", location_type="journal", journal_tag="tar_infectedoutcasts", journal_target=98),
+    "Taris: Largo's Bounty": LocationData(base_id + 76, region="Taris", location_type="journal", journal_tag="tar_largobounty", journal_target=20),
+    "Taris: Matrik's Bounty": LocationData(base_id + 77, region="Taris", location_type="journal", journal_tag="tar_matrik", journal_target=40),
     "Taris: Invited to a Party": LocationData(base_id + 78, region="Taris", location_type="journal", journal_tag="tar_party", journal_target=1),
     "Taris: Planetary Information": LocationData(base_id + 79, region="Taris", location_type="journal", journal_tag="tar_planetinfo", journal_target=99),
-    "Taris: The Promised Land": LocationData(base_id + 80, region="Taris", location_type="journal", journal_tag="tar_promisedland", journal_target=40),
-    "Taris: Rakghoul Serum": LocationData(base_id + 81, region="Taris", location_type="journal", journal_tag="tar_rakghoulserum", journal_target=20),
+    "Taris: The Promised Land": LocationData(base_id + 80, region="Taris", location_type="journal", journal_tag="tar_promisedland", journal_target=30),
+    # target=10, not 20 -- this quest has two mutually exclusive real
+    # endings (stage 10: gave the serum to Zelka; stage 20: gave it to
+    # Zax instead), confirmed via global.jrl. The journal-check compares
+    # with >=, so the LOWER ending's stage number accepts either one;
+    # target=20 alone (the original value) made this uncompletable for
+    # any player who chose the Zelka ending. See Locations.py's own
+    # module docstring for this as the general branching-quest pattern.
+    "Taris: Rakghoul Serum": LocationData(base_id + 81, region="Taris", location_type="journal", journal_tag="tar_rakghoulserum", journal_target=10),
     "Taris: A Rancor in the Sewers": LocationData(base_id + 82, region="Taris", location_type="journal", journal_tag="tar_rancor", journal_target=99),
     "Taris: Rukil's Apprentice": LocationData(base_id + 83, region="Taris", location_type="journal", journal_tag="tar_rukilapprentice", journal_target=99),
     "Taris: Selven's Bounty": LocationData(base_id + 84, region="Taris", location_type="journal", journal_tag="tar_selvenbounty", journal_target=99),
     "Taris: Inside the Vulkar Base": LocationData(base_id + 85, region="Taris", location_type="journal", journal_tag="tar_vulkarbase", journal_target=99),
-    "Tatooine: Worthy of History": LocationData(base_id + 86, region="Tatooine", location_type="journal", journal_tag="Tat20aa_worthy", journal_target=30),
+    "Tatooine: Worthy of History": LocationData(base_id + 86, region="Tatooine", location_type="journal", journal_tag="Tat20aa_worthy", journal_target=20),
     "Tatooine: Star Map: Tatooine": LocationData(base_id + 87, region="Tatooine", location_type="journal", journal_tag="tat17_starmap", journal_target=90),
     "Tatooine: Fair Trade": LocationData(base_id + 88, region="Tatooine", location_type="journal", journal_tag="tat17aa_jawarescue", journal_target=80),
-    "Tatooine: Middleman": LocationData(base_id + 89, region="Tatooine", location_type="journal", journal_tag="tat17aa_middleman", journal_target=70),
+    "Tatooine: Middleman": LocationData(base_id + 89, region="Tatooine", location_type="journal", journal_tag="tat17aa_middleman", journal_target=30),
     "Tatooine: Droid For Sale": LocationData(base_id + 90, region="Tatooine", location_type="journal", journal_tag="tat17ad_buyinghk47", journal_target=30),
-    "Tatooine: Signing Nico": LocationData(base_id + 91, region="Tatooine", location_type="journal", journal_tag="tat17ae_signingnico", journal_target=70),
+    "Tatooine: Signing Nico": LocationData(base_id + 91, region="Tatooine", location_type="journal", journal_tag="tat17ae_signingnico", journal_target=60),
     "Tatooine: Tatooine Swoop Racing": LocationData(base_id + 92, region="Tatooine", location_type="journal", journal_tag="tat17ae_swoopracing", journal_target=40),
     "Tatooine: Sand People": LocationData(base_id + 93, region="Tatooine", location_type="journal", journal_tag="tat17ag_sandbounty", journal_target=150),
-    "Tatooine: Tanis Trapped": LocationData(base_id + 94, region="Tatooine", location_type="journal", journal_tag="tat18aa_tanistrapped", journal_target=90),
+    "Tatooine: Tanis Trapped": LocationData(base_id + 94, region="Tatooine", location_type="journal", journal_tag="tat18aa_tanistrapped", journal_target=80),
     "Tatooine: A Desert Hunt": LocationData(base_id + 95, region="Tatooine", location_type="journal", journal_tag="tat18ac_dragonhunt", journal_target=70),
-    "Tatooine: Desert Ambush": LocationData(base_id + 96, region="Tatooine", location_type="journal", journal_tag="tat_ambush", journal_target=40),
+    "Tatooine: Desert Ambush": LocationData(base_id + 96, region="Tatooine", location_type="journal", journal_tag="tat_ambush", journal_target=20),
     "Unknown World: Invisible Mandalorians": LocationData(base_id + 97, region="Unknown World", location_type="journal", journal_tag="unk_invis", journal_target=30),
     "Unknown World: Rakatan Research": LocationData(base_id + 98, region="Unknown World", location_type="journal", journal_tag="unk_research", journal_target=30),
-    "Unknown World: Trapped on a Nameless World": LocationData(base_id + 99, region="Unknown World", location_type="journal", journal_tag="unk_trapped", journal_target=99),
+    "Unknown World: Trapped on a Nameless World": LocationData(base_id + 99, region="Unknown World", location_type="journal", journal_tag="unk_trapped", journal_target=98),
     "Companion Recruited: Bastila Shan": LocationData(base_id + 100, region="Companions", location_type="companion", companion_idx=0),
     "Companion Recruited: Canderous Ordo": LocationData(base_id + 101, region="Companions", location_type="companion", companion_idx=1),
     "Companion Recruited: Carth Onasi": LocationData(base_id + 102, region="Companions", location_type="companion", companion_idx=2),
     "Companion Recruited: HK-47": LocationData(base_id + 103, region="Companions", location_type="companion", companion_idx=3),
+    # new_companion=on only -- same companion_idx=3, so
+    # it fires from the exact same IsAvailableCreature(3) signal as the
+    # entry above; only one of the two is ever an active location in a
+    # given seed (see __init__.py's _active_locations()). A new offset
+    # (base_id+260, not a rename of +103) because location_name_to_id is a
+    # static, class-level mapping shared by every seed of this world --
+    # see Items.py's parallel "Companion: New Companion" comment for the
+    # same reasoning.
+    "Companion Recruited: New Companion": LocationData(base_id + 260, region="Companions", location_type="companion", companion_idx=3),
     "Companion Recruited: Jolee Bindo": LocationData(base_id + 104, region="Companions", location_type="companion", companion_idx=4),
     "Companion Recruited: Juhani": LocationData(base_id + 105, region="Companions", location_type="companion", companion_idx=5),
     "Companion Recruited: Mission Vao": LocationData(base_id + 106, region="Companions", location_type="companion", companion_idx=6),
@@ -281,12 +325,52 @@ location_table: typing.Dict[str, LocationData] = {
     "Level 19 Reached": LocationData(base_id + 217, region="Character", location_type="level", level_value=19),
     "Level 20 Reached": LocationData(base_id + 218, region="Character", location_type="level", level_value=20),
     "Malak Defeated": LocationData(base_id + 219, region="Character", location_type="malak_defeated"),
+    "Bounty Card #1": LocationData(base_id + 220, region="Additional Enemies", location_type="bounty", bounty_value=1),
+    "Bounty Card #2": LocationData(base_id + 221, region="Additional Enemies", location_type="bounty", bounty_value=2),
+    "Bounty Card #3": LocationData(base_id + 222, region="Additional Enemies", location_type="bounty", bounty_value=3),
+    "Bounty Card #4": LocationData(base_id + 223, region="Additional Enemies", location_type="bounty", bounty_value=4),
+    "Bounty Card #5": LocationData(base_id + 224, region="Additional Enemies", location_type="bounty", bounty_value=5),
+    "Bounty Card #6": LocationData(base_id + 225, region="Additional Enemies", location_type="bounty", bounty_value=6),
+    "Bounty Card #7": LocationData(base_id + 226, region="Additional Enemies", location_type="bounty", bounty_value=7),
+    "Bounty Card #8": LocationData(base_id + 227, region="Additional Enemies", location_type="bounty", bounty_value=8),
+    "Bounty Card #9": LocationData(base_id + 228, region="Additional Enemies", location_type="bounty", bounty_value=9),
+    "Bounty Card #10": LocationData(base_id + 229, region="Additional Enemies", location_type="bounty", bounty_value=10),
+    "Bounty Card #11": LocationData(base_id + 230, region="Additional Enemies", location_type="bounty", bounty_value=11),
+    "Bounty Card #12": LocationData(base_id + 231, region="Additional Enemies", location_type="bounty", bounty_value=12),
+    "Bounty Card #13": LocationData(base_id + 232, region="Additional Enemies", location_type="bounty", bounty_value=13),
+    "Bounty Card #14": LocationData(base_id + 233, region="Additional Enemies", location_type="bounty", bounty_value=14),
+    "Bounty Card #15": LocationData(base_id + 234, region="Additional Enemies", location_type="bounty", bounty_value=15),
+    "Bounty Card #16": LocationData(base_id + 235, region="Additional Enemies", location_type="bounty", bounty_value=16),
+    "Bounty Card #17": LocationData(base_id + 236, region="Additional Enemies", location_type="bounty", bounty_value=17),
+    "Bounty Card #18": LocationData(base_id + 237, region="Additional Enemies", location_type="bounty", bounty_value=18),
+    "Bounty Card #19": LocationData(base_id + 238, region="Additional Enemies", location_type="bounty", bounty_value=19),
+    "Bounty Card #20": LocationData(base_id + 239, region="Additional Enemies", location_type="bounty", bounty_value=20),
+    "Bounty Card #21": LocationData(base_id + 240, region="Additional Enemies", location_type="bounty", bounty_value=21),
+    "Bounty Card #22": LocationData(base_id + 241, region="Additional Enemies", location_type="bounty", bounty_value=22),
+    "Bounty Card #23": LocationData(base_id + 242, region="Additional Enemies", location_type="bounty", bounty_value=23),
+    "Bounty Card #24": LocationData(base_id + 243, region="Additional Enemies", location_type="bounty", bounty_value=24),
+    "Bounty Card #25": LocationData(base_id + 244, region="Additional Enemies", location_type="bounty", bounty_value=25),
+    "Bounty Card #26": LocationData(base_id + 245, region="Additional Enemies", location_type="bounty", bounty_value=26),
+    "Bounty Card #27": LocationData(base_id + 246, region="Additional Enemies", location_type="bounty", bounty_value=27),
+    "Bounty Card #28": LocationData(base_id + 247, region="Additional Enemies", location_type="bounty", bounty_value=28),
+    "Bounty Card #29": LocationData(base_id + 248, region="Additional Enemies", location_type="bounty", bounty_value=29),
+    "Bounty Card #30": LocationData(base_id + 249, region="Additional Enemies", location_type="bounty", bounty_value=30),
+    "Bounty Card #31": LocationData(base_id + 250, region="Additional Enemies", location_type="bounty", bounty_value=31),
+    "Bounty Card #32": LocationData(base_id + 251, region="Additional Enemies", location_type="bounty", bounty_value=32),
+    "Bounty Card #33": LocationData(base_id + 252, region="Additional Enemies", location_type="bounty", bounty_value=33),
+    "Bounty Card #34": LocationData(base_id + 253, region="Additional Enemies", location_type="bounty", bounty_value=34),
+    "Bounty Card #35": LocationData(base_id + 254, region="Additional Enemies", location_type="bounty", bounty_value=35),
+    "Bounty Card #36": LocationData(base_id + 255, region="Additional Enemies", location_type="bounty", bounty_value=36),
+    "Bounty Card #37": LocationData(base_id + 256, region="Additional Enemies", location_type="bounty", bounty_value=37),
+    "Bounty Card #38": LocationData(base_id + 257, region="Additional Enemies", location_type="bounty", bounty_value=38),
+    "Bounty Card #39": LocationData(base_id + 258, region="Additional Enemies", location_type="bounty", bounty_value=39),
+    "Bounty Card #40": LocationData(base_id + 259, region="Additional Enemies", location_type="bounty", bounty_value=40),
 }
 
 location_name_to_id: typing.Dict[str, int] = {name: data.id for name, data in location_table.items()}
 lookup_id_to_name: typing.Dict[int, str] = {data.id: name for name, data in location_table.items()}
 
-# Companion personal-subplot locations (2026-09-10) -- each "Ebon Hawk: ..."
+# Companion personal-subplot locations -- each "Ebon Hawk: ..."
 # entry below is real vanilla content gated on a SPECIFIC companion being
 # an active party member when it triggers (5 confirmed directly via a
 # game-wide NCS disassembly scan for IsNPCPartyMember/IsAvailableCreature
@@ -309,6 +393,14 @@ COMPANION_SUBPLOT_LOCATIONS: typing.Dict[str, str] = {
     "Ebon Hawk: Canderous": "Companion: Canderous Ordo",
     "Ebon Hawk: Jagi's Challenge": "Companion: Canderous Ordo",
     "Ebon Hawk: Carth": "Companion: Carth Onasi",
+    # Only meaningful when new_companion=off -- when it's on, this entry's
+    # own journal_target (60) can never be reached, since her personal
+    # subplot dialogue that sets it no longer exists (replaced with a
+    # single placeholder greeting). __init__.py's _active_locations()
+    # excludes this location entirely under new_companion=on, same shape
+    # as the companion_mode=none removal below it depends on -- it is NOT
+    # given a "New Companion"-named parallel entry (unlike the companion
+    # item/location above), it just stops existing as a check.
     "Ebon Hawk: HK-47": "Companion: HK-47",
     "Ebon Hawk: Jolee Bindo": "Companion: Jolee Bindo",
     "Ebon Hawk: Juhani": "Companion: Juhani",

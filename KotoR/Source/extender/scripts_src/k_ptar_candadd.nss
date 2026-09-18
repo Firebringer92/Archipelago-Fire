@@ -7,10 +7,10 @@
 // actually sticks -- the real grant will come from AP later, through the
 // existing companion_canderous apply script (phase 06).
 //
-// GUARD (added 2026-08-31): same fix as k_ptar_addcarth.nss -- if
+// GUARD: same fix as k_ptar_addcarth.nss -- if
 // NPC_CANDEROUS is ALREADY available when this fires, our own
 // companion_canderous AP arm already ran and Canderous is already an
-// active party member. Confirmed live (on Carth): running the vanilla
+// active party member. Confirmed (on Carth): running the vanilla
 // script + RemoveAvailableNPC on an already-recruited companion kicks
 // them OUT of the active party. Skip both in that case; the AP location
 // check still fires either way below.

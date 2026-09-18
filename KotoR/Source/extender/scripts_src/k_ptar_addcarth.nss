@@ -6,10 +6,10 @@
 // the vanilla unlock never actually sticks -- the real grant will come
 // from AP later, through the existing companion apply script (phase 06).
 //
-// GUARD (added 2026-08-31): if NPC_CARTH is ALREADY available when this
+// GUARD: if NPC_CARTH is ALREADY available when this
 // fires, our own companion_carth AP arm already ran (early item, or an
-// admin re-grant) and Carth is already an active party member. Confirmed
-// live: running apo_carth_orig + RemoveAvailableNPC on an
+// admin re-grant) and Carth is already an active party member. Confirmed:
+// running apo_carth_orig + RemoveAvailableNPC on an
 // already-recruited companion kicks them OUT of the active party --
 // RemoveAvailableNPC is not the harmless no-op on an active member that
 // the vanilla script assumes. So skip the vanilla script and the

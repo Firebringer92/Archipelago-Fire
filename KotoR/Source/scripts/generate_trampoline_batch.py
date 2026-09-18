@@ -35,13 +35,60 @@ OVERRIDE_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor\Override"
 from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
 NWNNSSCOMP = resolve_nwnnsscomp()
 
+# new_companion (Options.py) -- read the same way patch_item_suppression.py's
+# _connected_progression_system() reads its own per-seed flag out of
+# _slot_data.json (KotorClient.py's write_slot_data_for_patch_scripts(),
+# written fresh on every Connect). Safe to read once at module-parse time,
+# not per-call, because arm_orchestrator.py invokes this whole script as a
+# fresh subprocess for every real delivery -- there is no live-process
+# staleness risk the way there would be for a long-running import.
+_SLOT_DATA_PATH = os.path.join(SRC_DIR, "_slot_data.json")
+
+
+def _connected_new_companion() -> bool:
+    if not os.path.isfile(_SLOT_DATA_PATH):
+        return False
+    try:
+        with open(_SLOT_DATA_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return bool(data.get("new_companion", False))
+    except Exception:
+        return False
+
+
+# Her real object Tag stays "HK47" and her NPC slot stays NPC_HK_47 either
+# way (see _COMPANION_TAGS's own comment) -- only the template resref (what
+# .utc gets spawned) changes. p_meetra is the new companion's template,
+# built alongside the vanilla-trigger-replacement rebuild (Meetra Surik,
+# Jedi Sentinel) -- see DEVELOPMENT_HISTORY.md's "New Companion" section.
+NEW_COMPANION_TEMPLATE = "p_meetra"
+_USE_NEW_COMPANION = _connected_new_companion()
+
+# For build_trap_block's remove_half_inventory branch, which
+# needs to know quest_dependent tags at CODEGEN time to bake an exemption
+# check directly into the generated NWScript (see that branch's own
+# docstring for why -- avoids ever re-introducing the 512-byte inventory-
+# report string limit this project hit live). Same packaged-vs-dev-checkout
+# fallback as patch_item_suppression.py/patch_additional_enemies.py: a real
+# PlayerBundle install only ever has the packaged copy alongside scripts/,
+# a dev checkout only has the real Archipelago/worlds/kotor/ source.
+GEAR_JSON = os.path.join(REPO_ROOT, "scripts", "gear_items.json")
+if not os.path.isfile(GEAR_JSON):
+    GEAR_JSON = os.path.join(REPO_ROOT, "Archipelago", "worlds", "kotor", "gear_items.json")
+try:
+    with open(GEAR_JSON, encoding="utf-8") as _f:
+        _GEAR = json.load(_f)
+    QUEST_EXEMPT_TAGS = sorted(tag for tag, v in _GEAR.items() if v.get("quest_dependent"))
+except Exception:
+    QUEST_EXEMPT_TAGS = []
+
 # Base (auto-granted, feat.2da's <code>_granted=1) feats per class -- confirmed
-# 2026-09-06 via pykotor against the real game data, see GameMechanics.md /
-# research/feats/class_feats.json for the full derivation. Used by
+# via pykotor against the real game data (feat.2da), see
+# research/feats/class_feats.json for the raw per-class data. Used by
 # build_class_feat_delta_lines() below to compute exactly which feats a
 # class-change should strip/grant, instead of the raw KSE_SetCreatureField
 # CLASS0_TYPE overwrite touching feats at all (which it never did on its
-# own -- confirmed live 2026-08-31 that a class write alone leaves the old
+# own -- confirmed a class write alone leaves the old
 # class's feats in place permanently, e.g. a Jedi-to-base switch keeping
 # lightsaber proficiency).
 CLASS_BASE_FEATS = {
@@ -54,8 +101,8 @@ CLASS_BASE_FEATS = {
 }
 _ALL_CLASS_TYPE_CONSTS = list(CLASS_BASE_FEATS.keys())
 
-# Armor Prof ordering, confirmed via feat.2da's prereqfeat1/2 columns
-# (2026-09-06): Heavy(4) requires Medium(6)+Light(5); Medium(6) requires
+# Armor Prof ordering, confirmed via feat.2da's prereqfeat1/2 columns:
+# Heavy(4) requires Medium(6)+Light(5); Medium(6) requires
 # Light(5); no other base feat in the table above has any prerequisite at
 # all. Removing must go highest-tier-first (so a lower tier a still-held
 # higher tier depends on is never pulled out from under it, even
@@ -79,7 +126,7 @@ def build_class_feat_delta_lines(new_class_const, target_var, old_class_var="nOl
     delay_grants=True wraps each grant in DelayCommand(1.0, ...) -- required
     when granting INTO a Jedi class via AddMultiClass, which has a
     confirmed settling race that silently drops immediate grants (see
-    build_companion_class_block's 2026-09-03 fix note); base-class grants
+    build_companion_class_block's own fix note below); base-class grants
     have no such race and stay immediate.
 
     Emits NO branch at all for an old class that would need zero removes
@@ -169,8 +216,8 @@ APPLIES = {
         'int nAfter = GetSkillRank(SKILL_TREAT_INJURY, oPC);',
         'KSE_Diag(2, "AP|APPLIED|treat_injury|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
-    # GUARD added 2026-09-08 (real bug found live: two Bastilas after her
-    # grant arm re-fired on a later area transition -- the known
+    # GUARD against a real bug: two Bastilas can result after her
+    # grant arm re-fires on a later area transition, since the known
     # one-transition delivery-lag retry logic re-queues an arm whenever its
     # APPLIED confirmation isn't cleanly matched, and this arm previously
     # had no idempotency check at all, so a re-fire created a genuine
@@ -207,6 +254,14 @@ APPLIES = {
         '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
+        # Marks that Canderous's availability, whatever it is right now,
+        # is legitimately AP's doing (this arm only ever runs via a real
+        # received item or the vanilla_mode auto-grant, never vanilla
+        # story progression on its own) -- see k_ptar_davatk_en.nss's own
+        # header for why IsAvailableCreature() alone can't tell a
+        # legitimate grant apart from vanilla making him available for
+        # free with no AP gating at all.
+        'KSE_SetData("ap_canderous_legit", "1");',
         'KSE_Diag(4, "AP|APPLIED|companion_canderous|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     11: ("xp", [
@@ -221,27 +276,70 @@ APPLIES = {
     # item_table/KNOWN_ARM_NAMES, so this ID is permanently unreachable --
     # left as a gap here (not renumbered), same reasoning as the 15/16 gap
     # below.
+    # REWRITTEN (second fix -- see git history for the first):
+    # the AddMultiClass()+CLASS1_LEVEL patch (matching the companion_class
+    # recipe) reliably crashed the game a few seconds after a clean,
+    # successful grant -- confirmed across multiple fresh characters/
+    # seeds, with two other guarded natives (CheckForce/CheckForcePowers)
+    # ruled out as the trigger. Root cause, per this project's own
+    # earlier finding: a freshly AddMultiClass'd, still-level-1
+    # character's Force-power data isn't allocated until a real level-up
+    # runs -- documented THEN as a companion-only crash ("opening a
+    # freshly-Jedi'd companion's Force Powers screen crashes the game"),
+    # workaround "don't open that screen yet". The PC has no such
+    # workaround available -- the PC's own live HUD reads Force Points
+    # continuously just by being on screen, unlike a backgrounded
+    # companion whose stats are only read on an explicit sheet-open. Same
+    # root bug, just unavoidable for the PC instead of dodgeable.
+    # Switched to the SAME raw CLASS0_TYPE overwrite + feat-delta pattern
+    # already proven crash-free all session for base-class changes (see
+    # pc_class_scoundrel below) -- known tradeoff, per this project's own
+    # earlier Juhani-reclass work: Force Powers may be sheet-visible
+    # without being hotbar-functional this way (unconfirmed for the PC
+    # specifically as of this rewrite -- that gap is exactly what this
+    # rewrite exists to test).
+    #
+    # CLASS0_LEVEL forced to 1: a raw
+    # type overwrite alone leaves the PC's existing level untouched, which
+    # for anything other than jedi_start (fired at level 1 anyway) would
+    # let an already-leveled character keep banked feats/skill points from
+    # their old class AND immediately receive the new class's base feat
+    # kit on top -- effectively double-dipping. Forcing level 1 avoids
+    # that, matching the OLD AddMultiClass path's own level-1 reset
+    # (though for a different original reason -- that one was about not
+    # starving future auto-level-up catch-up, not double-dipped feats).
     13: ("class_guardian", [
         'object oPC = GetFirstPC();',
-        'int nBefore = GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC);',
-        'AddMultiClass(CLASS_TYPE_JEDIGUARDIAN, oPC);',
-        'ShowLevelUpGUI();',
-        'int nAfter = GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC);',
-        'KSE_Diag(9, "AP|APPLIED|class_guardian|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+        'int nOldClass = GetClassByPosition(1, oPC);',
+        *build_class_feat_delta_lines("CLASS_TYPE_JEDIGUARDIAN", "oPC"),
+        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDIGUARDIAN);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);',
+        # Trailing "|ok=1" is load-bearing, not decorative: ap_extender.c's
+        # confirmation parser finds the arm name by scanning for the NEXT
+        # "|" after "AP|APPLIED|", falling back to the rest of the raw log
+        # line when none exists -- which then includes the closing '"' of
+        # the log line's own msg="..." quoting, so the extracted name
+        # becomes "class_guardian\"" and never matches AP_ARM_NAMES. This
+        # arm silently never dequeued for exactly that reason from
+        # whenever the AddMultiClass->raw-write rewrite dropped this arm's
+        # old "|before=X|after=Y" suffix until this fix -- confirmed via
+        # kse.log/extender.log cross-reference, see docs/MODE_DEPENDENCIES.md.
+        'KSE_Diag(9, "AP|APPLIED|class_guardian|ok=1");',
     ]),
     14: ("class_consular", [
         'object oPC = GetFirstPC();',
-        'int nBefore = GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC);',
-        'AddMultiClass(CLASS_TYPE_JEDICONSULAR, oPC);',
-        'ShowLevelUpGUI();',
-        'int nAfter = GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC);',
-        'KSE_Diag(9, "AP|APPLIED|class_consular|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+        'int nOldClass = GetClassByPosition(1, oPC);',
+        *build_class_feat_delta_lines("CLASS_TYPE_JEDICONSULAR", "oPC"),
+        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDICONSULAR);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);',
+        # See class_guardian's own comment above -- same fix, same reason.
+        'KSE_Diag(9, "AP|APPLIED|class_consular|ok=1");',
     ]),
-    # 16 (companion_jedi_xp) stays RETIRED -- confirmed live that
+    # 16 (companion_jedi_xp) stays RETIRED -- confirmed that
     # GiveXPToCreature has zero effect on a non-PC party member. Not in
     # item_table/KNOWN_ARM_NAMES, permanently unreachable via real AP items.
     #
-    # 15/16 (test_setfield/test_combined) RETIRED 2026-08-30 -- were the
+    # 15/16 (test_setfield/test_combined) RETIRED -- were the
     # throwaway live tests that confirmed KSE_SetCreatureField works on a
     # companion (Zaalbar -> Level 20 Jedi Guardian, 76 Force). The real
     # feature is now the "companion_class" parameterized action (see
@@ -249,8 +347,8 @@ APPLIES = {
     # handling below), wired into the real AP flow via Options.py's
     # CompanionClass. Not reusing these IDs -- same reasoning as the other
     # retired-gap comments in this table (12, old-16).
-    # 33 (dump_statblock) RETIRED 2026-09-06 -- Force Powers offset research
-    # concluded (see FutureDesign.md); the confirmed layout shipped as
+    # 33 (dump_statblock) RETIRED -- Force Powers offset research
+    # concluded; the confirmed layout shipped as
     # KseForcePowerOp. Archived at extender/research_archive/
     # generate_trampoline_batch_temp_arms_2026-09-06.py.txt, same gap
     # convention as 12/15/16 above.
@@ -266,9 +364,9 @@ APPLIES = {
         # not "grant_test_ability" -- the actual registered arm name (see
         # AP_ARM_NAMES in dllmain.c). ap_arm_id_for_name() could never match
         # the mismatched name back to an ID, so this arm's confirmation
-        # never cleared the pending queue -- confirmed live: it silently
-        # re-fired on every single area transition indefinitely once
-        # received, the whole session, until caught by chance.
+        # never cleared the pending queue -- confirmed: it silently
+        # re-fires on every single area transition indefinitely once
+        # received, until caught.
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_CHARISMA);',
         'ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityIncrease(ABILITY_CHARISMA, 1), oPC);',
@@ -298,7 +396,7 @@ APPLIES = {
     ]),
     20: ("companion_hk47", [
         'int nNPC = NPC_HK_47;',
-        'string sTemplate = "p_hk47";',
+        f'string sTemplate = "{NEW_COMPANION_TEMPLATE if _USE_NEW_COMPANION else "p_hk47"}";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
         'int nAdded = FALSE;',
         'if (!nWasAvailable)',
@@ -382,13 +480,21 @@ APPLIES = {
     ]),
     # Third Jedi class -- class_guardian/class_consular (13/14) covered
     # Guardian/Consular already; Sentinel was the missing one.
+    # REWRITTEN: same raw CLASS0_TYPE overwrite rewrite as 13/14
+    # above -- see that comment for the full crash history/reasoning.
     26: ("class_sentinel", [
         'object oPC = GetFirstPC();',
-        'int nBefore = GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC);',
-        'AddMultiClass(CLASS_TYPE_JEDISENTINEL, oPC);',
-        'ShowLevelUpGUI();',
-        'int nAfter = GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC);',
-        'KSE_Diag(9, "AP|APPLIED|class_sentinel|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+        'int nOldClass = GetClassByPosition(1, oPC);',
+        *build_class_feat_delta_lines("CLASS_TYPE_JEDISENTINEL", "oPC"),
+        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDISENTINEL);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);',
+        # See class_guardian's own comment (arm 13) -- same fix, same reason:
+        # a bare "AP|APPLIED|class_sentinel" with no trailing "|" let the C
+        # extender's confirmation parser swallow the closing '"' into the
+        # name, so this arm never dequeued and kept re-arming/re-firing on
+        # every subsequent area transition, repeatedly resetting the PC's
+        # real earned Sentinel level back to 1. Confirmed live 2026-09-16.
+        'KSE_Diag(9, "AP|APPLIED|class_sentinel|ok=1");',
     ]),
     # Ability-score increases 27-31 -- same shape as grant_test_ability (18,
     # Charisma) above, covering the remaining 5 abilities for the starting-
@@ -445,30 +551,30 @@ APPLIES = {
         'ApplyEffectToObject(DURATION_TYPE_INSTANT, EffectDeath(), oPC);',
         'KSE_Diag(63, "AP|APPLIED|force_death|wasDead=" + IntToString(nWasDead));',
     ]),
-    # StartingClass=random_class (2026-09-02), base-class roll only -- a Jedi
+    # StartingClass=random_class, base-class roll only -- a Jedi
     # roll reuses class_guardian/class_consular/class_sentinel above
-    # (AddMultiClass) unchanged. AddMultiClass can't REPLACE an existing
-    # base class, so a base-class roll needs the same direct-write
-    # mechanism CompanionClass already uses for companions
-    # (KSE_SetCreatureField) instead, targeting the PC. No Force write
+    # unchanged (those now use the same raw
+    # KSE_SetCreatureField CLASS0_TYPE overwrite this base-class roll
+    # always used, not AddMultiClass -- see that entry's own comment for
+    # the full crash/rewrite history). A base-class roll here uses the
+    # same direct-write mechanism CompanionClass already uses for
+    # companions (KSE_SetCreatureField) targeting the PC. No Force write
     # (base classes aren't Force-sensitive, and the companion recipe's
-    # Force=10 is Jedi-specific), no ShowLevelUpGUI (untested for this
-    # "replace an already-created character's class" scenario, and the
-    # companion recipe this mirrors doesn't call it either), no
-    # CLASS0_LEVEL write (this only ever fires via generate_early()
+    # Force=10 is Jedi-specific); CLASS0_LEVEL write not needed here
+    # specifically since this only ever fires via generate_early()
     # precollection, immediately on a freshly created level-1 character,
-    # so it's already 1).
+    # so it's already 1.
     #
-    # 2026-09-07 fix: the raw field write above NEVER touched feats on its
-    # own -- confirmed live 2026-08-31 for the companion equivalent (a
+    # FIX: the raw field write above NEVER touched feats on its
+    # own -- confirmed for the companion equivalent (a
     # class change alone leaves the OLD class's feats in place forever,
     # e.g. keeping Heavy Weapons after rolling into Scout). Now reads the
     # PC's real starting class live (GetClassByPosition, 1-based) BEFORE
     # overwriting it, and uses build_class_feat_delta_lines() to strip
     # exactly the old class's base feats the new class doesn't share, then
     # grant exactly the new class's base feats the old class didn't
-    # already have -- see that function's docstring and GameMechanics.md
-    # for the full base-feat-per-class data this is computed from.
+    # already have -- see that function's docstring and CLASS_BASE_FEATS
+    # above for the base-feat-per-class data this is computed from.
     34: ("pc_class_soldier", [
         'object oPC = GetFirstPC();',
         'int nOldClass = GetClassByPosition(1, oPC);',
@@ -493,17 +599,17 @@ APPLIES = {
     # 37/38 (dump_statblock_carth/juhani), 39-41 (carth_addmulticlass_hybrid_test/
     # juhani_addmulticlass_scoundrel_test/juhani_grant_critical_strike_test),
     # 42 (test_credits_chain), 43 (grant_implant_3), 44 (test_set_max_hp),
-    # 45/46 (test_con_boost_effect/test_con_decrease_effect) ALL RETIRED
-    # 2026-09-06 -- every research question they existed to answer is now
+    # 45/46 (test_con_boost_effect/test_con_decrease_effect) ALL RETIRED --
+    # every research question they existed to answer is now
     # confirmed (results noted in each archived entry) and shipped as real
     # offsets/natives (see offsets.h's KSE_OBJ_CURRENT_HP_OFF/
     # KSE_FIELD_ADD_FORCE_POWER/KSE_FIELD_REMOVE_FORCE_POWER, kse_hook.cpp's
     # KseGetCurrentHP/KseForcePowerOp). Archived verbatim at
     # extender/research_archive/generate_trampoline_batch_temp_arms_2026-09-06.py.txt,
     # same gap convention as 12/15/16/33 above -- IDs never reused.
-    # 47 (test_hp_fp_natives) and 48 (test_alignment_shift) RETIRED
-    # 2026-09-06 -- both LIVE-CONFIRMED working (see kse.log results
-    # archived below) the same night they were added. All four new
+    # 47 (test_hp_fp_natives) and 48 (test_alignment_shift) RETIRED --
+    # both LIVE-CONFIRMED working (see kse.log results
+    # archived below). All four new
     # KseGetCurrentHP/KSE_FIELD_CURRENT_HP/ADD_FORCE_POWER/
     # REMOVE_FORCE_POWER capabilities, plus the standard AdjustAlignment()
     # action, are now confirmed shipped and working. Archived verbatim
@@ -511,27 +617,27 @@ APPLIES = {
     # extender/research_archive/test_hp_fp_alignment_arms_2026-09-06.py.txt,
     # same gap-preserving convention as every other retired arm above --
     # IDs never reused.
-    # 49 (test_add_100_hp) RETIRED 2026-09-06 -- confirmed the write
+    # 49 (test_add_100_hp) RETIRED -- confirmed the write
     # succeeds and reads back correctly at the instant of the write
     # (84->184), but current HP appears clamped back to Max HP once it
     # exceeds it (no visible change on the character sheet afterward) --
     # a sane engine invariant, not a bug, and not a real use case anyway.
     # Archived at extender/research_archive/test_hp_fp_alignment_arms_2026-09-06.py.txt.
-    # 50 (test_lower_hp) RETIRED 2026-09-06 -- user-confirmed live: a
+    # 50 (test_lower_hp) RETIRED -- confirmed: a
     # within-max current-HP write persisted correctly on the character
     # sheet past the instant of the write. Combined with arms 47/49, ALL
     # current-HP native behavior relevant to real features is now
     # confirmed. Archived at extender/research_archive/
     # test_hp_fp_alignment_arms_2026-09-06.py.txt.
     51: ("test_grant_active_feat", [
-        # TEMPORARY (2026-09-06): live verification of whether granting an
+        # TEMPORARY: live verification of whether granting an
         # ACTIVE/hotbar combat feat via KSE_GrantFeatArrayA (already
         # proven for PASSIVE feats only -- the 4 mandatory Jedi feats) also
         # makes it genuinely USABLE (hotbar-addable), not just present on
         # the character sheet. Blocks the planned Feats [Add/Remove]
         # equipment-access feature's "ability" pool, which includes real
         # active feats (Critical Strike, Flurry, Rapid Shot, Power Attack,
-        # etc.) -- see GameMechanics.md. Grants Critical Strike (feat id
+        # etc.). Grants Critical Strike (feat id
         # 8, a level-1 Scoundrel entitlement) to the PC regardless of
         # class, since the point is only whether the GRANT mechanism
         # works for an active feat, not whether the PC would normally
@@ -542,6 +648,24 @@ APPLIES = {
         'KSE_GrantFeatArrayA(8, oPC);',
         'int nHasAfter = GetHasFeat(8, oPC);',
         'KSE_Diag(121, "AP|APPLIED|test_grant_active_feat|hadBefore=" + IntToString(nHasBefore) + "|hasAfter=" + IntToString(nHasAfter));',
+    ]),
+    52: ("test_resolve_item", [
+        # TEMPORARY research arm -- resolves the "Parts Pile" container
+        # (partpile001, tag "PartPile") directly by GetObjectByTag instead
+        # of a hardcoded object id. This sidesteps the OnOpen/
+        # module-instance-caching problem entirely -- this arm is a fresh
+        # script execution triggered via /ap_apply, not a placeable event
+        # tied to a template that was already loaded before an Override
+        # edit landed, so no new save/relaunch is required. Just re-run
+        # /ap_apply test_resolve_item while standing near the container.
+        # Retire (leave the gap) once this research concludes. Result logs
+        # to kse.log as
+        # "K1SE RESOLVEITEM source=object-arg objFromArg=<id> ... -> obj=<ptr>
+        # type=<n> qty=<n>" (or a failure reason) -- read that directly,
+        # this arm's own KSE_Diag call just marks that it fired.
+        'object oPartPile = GetObjectByTag("PartPile");',
+        'KSE_ResolveItemId(oPartPile, 0, 0);',
+        'KSE_Diag(158, "AP|APPLIED|test_resolve_item|tag=PartPile");',
     ]),
 }
 
@@ -555,7 +679,7 @@ def build_set_xp_block(value):
     # would make the confirmation logic ambiguous about which one fired.
     #
     # A companion-XP-sync ("SetXP on party slots 1-2 too") was tried and
-    # dropped -- confirmed live, three separate times, that SetXP (like
+    # dropped -- confirmed, across separate tests, that SetXP (like
     # AddMultiClass and GiveXPToCreature before it) has zero effect on a
     # non-PC party member in this engine build. Nothing in NWScript can
     # modify a companion's core stats; only the game's own native
@@ -572,8 +696,7 @@ def build_set_xp_block(value):
 
 
 def build_set_credits_block(value):
-    # Direct memory write via KSE_SetCredits (confirmed live 2026-09-03 --
-    # see FutureDesign.md's credits-chain entries): resolves pRes fresh via
+    # Direct memory write via KSE_SetCredits (confirmed): resolves pRes fresh via
     # the confirmed native chain and writes the exact value to [pRes+0xFC].
     # Replaces the old GiveGoldToCreature/TakeGoldFromCreature delta dance
     # -- TakeGoldFromCreature was a confirmed no-op in this engine build,
@@ -590,6 +713,95 @@ def build_set_credits_block(value):
     ]
 
 
+def build_delevel_block(level, xp, force):
+    # Reconciler fix for the documented SetXP gap: native
+    # SetXP() silently refuses to lower XP below the CURRENT level's
+    # banked threshold once vanilla combat/quest XP has carried the
+    # player past it. A raw memory write has no
+    # such native-function validation
+    # to race against, so this writes level and XP directly via
+    # KSE_SetCreatureField instead of relying on SetXP for the down
+    # direction. See kotor_reconciliation.py for the trigger condition
+    # (expected XP maps to a lower level than the player's real current
+    # level).
+    #
+    # force=-1 is the sentinel for "don't touch Force" (non-Jedi PC).
+    # Any other value writes it directly too -- the reconciler computes
+    # this as a simple proportional scale (currentForce * newLevel /
+    # oldLevel), NOT a per-class formula: confirmed empirically
+    # that Force-points-per-level does NOT generalize across
+    # Jedi classes via a simple relationship to forcedie (Sentinel:
+    # +14/level; Consular: +11/level, despite Consular having the BIGGER
+    # forcedie) -- chasing an exact per-class table wasn't worth it for
+    # a correction that just needs to be reasonable, not pixel-perfect.
+    #
+    # Note: GetHitDice()/GetXP() read back in the SAME script tick as the
+    # write may show STALE (pre-write) values -- this project has
+    # already confirmed a same-tick immediate-readback cache quirk for
+    # class/level fields elsewhere. The
+    # raw write itself still lands correctly regardless; only this
+    # diagnostic's "after" numbers might lag by one tick. Not chased
+    # further since it's cosmetic (logging only), not functional.
+    lines = [
+        "object oPC = GetFirstPC();",
+        "int nLevelBefore = GetHitDice(oPC);",
+        "int nXPBefore = GetXP(oPC);",
+        f"KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), {level});",
+        f"KSE_SetCreatureField(oPC, KSE_FIELD_XP(), {xp});",
+    ]
+    if force >= 0:
+        lines.append(f"KSE_SetCreatureField(oPC, KSE_FIELD_FORCE(), {force});")
+    lines.append(
+        'KSE_Diag(9, "AP|APPLIED|delevel|levelBefore=" + IntToString(nLevelBefore)'
+        ' + "|xpBefore=" + IntToString(nXPBefore)'
+        ' + "|levelAfter=" + IntToString(GetHitDice(oPC))'
+        ' + "|xpAfter=" + IntToString(GetXP(oPC)));'
+    )
+    return lines
+
+
+def build_force_power_block(spell_id):
+    # TSL Force Power port pilot -- the grant half of the
+    # "three tests" for porting KOTOR 2 powers into K1 (Revitalize, Force
+    # Scream, Force Barrier -- see scripts/patch_tsl_powers.py for the
+    # spells.2da/TLK/icon/impact-script install half). Reuses the
+    # KSE_FIELD_ADD_FORCE_POWER field write already confirmed by the
+    # retired research arm 47 (add/remove/remove-again on
+    # FORCE_POWER_CURE all passed first try) and shipped for the Remove
+    # Half Known Force Powers trap's REMOVE twin. spell_id is a spells.2da
+    # row index -- for a ported power that's a row patch_tsl_powers.py
+    # appended (133+ on a vanilla table), for a vanilla power any real
+    # FORCE_POWER_* row. Guarded with GetHasSpell so a reconnect replay is
+    # a harmless no-op rather than a duplicate entry in the power list.
+    return [
+        "object oPC = GetFirstPC();",
+        f"int nHad = GetHasSpell({spell_id}, oPC);",
+        "if (!nHad)",
+        "{",
+        f"    KSE_SetCreatureField(oPC, KSE_FIELD_ADD_FORCE_POWER(), {spell_id});",
+        "}",
+        f'KSE_Diag(150, "AP|APPLIED|force_power|id={spell_id}|had=" + IntToString(nHad)'
+        f' + "|has=" + IntToString(GetHasSpell({spell_id}, oPC)));',
+    ]
+
+
+# See patch_item_suppression.py's PROGRESS_MARKER_RESREF comment for the
+# full reasoning -- KSE_SetData's "granted_exempt_" flag below doesn't
+# survive a game restart, and possession of the starpad item itself isn't
+# a safe restart-persistent signal for these 4 specifically (each has an
+# independent vanilla creation point outside this delivery path). Must
+# stay in sync with k_sup_galaxymap_progression.nss/
+# k_pla_actmap_progression.nss's own bit reads and with
+# patch_item_suppression.py's PROGRESS_MARKER_RESREF.
+PROGRESS_MARKER_RESREF = "ap_progress_marker"
+STARPAD_MARKER_BIT = {
+    "tat_starpad": 0,
+    "kas_starpad": 1,
+    "man_starpad": 2,
+    "kor_starpad": 3,
+}
+
+
 def build_give_item_block(resref, count):
     # Generic gear-delivery action -- the resref and count are baked
     # directly into the freshly-regenerated source, same as set_xp/
@@ -598,10 +810,10 @@ def build_give_item_block(resref, count):
     # or changing gear items later is pure data (edit the JSON), never a
     # DLL rebuild. CreateItemOnObject alone (no AddMultiClass/
     # ShowLevelUpGUI/AddPartyMember) is not a HEAVY_ARMS-category
-    # operation -- confirmed safe in large batches this session, same as
+    # operation -- confirmed safe in large batches, same as
     # skills/abilities.
     #
-    # granted_exempt_ marking (2026-08-29): CreateItemOnObject fires
+    # granted_exempt_ marking: CreateItemOnObject fires
     # Mod_OnAcquirItem the same as any real pickup (confirmed elsewhere in
     # this project -- it's why bonus-mode grants need their own debounce).
     # A real AP check reward delivered here is a completely separate code
@@ -613,12 +825,38 @@ def build_give_item_block(resref, count):
     # unwhitelisted loot. Set BEFORE CreateItemOnObject, not after --
     # closes any theoretical ordering race between the mark and the
     # re-fire it's meant to guard against.
-    return [
+    # FIXED (real bug): a single
+    # CreateItemOnObject(resref, oPC, count) call is capped by the
+    # ITEM'S OWN real StackSize field, silently -- confirmed for
+    # both Computer Spike (g_i_progspike01, StackSize=1) and Security
+    # Spike (BOTH g_i_secspike01 and g_i_secspike02, StackSize=1 --
+    # vanilla has no stackable variant of this item at all), meaning a
+    # requested count of 10/20 was actually only ever delivering 1. Loop
+    # calling CreateItemOnObject with count=1 each time instead -- KOTOR's
+    # own inventory naturally merges repeated creates of a genuinely
+    # stackable item into one stack (so this is a no-op behavior change
+    # for anything that already worked), while a StackSize=1 item just
+    # ends up as N separate 1-count inventory entries instead of failing
+    # to deliver the rest silently. Universally correct regardless of
+    # whether a given resref's real stack limit was ever checked.
+    lines = [
         "object oPC = GetFirstPC();",
         f'KSE_SetData("granted_exempt_{resref.lower()}", "1");',
-        f'CreateItemOnObject("{resref}", oPC, {count});',
-        f'KSE_Diag(81, "AP|APPLIED|give_item|resref={resref}|count={count}");',
     ]
+    for _ in range(count):
+        lines.append(f'CreateItemOnObject("{resref}", oPC, 1);')
+    bit = STARPAD_MARKER_BIT.get(resref.lower())
+    if bit is not None:
+        lines.extend([
+            f'object oProgMarker = GetItemPossessedBy(oPC, "{PROGRESS_MARKER_RESREF}");',
+            "if (!GetIsObjectValid(oProgMarker))",
+            "{",
+            f'    oProgMarker = CreateItemOnObject("{PROGRESS_MARKER_RESREF}", oPC, 1);',
+            "}",
+            f"SetLocalBoolean(oProgMarker, {bit}, TRUE);",
+        ])
+    lines.append(f'KSE_Diag(81, "AP|APPLIED|give_item|resref={resref}|count={count}");')
+    return lines
 
 
 # Companion key (matches KotorClient.py's COMPANION_IDX_TO_ARM suffix and
@@ -635,6 +873,19 @@ _COMPANION_TAGS = {
     "juhani": "Juhani",
     "mission": "Mission",
     "zaalbar": "Zaalbar",
+    # new_companion=on only (Options.py) -- her real object Tag stays "HK47"
+    # regardless of the swap (see NEW_COMPANION_TEMPLATE's own comment
+    # below for why: ~450 of 498 game-wide "HK47" string hits are a
+    # generic 9-companion tag-exclusion check shared by every companion,
+    # safe only as long as this tag doesn't change). Added here so
+    # build_companion_class_block()/the Additional Feats block generator
+    # (both index this dict by name) don't KeyError the first time either
+    # processes her -- __init__.py's COMPANION_CLASS_KEYS is NEVER
+    # statically extended with "hk47" (that would wrongly make vanilla
+    # HK-47 eligible too), so this entry existing unconditionally is safe:
+    # it's only ever looked up for a name that reaches these functions in
+    # the first place, which only happens when new_companion is on.
+    "hk47": "HK47",
 }
 
 _CLASS_NAME_TO_CONST = {
@@ -647,7 +898,7 @@ _CLASS_NAME_TO_CONST = {
 }
 
 # Companion key -> NPC_* constant, for the IsNPCPartyMember() guard in
-# build_companion_class_block (see its docstring's 2026-08-31 fix note).
+# build_companion_class_block (see its docstring's own fix note below).
 _COMPANION_NPC_CONST = {
     "bastila": "NPC_BASTILA",
     "canderous": "NPC_CANDEROUS",
@@ -656,12 +907,17 @@ _COMPANION_NPC_CONST = {
     "juhani": "NPC_JUHANI",
     "mission": "NPC_MISSION",
     "zaalbar": "NPC_ZAALBAR",
+    # new_companion=on only -- see _COMPANION_TAGS's comment above for why
+    # this is safe to add unconditionally. _COMPANION_NPC_CONST_ALL below
+    # already carried this same key/value as an explicit merge addition;
+    # this makes it redundant there, not conflicting (same value).
+    "hk47": "NPC_HK_47",
 }
 
 # All 9 companions including the 2 droids -- _COMPANION_NPC_CONST above is
 # deliberately non-droid-scoped (Randomize_class never targets HK-47/T3-M4),
-# but the "Remove a Companion" trap has no such restriction (user's own
-# spec: "a companion the player has access to", no exclusion), so it needs
+# but the "Remove a Companion" trap has no such restriction (by design:
+# "a companion the player has access to", no exclusion), so it needs
 # its own full map. NPC_HK_47/NPC_T3_M4 confirmed via
 # generate_companion_suppressors.py's own suppression table.
 _COMPANION_NPC_CONST_ALL = {**_COMPANION_NPC_CONST, "hk47": "NPC_HK_47", "t3m4": "NPC_T3_M4"}
@@ -687,9 +943,9 @@ def build_companion_class_block(name, class_name):
     until it actually lands, same "one-transition delivery lag" every
     other arm already relies on. No new retry logic needed.
 
-    2026-08-31 fix: the "found" check used to be plain
+    The "found" check must not be plain
     GetIsObjectValid(oCompanion) on a GetObjectByTag() lookup. Confirmed
-    live this session (Carth) that this is not sufficient -- a Carth-
+    (Carth) that this is not sufficient -- a Carth-
     tagged object can exist and resolve as valid well before he's an
     actual party member (e.g. his own pre-recruit map/cutscene instance),
     so the class write landed, reported AP|APPLIED, and got marked
@@ -702,12 +958,12 @@ def build_companion_class_block(name, class_name):
     no-Diag/retry path above instead of silently succeeding on the wrong
     object.
 
-    Recipe (level 1 + 10 Force) is the exact one confirmed live this
-    session on Zaalbar -> Level 20 Jedi Guardian, 76 Force -- KOTOR's own
+    Recipe (level 1 + 10 Force) is the exact one confirmed
+    on Zaalbar -> Level 20 Jedi Guardian, 76 Force -- KOTOR's own
     companion auto-level-sync catches them up to the party's real level
     over subsequent play, same as it did there.
 
-    2026-08-31 addition: also grants/removes the feats a real Jedi
+    Also grants/removes the feats a real Jedi
     level-up would automatically grant that KSE_SetCreatureField's class
     write alone does not -- Jedi Defense (feat 55), Lightsaber
     Proficiency (feat 43, WEAPON_PROF_LIGHTSABER), Force Sensitivity
@@ -721,14 +977,14 @@ def build_companion_class_block(name, class_name):
     Weapon Prof: Melee Weapons) were checked the same way and explicitly
     EXCLUDED -- both show granted=1 for ALL SIX classes, base classes
     included, confirmed universal baseline proficiencies, not something a
-    class switch should ever touch (see FutureDesign.md's "Force Powers +
-    Feats reference data" entry for the full table and reasoning). Found
-    live: a companion switched AWAY from a Jedi class (Jolee -> Soldier)
+    class switch should ever touch (see research/feats/class_feats.json
+    for the full per-class table). Without this fix a companion switched
+    AWAY from a Jedi class (Jolee -> Soldier)
     could still wield a lightsaber, because the class write never touches
     the feat list. Deliberately just these four (not the tiered
     Advanced/Master Jedi Defense, Weapon Focus/Specialization: Lightsaber,
     or the level-6/12 tiers like Knight/Master Sense) -- matches the exact
-    scope the user asked for, not everything a real multi-level Jedi
+    scope defined for this feature, not everything a real multi-level Jedi
     progression would eventually grant. Uses K1SE's own proven
     KSE_GrantFeatArrayA/KSE_RemoveFeatArrayA (routines 618/634) -- no new
     native needed.
@@ -737,9 +993,9 @@ def build_companion_class_block(name, class_name):
     held is likewise not expected to duplicate (K1SE's own adder is the
     same one real level-up uses).
 
-    2026-08-31 addition: on the REMOVAL path (switching AWAY from Jedi)
+    On the REMOVAL path (switching AWAY from Jedi)
     also force-unequips a lightsaber from either weapon slot, AND a Jedi
-    robe from the body slot. Confirmed live: removing feat 43 (Lightsaber
+    robe from the body slot. Confirmed: removing feat 43 (Lightsaber
     Proficiency) correctly blocks RE-equipping a lightsaber afterward
     (verified by manually unequipping then trying to put it back on), but
     the engine never retroactively unequips an item just because the
@@ -750,7 +1006,7 @@ def build_companion_class_block(name, class_name):
     (BASE_ITEM_LIGHTSABER/_DOUBLE_BLADED_LIGHTSABER/_SHORT_LIGHTSABER)
     checked in both INVENTORY_SLOT_RIGHTWEAPON and _LEFTWEAPON (dual-wield
     case). Robes were initially assumed unrestricted (a wrong guess,
-    corrected same session) -- confirmed via baseitems.2da that all three
+    since corrected) -- confirmed via baseitems.2da that all three
     tiers (BASE_ITEM_JEDI_ROBE/_JEDI_KNIGHT_ROBE/_JEDI_MASTER_ROBE, rows
     35/36/37) carry reqfeat0=55 (Jedi Defense), the exact feat this same
     removal path already strips -- so robes have the identical
@@ -759,11 +1015,10 @@ def build_companion_class_block(name, class_name):
     deliberately left alone -- non-Jedi classes have no equip restriction
     on it at all, nothing illegal to strip.
 
-    2026-09-03 fix (promoted from temporary arm 39's proof-of-concept, see
-    FutureDesign.md's "FINAL CONFIRMED SCOPE, Force Powers hotbar bug"
-    entry): granting a companion a JEDI class they didn't already have
+    FIX (promoted from temporary arm 39's proof-of-concept):
+    granting a companion a JEDI class they didn't already have
     used to go through the same raw KSE_SetCreatureField(CLASS0_TYPE)
-    overwrite as every other direction -- confirmed live to leave newly-
+    overwrite as every other direction -- confirmed to leave newly-
     granted Force Powers sheet-visible but never hotbar-usable, since a
     direct field write skips the engine's own class-change housekeeping
     entirely. Now branches at runtime on whether the companion is
@@ -777,8 +1032,8 @@ def build_companion_class_block(name, class_name):
     housekeeping is trusted to initialize that correctly, unlike the raw
     field write. Every OTHER direction (already-Jedi or targeting a base
     class) keeps the original CLASS0_TYPE/CLASS0_LEVEL/FORCE overwrite
-    unchanged -- confirmed NOT broken for Jedi-to-base (see the same
-    FutureDesign.md entry) and never shown broken for the Jedi-to-
+    unchanged -- confirmed NOT broken for Jedi-to-base (a clean re-test
+    without a contaminated arm queue) and never shown broken for the Jedi-to-
     different-Jedi case either, so left on the proven path rather than
     risking an untested AddMultiClass-onto-an-already-Jedi-Class0
     interaction. Feat grants/removals and the lightsaber/robe equip-swap
@@ -786,10 +1041,10 @@ def build_companion_class_block(name, class_name):
     AddMultiClass's own housekeeping already granted them (K1SE's adder is
     the same one real level-up uses, confirmed safe to re-fire).
 
-    2026-09-07 fix: the base-class-target branch used to ONLY strip the 4
+    FIX: the base-class-target branch used to ONLY strip the 4
     universal Jedi feats, unconditionally, regardless of what the
     companion's class actually was -- confirmed a real gap via
-    GameMechanics.md's base-feat-per-class data: a base-to-base switch
+    CLASS_BASE_FEATS' base-feat-per-class data: a base-to-base switch
     (e.g. Soldier -> Scout) never granted/stripped anything at all (keeps
     Power Attack/Heavy Weapons forever, never gains Flurry/Rapid Shot), and
     a Jedi-to-base switch never stripped that Jedi's own unique power feat
@@ -799,7 +1054,7 @@ def build_companion_class_block(name, class_name):
     build_class_feat_delta_lines() helper the PC's own pc_class_soldier/
     scout/scoundrel arms use -- strips exactly the old class's base feats
     the new class doesn't share, grants exactly the new class's base feats
-    the old class didn't already have. Same session, also added each Jedi
+    the old class didn't already have. Also added each Jedi
     class's own unique power feat (Force Jump=101/Force Focus=88/Force
     Immunity: Fear=98) to the Jedi-target grant list below, via the same
     proven DelayCommand pattern -- previously only the 4 UNIVERSAL Jedi
@@ -811,7 +1066,7 @@ def build_companion_class_block(name, class_name):
     forever), and an already-Jedi companion rolling a DIFFERENT Jedi class
     keeps their old unique power feat alongside the new one (e.g. Force
     Jump AND Force Focus both present) -- the base-class-target branch got
-    the full delta treatment because that was the explicit ask; the
+    the full delta treatment, matching the PC's own arms; the
     Jedi-target branch only got the missing grant added, not a symmetric
     strip. Revisit if this asymmetry turns out to matter in practice."""
     tag = _COMPANION_TAGS[name]
@@ -822,10 +1077,10 @@ def build_companion_class_block(name, class_name):
     _JEDI_UNIQUE_POWER_FEAT = {"guardian": 101, "consular": 88, "sentinel": 98}  # Force Jump/Focus/Immunity:Fear
     old_class_read_lines = ["    int nOldClass = GetClassByPosition(1, oCompanion);"]
     if is_jedi:
-        # 2026-09-03 fix, found live testing Canderous: granting these
+        # FIX, found testing Canderous: granting these
         # immediately after AddMultiClass() in the same script pass lost
         # 2 of 4 feats (Jedi Sense/Force Sensitivity gone; Lightsaber
-        # Proficiency/Jedi Defense survived) -- confirmed live, reproduced.
+        # Proficiency/Jedi Defense survived) -- confirmed, reproduced.
         # Read: AddMultiClass()'s own real class-init (the whole reason
         # it's used over a raw field write) evidently does its own feat
         # settling that isn't fully synchronous within the same tick, and
@@ -836,13 +1091,13 @@ def build_companion_class_block(name, class_name):
         # any class's real entitlement table, while leaving the other two
         # alone (either untouched or harmlessly re-granted). Delaying our
         # grants lets them land AFTER that settling instead of racing it.
-        # CONFIRMED FIXED live (2026-09-03): Mission, a genuinely clean
+        # CONFIRMED FIXED: Mission, a genuinely clean
         # base-to-Jedi test subject (fresh save, never touched before this
         # test), got all 4 feats via this delayed path -- Jedi Sense and
         # Force Sensitivity both landed this time. The old
         # (non-AddMultiClass) removal path below has no such race, so it
         # stays immediate/unchanged. The class-specific unique power feat
-        # (added 2026-09-07) rides the same delayed grant, untested on its
+        # rides the same delayed grant, untested on its
         # own but no reason to expect it behaves differently from the
         # other 4 -- same host, same timing.
         feat_lines = [
@@ -892,15 +1147,15 @@ def build_companion_class_block(name, class_name):
     if is_jedi:
         # Runtime branch: base-to-Jedi (the direction confirmed broken under
         # the raw field write) uses AddMultiClass + a Class1 level patch --
-        # see this function's docstring's 2026-09-03 entry. An
+        # see this function's docstring's own entry on this fix above. An
         # already-Jedi companion rolling a DIFFERENT Jedi class under
         # randomize_all stays on the old, unmodified path (never shown
         # broken, and AddMultiClass onto an already-Jedi Class0 is
         # untested).
         #
-        # 2026-09-03 addendum, found live testing Mission: the original
+        # ADDENDUM, found testing Mission: the original
         # recipe only patched Class1's level to 1 and left Class0's
-        # EXISTING level untouched (confirmed live: Scoundrel level 3 +
+        # EXISTING level untouched (confirmed: Scoundrel level 3 +
         # Guardian level 1). KOTOR's own companion auto-level-sync compares
         # TOTAL character level against the party's expected total to
         # decide whether to add a level at all -- with Class0 already at 3,
@@ -948,7 +1203,7 @@ def build_companion_class_block(name, class_name):
 
 
 def build_additional_feats_block(name, feat_ids):
-    """AdditionalFeats action (Options.py, 2026-09-07) -- grants exactly
+    """AdditionalFeats action (Options.py) -- grants exactly
     3 feats (feat_ids, already chosen client-side, see KotorClient.py's
     _check_pending_additional_feats/ADDITIONAL_FEATS_POOL) to either the
     PC (name == "pc") or a named companion, resolved by their real object
@@ -963,8 +1218,8 @@ def build_additional_feats_block(name, feat_ids):
     suspenders against the rare case where a character's real feat state
     already has something from this pool that KotorClient.py's own
     bookkeeping didn't account for (an incidental vanilla template pick,
-    or an overlap with a class-change action's own grants). See
-    GameMechanics.md for the pool's derivation.
+    or an overlap with a class-change action's own grants). The pool is
+    KotorClient.py's ADDITIONAL_FEATS_POOL (derived from feat.2da).
 
     No target-not-found retry logic needed beyond the existing "no Diag
     emitted -> pending-queue retry fires this again next transition"
@@ -981,19 +1236,19 @@ def build_additional_feats_block(name, feat_ids):
         resolve_lines = [f'object oTarget = GetObjectByTag("{tag}");']
         guard = f"IsNPCPartyMember({npc_const}) && GetIsObjectValid(oTarget)"
 
-    # 2026-09-08 fix #1: the confirmation used to just echo back feat_ids
-    # verbatim ("feats=28,29,31"), which only proves the script ran to
+    # FIX #1: the confirmation must not just echo back feat_ids
+    # verbatim ("feats=28,29,31"), since that only proves the script ran to
     # completion -- NOT that each KSE_GrantFeatArrayA write actually took.
-    # Confirmed live: Mission's additional_feats grant reported
+    # A real failure mode: Mission's additional_feats grant reported
     # feats=28,29,31 as APPLIED, but she came out with 28 and 31 while 29
     # (Power Blast) silently never landed. Now reports each feat's
     # "before" state (GetHasFeat right before the attempt).
     #
-    # 2026-09-08 fix #2, root cause found via this same diagnostic on a
+    # FIX #2, root cause found via this same diagnostic on a
     # SECOND attempt: with the fix #1 diagnostic in place, a retry showed
     # ALL 3 requested feats at before=0/after=0 -- a complete, 100% write
     # failure for a companion target. This is the EXACT symptom already
-    # solved once in build_companion_class_block's 2026-09-03 fix note:
+    # solved once in build_companion_class_block's own fix note above:
     # granting feats to a companion immediately after AddMultiClass/class-
     # settling races the engine's own asynchronous feat-list rebuild,
     # which silently overwrites/discards the immediate grant. That fix's
@@ -1017,14 +1272,14 @@ def build_additional_feats_block(name, feat_ids):
     # same-tick "after" that would always read wrong. Real confirmation
     # is a live in-game feat-sheet check a few seconds later, same as
     # build_companion_class_block's own verification story.
-    # 2026-09-08 fix #3: fix #2's DelayCommand wrap didn't help either --
-    # confirmed live on Bastila, who NEVER goes through AddMultiClass at
+    # FIX #3: fix #2's DelayCommand wrap didn't help either --
+    # confirmed on Bastila, who NEVER goes through AddMultiClass at
     # all under jedi_companion mode (trivially class-finalized, no roll
     # ever happens for her) -- her grant still failed the same way. That
     # rules out the AddMultiClass-settling race entirely; whatever's
     # actually wrong is unrelated to timing. The one remaining concrete
     # difference from build_companion_class_block's PROVEN-working Jedi-
-    # feat grant (Canderous, confirmed live, all 4 feats landed) is that
+    # feat grant (Canderous, confirmed, all 4 feats landed) is that
     # proven path grants UNCONDITIONALLY -- no GetHasFeat guard at all --
     # while this one guards each grant with `if (!GetHasFeat(...))`
     # first. Matching the proven pattern exactly: companion grants are now
@@ -1065,7 +1320,7 @@ def build_additional_feats_block(name, feat_ids):
 
 
 def build_trap_block(trap_type, params_str):
-    """Traps action (Options.py's EnableTraps, 2026-09-08) -- ONE
+    """Traps action (Options.py's Traps) -- ONE
     consolidated wire action ("trap:<trap_type>:<params_str>", see
     KotorClient.py's _deliver_item interception and
     kotor_extender_bridge.py's send_trap) covering all 12 trap items,
@@ -1078,13 +1333,12 @@ def build_trap_block(trap_type, params_str):
     PC-only for every trap except remove_companion (which targets
     whichever companion params_str names, never the PC).
 
-    Every branch below reuses an ALREADY-PROVEN native -- see
-    FutureDesign.md's Traps research entry for exactly which:
+    Every branch below reuses an ALREADY-PROVEN native:
     KSE_SetCredits (credits), KSE_SetCreatureField's CLASS0_LEVEL/
     CLASS1_LEVEL fields + SetXP (level), KSE_RemoveFeatArrayA (feats),
     KSE_SetCreatureField's REMOVE_FORCE_POWER field (force powers),
     EffectAbilityDecrease (Max HP via Constitution, and the 5 standalone
-    ability traps), RemoveAvailableNPC (companion removal, confirmed live
+    ability traps), RemoveAvailableNPC (companion removal, confirmed
     to eject an ACTIVE party member, not just mark unavailable), and the
     existing GetFirstItemInInventory/GetNextItemInInventory/DestroyObject
     walk (inventory removal, same pattern as ap_remove_test_item.nss).
@@ -1098,13 +1352,13 @@ def build_trap_block(trap_type, params_str):
     lines = ["object oPC = GetFirstPC();"]
 
     if trap_type == "reduce_skill":
-        # Retired cut_level's replacement (2026-09-08) -- cut_level's
-        # SetXP(oPC, new_xp) call silently no-op'd once the character had
-        # already banked XP past the current level's threshold (confirmed
-        # live: level field dropped, XP didn't), leaving level and XP
+        # Retired cut_level's replacement -- cut_level's
+        # SetXP(oPC, new_xp) call silently no-ops once the character has
+        # already banked XP past the current level's threshold (level
+        # field drops, XP doesn't), leaving level and XP
         # inconsistent with no reliable fix. EffectSkillDecrease is a
         # plain vanilla effect with no such threshold -- same pattern
-        # already proven live for the 5 ability traps below.
+        # already proven for the 5 ability traps below.
         # params_str = "<skill_key>:<decrease_amount>"
         skill_key, amount = params_str.split(":")
         skill_const = {
@@ -1137,7 +1391,7 @@ def build_trap_block(trap_type, params_str):
 
     elif trap_type == "remove_half_powers":
         # params_str = "<id1>,<id2>,..." -- spells.2da row ids, same
-        # KSE_FIELD_REMOVE_FORCE_POWER() field write confirmed live in
+        # KSE_FIELD_REMOVE_FORCE_POWER() field write confirmed in
         # this project's own retired research arm 47 (add/remove/
         # remove-again on FORCE_POWER_CURE, all three passed first try).
         ids = [i for i in params_str.split(",") if i]
@@ -1154,8 +1408,8 @@ def build_trap_block(trap_type, params_str):
         # params_str = "<con_decrease_amount>" -- already computed
         # client-side to get as close to half Max HP as this character's
         # build allows (fixed hit-die term can't be reduced via CON
-        # alone, see FutureDesign.md/Options.py's EnableTraps docstring).
-        # Same EffectAbilityDecrease call confirmed live 2026-09-06 to
+        # alone, see Options.py's Traps docstring).
+        # Same EffectAbilityDecrease call confirmed to
         # correctly recompute Max HP downward, formula-exact.
         amount = params_str
         lines += [
@@ -1169,7 +1423,7 @@ def build_trap_block(trap_type, params_str):
         # params_str = "<companion_key>" -- one of the 9 real keys (see
         # _COMPANION_NPC_CONST_ALL), a random currently-recruited one
         # chosen client-side (KotorClient.py's own _recruited_companions
-        # tracking). RemoveAvailableNPC confirmed live (see
+        # tracking). RemoveAvailableNPC confirmed (see
         # generate_companion_suppressors.py) to eject an ACTIVE party
         # member outright, not just mark them unavailable -- exactly the
         # trap behavior wanted, no extra RemovePartyMember call needed.
@@ -1181,35 +1435,81 @@ def build_trap_block(trap_type, params_str):
         ]
 
     elif trap_type == "remove_half_inventory":
-        # params_str = "<tag1>,<tag2>,..." -- backpack-only (equipped
-        # slots never eligible, quest_dependent items never eligible --
-        # both filtered client-side before this fires), already chosen as
-        # half the real backpack contents. One independent walk per tag
-        # (simpler to generate correctly than a single-pass multi-tag
-        # walker, and this only ever fires once per trap): same
-        # find-then-destroy-then-stop pattern as ap_remove_test_item.nss,
-        # deliberately not advancing the iterator once a match is found
-        # (avoids mutating the list mid-walk).
-        tags = [t for t in params_str.split(",") if t]
-        for tag in tags:
-            lines += [
-                "{",
-                "    object oItem = GetFirstItemInInventory(oPC);",
-                "    while (GetIsObjectValid(oItem))",
-                "    {",
-                f'        if (GetTag(oItem) == "{tag}")',
-                "        {",
-                "            DestroyObject(oItem);",
-                "            oItem = OBJECT_INVALID;",
-                "        }",
-                "        else",
-                "        {",
-                "            oItem = GetNextItemInInventory(oPC);",
-                "        }",
-                "    }",
-                "}",
-            ]
-        lines.append(f'KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_inventory|tags={params_str}");')
+        # REDESIGNED -- params_str is now unused/empty. This
+        # used to take an already-chosen tag list computed client-side
+        # from kotor_reconciliation.py's current_inventory, which was fed
+        # by ap_poll_shared.nss's CheckInventory() -- a giant concatenated
+        # string across the whole backpack that silently truncates past
+        # NWScript's ~512-byte string limit for a large enough inventory
+        # (root-caused via the Bounty Card count bug).
+        # Rather than keep a Python-side selection fed by an unreliable
+        # report, this now does the ENTIRE thing natively in one shot:
+        # backpack walk, quest_dependent exemption (QUEST_EXEMPT_TAGS is
+        # static gear_items.json data, known at codegen time -- baked in
+        # directly, same pattern every other suppression whitelist in this
+        # project already uses), and random selection, all in NWScript, so
+        # no giant string is EVER built for this trap. Object references
+        # are stored via SetLocalObject on oPC during the first pass (not
+        # text), so there's no size limit regardless of backpack size.
+        #
+        # Random-without-replacement is a standard single-pass-per-walk
+        # reservoir selection: walking the nEligible candidates in order,
+        # each is removed with probability (remaining still needed) /
+        # (remaining unvisited) -- exactly nEligible/2 removed overall, no
+        # shuffle/array needed. Two full inventory walks (count, then
+        # decide-and-destroy) rather than one, since this engine's
+        # nwscript.nss has NO SetLocalObject/GetLocalObject/DeleteLocalObject
+        # at all (confirmed via a real compile error -- only the Boolean/
+        # Number local variants exist here), so there's no way to remember
+        # which specific item objects were eligible between a count pass and
+        # an act pass. Recomputing eligibility fresh in the second walk
+        # (a pure function of GetTag()) costs nothing extra and needs no
+        # storage. Second walk fetches GetNextItemInInventory() BEFORE
+        # possibly destroying the current item -- GetNextItemInInventory
+        # cursors off oPC's inventory itself, not the current item, so
+        # this is safe, but destroying first and then asking oPC to
+        # advance from a now-destroyed reference is exactly the "mutating
+        # the list mid-walk" hazard the original per-tag walk above was
+        # already written to avoid.
+        exempt_conditions = " ||\n            ".join(f'sTag == "{r}"' for r in QUEST_EXEMPT_TAGS)
+        is_exempt_expr = f"({exempt_conditions})" if exempt_conditions else "FALSE"
+        lines += [
+            "string sTag;",
+            "int nEligible = 0;",
+            "object oCountItem = GetFirstItemInInventory(oPC);",
+            "while (GetIsObjectValid(oCountItem))",
+            "{",
+            "    sTag = GetTag(oCountItem);",
+            f"    if (!{is_exempt_expr})",
+            "    {",
+            "        nEligible = nEligible + 1;",
+            "    }",
+            "    oCountItem = GetNextItemInInventory(oPC);",
+            "}",
+            "",
+            "int nToRemove = nEligible / 2;",
+            "int nRemaining = nEligible;",
+            "int nRemovedSoFar = 0;",
+            "int nRemoved = 0;",
+            "object oCurrent = GetFirstItemInInventory(oPC);",
+            "while (GetIsObjectValid(oCurrent))",
+            "{",
+            "    object oNext = GetNextItemInInventory(oPC);",
+            "    sTag = GetTag(oCurrent);",
+            f"    if (!{is_exempt_expr})",
+            "    {",
+            "        if (Random(nRemaining) < nToRemove - nRemovedSoFar)",
+            "        {",
+            "            DestroyObject(oCurrent);",
+            "            nRemovedSoFar = nRemovedSoFar + 1;",
+            "            nRemoved = nRemoved + 1;",
+            "        }",
+            "        nRemaining = nRemaining - 1;",
+            "    }",
+            "    oCurrent = oNext;",
+            "}",
+        ]
+        lines.append('KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_inventory|removed=" + IntToString(nRemoved));')
 
     elif trap_type in ("reduce_str", "reduce_dex", "reduce_int", "reduce_wis", "reduce_cha"):
         # params_str = "<decrease_amount>" -- current score minus half,
@@ -1249,8 +1549,8 @@ def build_notify_chain(texts):
     """One-shot on-screen messages (check found / item received /
     connection status), via FloatingTextStringOnCreature.
 
-    FINAL DESIGN (2026-08-29, after a long live-debugging chain -- kept
-    for the next person who touches this): each text gets its own
+    FINAL DESIGN (kept as the documented outcome of a long debugging
+    chain, for the next person who touches this): each text gets its own
     directly-delayed native call --
     `DelayCommand(fDelay, FloatingTextStringOnCreature(text, oPC, FALSE))`
     -- staggered by 1.5s per text, NO custom wrapper function involved.
@@ -1258,11 +1558,11 @@ def build_notify_chain(texts):
     feedback message log. Known, accepted limitation: if 2+ notifications
     land in the same batch, only the FIRST one displays -- multiple
     INDEPENDENT DelayCommand calls issued from the same originating
-    script execution only honor the first one, confirmed live. Not
+    script execution only honor the first one, confirmed. Not
     chased further; single-notification is the common case (usually one
     check or one item between transitions) and this project's philosophy
     is to document a narrow, confirmed limitation rather than keep
-    engineering around it (see [[kotor-project-status]]).
+    engineering around it.
 
     Three other approaches were tried and abandoned, each confirmed
     broken through direct live testing, not assumption:
@@ -1325,7 +1625,7 @@ def build_notify_chain(texts):
 # Archipelago/worlds/kotor/__init__.py's PLANET_MODULE_PREFIXES (that file
 # and this one are separate packages -- the apworld vs. dev tooling -- not
 # worth a cross-package import for 5 entries that rarely change).
-# 2026-09-08 FIX: "tat_m": "tatooine" was missing entirely -- see the
+# FIX: "tat_m": "tatooine" was missing entirely -- see the
 # matching fix + full explanation in Archipelago/worlds/kotor/__init__.py's
 # PLANET_MODULE_PREFIXES (this dict's real source-of-truth counterpart).
 # Without it, _planet_for_module() returned None for every Tatooine
@@ -1422,6 +1722,14 @@ def build_batch_block(batch_items):
                 trap_type, params = item["trap_type"], item["params"]
                 label, body = "trap", build_trap_block(trap_type, params)
                 lines.append(f"        // trap={trap_type}:{params}")
+            elif action == "delevel":
+                level, xp, force = item["level"], item["xp"], item["force"]
+                label, body = "delevel", build_delevel_block(level, xp, force)
+                lines.append(f"        // delevel={level}:{xp}:{force}")
+            elif action == "force_power":
+                spell_id = item["spell_id"]
+                label, body = "force_power", build_force_power_block(spell_id)
+                lines.append(f"        // force_power={spell_id}")
             elif action == "notify":
                 notify_texts.append(item["text"])
                 continue  # handled once, together, after this loop -- not inlined per-item
@@ -1489,6 +1797,14 @@ def main():
             # build_trap_block() knows how to parse it further.
             _, trap_type, params = a.split(":", 2)
             batch_items.append({"action": "trap", "trap_type": trap_type, "params": params})
+        elif a.startswith("delevel:"):
+            # delevel:<level>:<xp>:<force> -- see build_delevel_block()'s
+            # own docstring for the full reconciler SetXP-gap fix design.
+            _, level_s, xp_s, force_s = a.split(":", 3)
+            batch_items.append({"action": "delevel", "level": int(level_s), "xp": int(xp_s), "force": int(force_s)})
+        elif a.startswith("force_power:"):
+            # force_power:<spells.2da row id> -- see build_force_power_block().
+            batch_items.append({"action": "force_power", "spell_id": int(a.split(":", 1)[1])})
         elif a.startswith("notify:"):
             # Sliced, not split(":", 1) -- the text itself can legitimately
             # contain colons (e.g. "Received: X (from Y's Z)"), and slicing
@@ -1509,7 +1825,7 @@ def main():
     # Set once, at Connect, by KotorClient.py via the extender's SHOPSTOCK:
     # command (one message per planet) -- see arm_orchestrator.py's
     # --set-shop-stock= handling. {planet: [resrefs]}, one distinct catalog
-    # per planet (2026-08-29 -- was a single universal list before). Empty
+    # per planet (not a single universal list). Empty
     # (file absent, or shop_item_count option is 0) means no shop area gets
     # a stocking block at all, same as vanilla.
     shop_stock_path = os.path.join(SRC_DIR, "_shop_stock.json")
@@ -1594,13 +1910,13 @@ void main()
             f.write(trampoline_src)
 
         ncs_path = os.path.join(SRC_DIR, f"{onenter}.ncs")
-        # Real bug found live (2026-08-29): `ok = os.path.exists(ncs_path)`
+        # Real bug: `ok = os.path.exists(ncs_path)`
         # alone stays TRUE even when THIS compile fails, because a stale
         # .ncs from an earlier, unrelated successful build is already
         # sitting at that path -- nwnnsscomp.exe just leaves it untouched
-        # on a compile error rather than deleting it. Confirmed live: a
+        # on a compile error rather than deleting it. Confirmed: a
         # NotifyChain forward-reference error ("Undeclared identifier")
-        # silently redeployed a stale single-item .ncs on every single
+        # can silently redeploy a stale single-item .ncs on every single
         # multi-notify attempt, with zero visible indication anywhere.
         # Two independent checks now, both required: the file's own mtime
         # must have actually advanced (proves nwnnsscomp really wrote
@@ -1608,22 +1924,53 @@ void main()
         # AND its own stdout must not contain the compiler's real
         # failure markers.
         mtime_before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
-        result = subprocess.run(
-            [NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-            capture_output=True, text=True, cwd=SRC_DIR,
-        )
-        compiled_fresh = os.path.exists(ncs_path) and (
-            mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
-        )
-        compile_error = "Compilation aborted" in result.stdout or "Error:" in result.stdout
-        ok = compiled_fresh and not compile_error
+        # timeout=30 (hang-safeguard): a real compile "takes well
+        # under a second in practice" (see ap_extender.c's own comment on
+        # the caller of this whole chain), so 30s is generous, not tight.
+        # Real risk this closes: this subprocess.run() previously had NO
+        # timeout at all, and this call sits at the bottom of a 3-layer
+        # chain (extender's C code -> arm_orchestrator.py -> this file ->
+        # nwnnsscomp.exe) where NONE of the 3 subprocess calls had one --
+        # if nwnnsscomp.exe ever hung (a plausible, ordinary trigger:
+        # antivirus real-time scanning intercepting a frequently-spawned,
+        # less-common .exe, not just a dev-editing collision), the C
+        # extender's log-tail thread would block forever inside a
+        # ReadFile with no timeout of its own, silently freezing all
+        # future event relay for the rest of the game session with zero
+        # error anywhere -- exactly the "extender silently died" symptom.
+        # Bounding this call is enough to
+        # fix that from the Python side alone: the C code's ReadFile only
+        # blocks until the whole child process tree exits and closes its
+        # output handle, so a bounded exit here anywhere in the chain is
+        # sufficient, no DLL rebuild needed.
+        try:
+            result = subprocess.run(
+                [NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
+                capture_output=True, text=True, cwd=SRC_DIR, timeout=30,
+            )
+            compiled_fresh = os.path.exists(ncs_path) and (
+                mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
+            )
+            compile_error = "Compilation aborted" in result.stdout or "Error:" in result.stdout
+            ok = compiled_fresh and not compile_error
+            out, err = result.stdout, result.stderr
+        except subprocess.TimeoutExpired as e:
+            # subprocess.run() already killed the hung process before
+            # raising this (that's what unblocks the C extender's
+            # ReadFile) -- e.stdout/e.stderr hold whatever was captured
+            # before the kill (may be None, since capture_output+timeout
+            # doesn't always populate these on every Python version).
+            print(f"  COMPILE TIMED OUT after 30s: {onenter} -- nwnnsscomp.exe did not exit "
+                  "(hung child process, killed) -- treating as a compile failure")
+            ok = False
+            out, err = (e.stdout or ""), (e.stderr or "")
         if ok:
             dest = os.path.join(OVERRIDE_DIR, f"{onenter}.ncs")
             with open(ncs_path, "rb") as fsrc, open(dest, "wb") as fdst:
                 fdst.write(fsrc.read())
         print(f"{onenter} (covers {base_list_comment}): {'OK' if ok else 'FAILED'}")
         if not ok:
-            print(result.stdout, result.stderr)
+            print(out, err)
 
 
 if __name__ == "__main__":

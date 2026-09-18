@@ -58,27 +58,38 @@ item_table: typing.Dict[str, ItemData] = {
     "Experience Points": ItemData(base_id + 16, ItemClassification.filler, "xp"),
     "Republic Credits": ItemData(base_id + 17, ItemClassification.filler, "credits"),
     "Companion: Carth Onasi": ItemData(base_id + 18, ItemClassification.progression, "companion_carth"),
+    # "Companion: HK-47" (below) is used when new_companion=off; "Companion:
+    # New Companion" (base_id+87) is used when
+    # new_companion=on -- exactly one of the two is ever placed in a given
+    # seed's pool (see __init__.py's create_items()), never both. They
+    # deliberately share arm_name="companion_hk47" -- whichever one is
+    # actually received forward-resolves via item_table[name].arm_name to
+    # the same arm either way, which is all that matters; the only reverse
+    # lookup (arm_name_to_item, Items.py below) is consulted solely for
+    # STARTING_ABILITY_ARMS/STARTING_SKILL_ARMS, never for companion arms,
+    # so the two entries colliding there is inert, not a real ambiguity.
     "Companion: HK-47": ItemData(base_id + 19, ItemClassification.progression, "companion_hk47"),
     "Companion: Jolee Bindo": ItemData(base_id + 20, ItemClassification.progression, "companion_jolee"),
     "Companion: Juhani": ItemData(base_id + 21, ItemClassification.progression, "companion_juhani"),
     "Companion: Mission Vao": ItemData(base_id + 22, ItemClassification.progression, "companion_mission"),
     "Companion: T3-M4": ItemData(base_id + 23, ItemClassification.progression, "companion_t3m4"),
     "Companion: Zaalbar": ItemData(base_id + 24, ItemClassification.progression, "companion_zaalbar"),
+    "Companion: New Companion": ItemData(base_id + 87, ItemClassification.progression, "companion_hk47"),
     "Class Switch: Jedi Sentinel": ItemData(base_id + 25, ItemClassification.progression, "class_sentinel"),
     "Ability: Strength Increase": ItemData(base_id + 26, ItemClassification.useful, "ability_strength"),
     "Ability: Dexterity Increase": ItemData(base_id + 27, ItemClassification.useful, "ability_dexterity"),
     "Ability: Constitution Increase": ItemData(base_id + 28, ItemClassification.useful, "ability_constitution"),
     "Ability: Intelligence Increase": ItemData(base_id + 29, ItemClassification.useful, "ability_intelligence"),
     "Ability: Wisdom Increase": ItemData(base_id + 30, ItemClassification.useful, "ability_wisdom"),
-    # Completion-condition markers (2026-08-29) -- locked (place_locked_item
+    # Completion-condition markers -- locked (place_locked_item
     # in __init__.py's create_regions()) to "Level 20 Reached"/"Malak
     # Defeated" in Locations.py, real items with real codes (NOT an AP
     # "Event" item with code=None -- that requires the LOCATION's own
     # address to also be None, i.e. a purely internal marker never sent
     # over the network at all, which contradicts these being real,
     # player-visible checks the client reports via a genuine LocationChecks
-    # packet; confirmed live via Main.py's own generation-time assertion
-    # when this was first tried as a true code=None Event). arm_name
+    # packet; confirmed via Main.py's own generation-time assertion
+    # against a true code=None Event). arm_name
     # "goal_marker" is deliberately unmapped to anything real in
     # KNOWN_ARM_NAMES/HEAVY_ARMS/CLASS_ARM_TO_KEY -- there is nothing
     # meaningful to grant for "you already reached level 20"/"you already
@@ -99,7 +110,7 @@ item_table: typing.Dict[str, ItemData] = {
     # see Rules.py for the exact reasoning.
     "Reached Dark Side 0": ItemData(base_id + 33, ItemClassification.progression, "goal_marker"),
     "Reached Light Side 100": ItemData(base_id + 34, ItemClassification.progression, "goal_marker"),
-    # CompanionClass=jedi_companion (2026-08-30): one guaranteed-placement
+    # CompanionClass=jedi_companion: one guaranteed-placement
     # item per (non-Jedi companion x possible Jedi class) -- 4 companions x
     # 3 classes = 12 static entries here, but __init__.py's create_items()
     # only ever actually places ONE of the 3 per companion each seed (the
@@ -121,7 +132,7 @@ item_table: typing.Dict[str, ItemData] = {
     "Jedi Training: Mission (Guardian)": ItemData(base_id + 44, ItemClassification.progression, "companion_class:mission:guardian"),
     "Jedi Training: Mission (Consular)": ItemData(base_id + 45, ItemClassification.progression, "companion_class:mission:consular"),
     "Jedi Training: Mission (Sentinel)": ItemData(base_id + 46, ItemClassification.progression, "companion_class:mission:sentinel"),
-    # StartingClass=random_class (2026-09-02): the PC's own starting class,
+    # StartingClass=random_class: the PC's own starting class,
     # rerolled to one of all 6 classes. A Jedi roll reuses the existing
     # Class Switch items above (AddMultiClass, same as starting_class=
     # jedi_start/jedi_granted); a base-class roll needs these 3 new items
@@ -132,7 +143,7 @@ item_table: typing.Dict[str, ItemData] = {
     "PC Class: Soldier": ItemData(base_id + 47, ItemClassification.progression, "pc_class_soldier"),
     "PC Class: Scout": ItemData(base_id + 48, ItemClassification.progression, "pc_class_scout"),
     "PC Class: Scoundrel": ItemData(base_id + 49, ItemClassification.progression, "pc_class_scoundrel"),
-    # AdditionalFeats (2026-09-07): one per eligible character (PC + the 7
+    # AdditionalFeats: one per eligible character (PC + the 7
     # non-droid companions, order matching __init__.py's COMPANION_CLASS_KEYS).
     # Receiving one grants nothing immediately -- the arm_name is a marker
     # KotorClient.py recognizes specially (NOT a real extender arm name,
@@ -152,8 +163,14 @@ item_table: typing.Dict[str, ItemData] = {
     "Additional Feats Character: Juhani": ItemData(base_id + 55, ItemClassification.useful, "additional_feats:juhani"),
     "Additional Feats Character: Mission": ItemData(base_id + 56, ItemClassification.useful, "additional_feats:mission"),
     "Additional Feats Character: Zaalbar": ItemData(base_id + 57, ItemClassification.useful, "additional_feats:zaalbar"),
+    # new_companion=on only (see COMPANION_CLASS_KEYS's conditional
+    # inclusion in __init__.py) -- her internal key is "hk47" (the arm/
+    # tag/NPC-const token is left unchanged, only the AP-facing name and
+    # NPC identity change), so this follows the same additional_feats:<key>
+    # naming as every other entry above.
+    "Additional Feats Character: New Companion": ItemData(base_id + 88, ItemClassification.useful, "additional_feats:hk47"),
 
-    # 2026-09-08: Progression System (ProgressionSystem option) -- 10 real
+    # Progression System (ProgressionSystem option) -- 10 real
     # main-questline items, each classification=progression (not useful --
     # AP's own fill algorithm needs the real classification to weight/place
     # these correctly relative to logic, unlike Additional Feats above
@@ -167,17 +184,16 @@ item_table: typing.Dict[str, ItemData] = {
     # and scripts/patch_progression_system.py) -- each one's normal
     # vanilla acquisition script gets suppressed, and it's granted instead
     # once the paired AP check clears. See Rules.py for the access rules
-    # gating what each one unlocks, and FutureDesign.md's 2026-09-08
-    # Progression System entries for the full derivation (every gate here
-    # is confirmed via the game's own compiled scripts, not guessed).
+    # gating what each one unlocks (every gate there is confirmed via the
+    # game's own compiled scripts, not guessed).
     # base_id + 58 through 67 = the 10 originally-designed Progression System
     # items. base_id+62 (Tatooine Desert Map) and base_id+63 (Star Map:
-    # Dantooine) were dropped 2026-09-08 after tracing each one's REAL
+    # Dantooine) were dropped after tracing each one's REAL
     # checkpoint script rather than just its pickup location: nothing in the
     # entire game (chitin + Override, every resource type) ever checks
     # whether the player possesses tat20aa_westmap, and Dantooine's star map
     # turned out to be neither part of the Leviathan-capture gate nor a
-    # travel barrier of any kind (see Rules.py and FutureDesign.md). Their
+    # travel barrier of any kind (see Rules.py). Their
     # IDs are left permanently unused rather than renumbering the rest.
     "Progression Item: Sith Armor": ItemData(base_id + 58, ItemClassification.progression, "give_item:ptar_sitharmor"),
     "Progression Item: Sith Papers": ItemData(base_id + 59, ItemClassification.progression, "give_item:ptar_sithpapers"),
@@ -197,8 +213,8 @@ item_table: typing.Dict[str, ItemData] = {
 # resref (e.g. "I found ptar_sitharmor already in inventory -- is that
 # one of the 8 tracked progression items, and if so is it legitimately
 # AP-granted yet?"). All 8 confirmed via the game's own compiled
-# scripts -- see FutureDesign.md's 2026-09-08 entries. (desert_map and
-# starmap_dantooine dropped 2026-09-08 -- see the comment above the item
+# scripts. (desert_map and
+# starmap_dantooine dropped -- see the comment above the item
 # table itself for why.)
 PROGRESSION_ITEM_RESREFS: typing.Dict[str, str] = {
     "sith_armor": "ptar_sitharmor",
@@ -211,32 +227,34 @@ PROGRESSION_ITEM_RESREFS: typing.Dict[str, str] = {
     "starmap_korriban": "kor_starpad",
 }
 
-# Traps (2026-09-08): 12 items, gated by EnableTraps, guaranteed placement
-# (added to mandatory_names in __init__.py's create_items() exactly like
-# Additional Feats/Progression System above) whenever the option is on --
-# NOT part of the weighted _distribute_items() draw, since the design is
-# "always exactly 12 exist in the pool when enabled," not "maybe a few
-# show up." arm_name uses a "trap:<key>" sentinel KotorClient.py's
+# Traps: 12 items, gated by Options.py's Traps (the
+# enable_traps field). fixed_amount: guaranteed placement (added to
+# mandatory_names in __init__.py's create_items() exactly like Additional
+# Feats/Progression System above) -- "always exactly 12 exist in the
+# pool." item_filler: instead drawn as their own weighted
+# category inside _distribute_items(), with replacement, so the count
+# scales with the pool. arm_name uses a "trap:<key>" sentinel KotorClient.py's
 # _deliver_item recognizes specially (same interception pattern as
 # "additional_feats:") -- every trap's REAL effect is decided at the
 # moment of delivery from the character's actual live state (which half
 # of their feats/force powers/inventory, which companion, how much CON
 # reduction gets closest to half Max HP), never baked in at generation
 # time. PC-only; never affects companions except as the deliberate
-# target of Remove a Companion. See Options.py's EnableTraps docstring
+# target of Remove a Companion. See Options.py's Traps docstring
 # for the full player-facing description of each one. No standalone
 # "Halve Constitution" item -- Cut Max Health in Half already works by
-# reducing CON (the only lever this engine has for Max HP at all, see
-# FutureDesign.md), so a separate CON-halving trap would just overlap
+# reducing CON (the only lever this engine has for Max HP at all: there
+# is no direct Max HP field, confirmed by live memory diffing), so a
+# separate CON-halving trap would just overlap
 # with it; STR/DEX/INT/WIS/CHA are the 5 standalone ability traps.
 TRAP_ITEMS: typing.Dict[str, ItemData] = {
     "Trap: Remove All Credits": ItemData(base_id + 70, ItemClassification.trap, "trap:remove_credits"),
-    # Cut Level in Half retired 2026-09-08 (base_id+71 kept, not
+    # Cut Level in Half retired (base_id+71 kept, not
     # renumbered) -- SetXP can't reduce XP below the current level's
-    # threshold once it's already banked (confirmed live: level dropped,
+    # threshold once it's already banked (level would drop while
     # XP didn't), leaving an inconsistent character. Reduce a Skill reuses
     # EffectSkillDecrease, the same plain-effect approach already proven
-    # live for the 5 ability traps below -- no threshold to fight.
+    # for the 5 ability traps below -- no threshold to fight.
     "Trap: Reduce a Skill": ItemData(base_id + 71, ItemClassification.trap, "trap:reduce_skill"),
     "Trap: Remove Half Known Feats": ItemData(base_id + 72, ItemClassification.trap, "trap:remove_half_feats"),
     "Trap: Remove Half Known Force Powers": ItemData(base_id + 73, ItemClassification.trap, "trap:remove_half_powers"),
@@ -251,24 +269,17 @@ TRAP_ITEMS: typing.Dict[str, ItemData] = {
 }
 item_table.update(TRAP_ITEMS)
 
-# LootMode=destroy/replace safety net (2026-09-09): both modes unconditionally
-# destroy a picked-up non-whitelisted item on the spot (see Options.py's
-# LootMode and scripts/patch_item_suppression.py), and Security Spikes
-# (g_i_secspike01/02) are real, non-quest_dependent, non-whitelisted pickups
-# per gear_items.json -- meaning every spike a player would normally find in
-# the world is silently destroyed under either mode. Security is one of the
-# only skills whose checks (locked doors/containers) consume a physical
-# item to attempt at all, so a player who never buys spikes manually could
-# reach a mandatory locked point with zero in inventory and no way to
-# proceed. Precollected (see __init__.py's generate_early()) rather than
-# pool-placed -- this is a safety net against an option-caused problem, not
-# a real gameplay reward, so it shouldn't compete with the weighted item
-# draw or ever NOT show up when the mode is on. Count of 20 is a deliberate
-# fixed constant (not consumable_stack_count-derived, see KotorClient.py's
-# _do_deliver give_item: parsing) -- comfortably more than a single
-# playthrough would ever need, cheap insurance either way.
-item_table["Starting Item: Security Spikes (Loot Safety Net)"] = ItemData(
-    base_id + 83, ItemClassification.useful, "give_item:g_i_secspike01:20")
+# No "Loot Safety Net" precollected items here (Security Spikes, Computer
+# Spikes, Vibroblade, Clothing) -- see __init__.py's generate_early() for
+# the removal note. The real root cause those items existed to work
+# around (loot_mode=destroy stripping the Endar Spire's starting lockers,
+# footlker001/footlker003, since their contents weren't whitelisted) is
+# fixed properly via PLACEABLE_EXCLUDE in patch_loot_disturb.py, with
+# Security Spikes (the one item that genuinely never existed there in
+# vanilla) added directly into footlker001's static item list instead
+# (see that file's ensure_starting_locker_gear()). base_id + 83 through
+# +86 are now unused -- deliberately not reassigned, matching this
+# project's established convention of never renumbering retired item ids.
 
 # Curated gear (weapons/armor/equipment/consumables) lives in gear_items.json,
 # not here -- it's meant to stay live-editable by hand without a code
@@ -281,15 +292,15 @@ gear_base_id = base_id + 100000  # clear of base_id+0..+30 above, room to grow
 
 def read_gear_json() -> dict:
     """Reads gear_items.json via importlib.resources rather than a plain
-    open(os.path.dirname(__file__)-relative path) -- found broken live
-    2026-09-04: this world ships for real distribution inside a zip-loaded
+    open(os.path.dirname(__file__)-relative path): this world ships for
+    real distribution inside a zip-loaded
     kotor.apworld, where __file__ resolves to a synthetic path that
     doesn't exist on any real filesystem. A plain open()/os.path.exists()
     check against that path always silently "fails to find" the file --
-    meaning EVERY seed generated through a packaged .apworld was silently
-    missing every gear item from the pool entirely, with no error printed
-    anywhere (each call site here used to treat "not found" as a normal,
-    quiet empty-result case, not a bug). importlib.resources.files() reads
+    meaning EVERY seed generated through a packaged .apworld would silently
+    miss every gear item from the pool entirely, with no error printed
+    anywhere if each call site here treats "not found" as a normal,
+    quiet empty-result case rather than a bug. importlib.resources.files() reads
     package data correctly whether the package is a loose folder (this
     dev checkout) or a real zip archive (what actually ships), so this
     works in both without needing to know which. Returns {} only if the

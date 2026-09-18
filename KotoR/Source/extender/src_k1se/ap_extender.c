@@ -15,11 +15,10 @@
  * That three-layer chain is gone. This project's own extender and K1SE's
  * dispatcher-hook code now build into ONE merged binkw32.dll, forwarding
  * directly to the true original Bink DLL (renamed binkw32_real.dll, same
- * convention K1SE itself already used) -- see src_k1se/dllmain_k1se.cpp
- * for the merged entry point, and this project's own memory notes
- * (kotor_engine_constraints.md / kotor_project_status.md) for the full
- * rationale (why merge rather than fork-as-a-separate-artifact, what was
- * evaluated and rejected).
+ * convention K1SE itself already used) -- see src_k1se/dllmain.cpp for
+ * the merged entry point. Merged rather than forked as a separate
+ * artifact so there is exactly one DLL to install and no version
+ * coupling with an externally-maintained K1SE build.
  *
  * This module still does what it always did:
  *   1. The local TCP bridge (127.0.0.1:25586) the Python-side client talks to.
@@ -146,6 +145,26 @@ static DWORD WINAPI ap_kse_log_tail_thread(LPVOID unused) {
             continue;
         }
 
+        /* Detect rotation: K1SE's own log.cpp (LogRotateNow) replaces
+         * kse.log with a fresh, near-empty file whenever it hits its size
+         * cap, moving the old content to kse.log.1 first. Without this
+         * check, last_pos still holds an offset from the OLD (now-rotated-
+         * away) file -- seeking to it on the new, smaller file lands past
+         * its real EOF, so fgets() below finds nothing ever again, even
+         * though the game and kse.log both keep running fine. Confirmed
+         * live: this is the "silent heartbeat death" symptom, previously
+         * misattributed to a specific area (the Duel Ring) -- rotation is
+         * actually purely size/volume-triggered, not location-triggered,
+         * which is why it was never reliably reproducible by area. Safe to
+         * reset to 0 on detection: LogRotateNow() always starts the new
+         * file genuinely fresh, so nothing at offset 0 in it was already
+         * relayed. */
+        fseek(f, 0, SEEK_END);
+        long current_size = ftell(f);
+        if (current_size < last_pos) {
+            ap_log("kse-log-tail: detected rotation (log shrank from %ld to %ld bytes) -- resuming from start of new file", last_pos, current_size);
+            last_pos = 0;
+        }
         fseek(f, last_pos, SEEK_SET);
         while (fgets(line, sizeof(line), f)) {
             size_t len = strlen(line);
@@ -191,11 +210,15 @@ static DWORD WINAPI ap_kse_log_tail_thread(LPVOID unused) {
                         _snprintf(args, sizeof(args) - 1, "--delivered=%d", arm_id);
                         args[sizeof(args) - 1] = '\0';
                         ap_run_orchestrator(args);
-                    } else if (_stricmp(applied_name, "set_xp") == 0 || _stricmp(applied_name, "set_credits") == 0) {
+                    } else if (_stricmp(applied_name, "set_xp") == 0 || _stricmp(applied_name, "set_credits") == 0
+                               || _stricmp(applied_name, "delevel") == 0) {
                         /* Parameterized exact-value actions (see
                          * generate_trampoline_batch.py) aren't in the
                          * AP_ARM_NAMES table -- they're string-keyed in the
-                         * orchestrator's queue, not numeric arm IDs. */
+                         * orchestrator's queue, not numeric arm IDs. delevel
+                         * (the reconciler's SetXP-gap fix) is the
+                         * same single replace-semantics slot shape as
+                         * set_xp/set_credits. */
                         char args[64];
                         _snprintf(args, sizeof(args) - 1, "--delivered=%s", applied_name);
                         args[sizeof(args) - 1] = '\0';
@@ -263,7 +286,7 @@ static DWORD WINAPI ap_kse_log_tail_thread(LPVOID unused) {
                             ap_run_orchestrator(args);
                         }
                     } else if (_stricmp(applied_name, "trap") == 0) {
-                        /* One consolidated action for all 12 EnableTraps
+                        /* One consolidated action for all 12 Traps
                          * items (Options.py) -- confirmation line is
                          * "AP|APPLIED|trap|type=X|..." (see
                          * build_trap_block), keyed further by the specific
@@ -281,6 +304,19 @@ static DWORD WINAPI ap_kse_log_tail_thread(LPVOID unused) {
 
                             char args[64];
                             _snprintf(args, sizeof(args) - 1, "--delivered=trap:%s", ttype);
+                            args[sizeof(args) - 1] = '\0';
+                            ap_run_orchestrator(args);
+                        }
+                    } else if (_stricmp(applied_name, "force_power") == 0) {
+                        /* Confirmation line is "AP|APPLIED|force_power|id=N|..."
+                         * (see build_force_power_block) -- keyed by the
+                         * spells.2da row id, same shape as give_item's
+                         * resref key. */
+                        const char *id_marker = strstr(line, "|id=");
+                        if (id_marker) {
+                            int spell_id = atoi(id_marker + strlen("|id="));
+                            char args[64];
+                            _snprintf(args, sizeof(args) - 1, "--delivered=force_power:%d", spell_id);
                             args[sizeof(args) - 1] = '\0';
                             ap_run_orchestrator(args);
                         }
@@ -329,16 +365,16 @@ static const char *AP_ARM_NAMES[] = {
     "ability_strength", "ability_dexterity", "ability_constitution",
     "ability_intelligence", "ability_wisdom",
     "force_death",
-    /* Slot 33 RETIRED 2026-09-06 (was dump_statblock) -- Force Powers offset
+    /* Slot 33 RETIRED (was dump_statblock) -- Force Powers offset
      * research concluded; the confirmed layout shipped as KseForcePowerOp.
      * Renamed, not removed, so array positions/arm IDs after this point
      * don't shift -- same convention as slots 11/15/16 above. */
     "_retired_dump_statblock",
     "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel", /* StartingClass=
-                        * random_class (2026-09-02), base-class roll only --
+                        * random_class, base-class roll only --
                         * see generate_trampoline_batch.py's APPLIES table. */
-    /* Slots 37-46 RETIRED 2026-09-06 -- every research question this
-     * session's temporary arms existed to answer is now confirmed and
+    /* Slots 37-46 RETIRED -- every research question these
+     * temporary arms existed to answer is now confirmed and
      * shipped as real offsets/natives (see offsets.h's
      * KSE_OBJ_CURRENT_HP_OFF/KSE_FIELD_ADD_FORCE_POWER/
      * KSE_FIELD_REMOVE_FORCE_POWER). Renamed, not removed -- same
@@ -353,33 +389,41 @@ static const char *AP_ARM_NAMES[] = {
     "_retired_test_set_max_hp",
     "_retired_test_con_boost_effect",
     "_retired_test_con_decrease_effect",
-    /* Slots 47/48 RETIRED 2026-09-06 (were test_hp_fp_natives/
-     * test_alignment_shift) -- both LIVE-CONFIRMED working the same
-     * night (KseGetCurrentHP/CURRENT_HP/ADD_FORCE_POWER/REMOVE_FORCE_POWER
+    /* Slots 47/48 RETIRED (were test_hp_fp_natives/
+     * test_alignment_shift) -- both LIVE-CONFIRMED working
+     * (KseGetCurrentHP/CURRENT_HP/ADD_FORCE_POWER/REMOVE_FORCE_POWER
      * all matched expected values exactly; AdjustAlignment shifted and
      * netted back correctly). Renamed, not removed, same convention as
      * every other retired slot above. Archived at extender/
      * research_archive/test_hp_fp_alignment_arms_2026-09-06.py.txt. */
     "_retired_test_hp_fp_natives", "_retired_test_alignment_shift",
-    /* Slot 49 RETIRED 2026-09-06 (was test_add_100_hp) -- confirmed the
+    /* Slot 49 RETIRED (was test_add_100_hp) -- confirmed the
      * write succeeds (84->184) but current HP appears clamped to Max HP
      * once it exceeds it, no visible change on the sheet -- expected
      * engine invariant, not a bug. Archived at extender/research_archive/
      * test_hp_fp_alignment_arms_2026-09-06.py.txt. */
     "_retired_test_add_100_hp",
-    /* Slot 50 RETIRED 2026-09-06 (was test_lower_hp) -- user-confirmed
-     * live: a within-max current-HP write persisted correctly on the
+    /* Slot 50 RETIRED (was test_lower_hp) -- confirmed
+     * a within-max current-HP write persisted correctly on the
      * character sheet. Combined with slots 47/49, ALL current-HP native
      * behavior relevant to real features is now confirmed. Archived at
      * extender/research_archive/test_hp_fp_alignment_arms_2026-09-06.py.txt. */
     "_retired_test_lower_hp",
-    "test_grant_active_feat", /* TEMPORARY (2026-09-06): live verification
+    "test_grant_active_feat", /* TEMPORARY: live verification
                         * of whether KSE_GrantFeatArrayA makes an ACTIVE
                         * feat (Critical Strike, feat id 8) genuinely
                         * usable (hotbar), not just present -- blocks the
                         * planned Feats [Add/Remove] equipment-access
                         * feature's ability pool. Retire once confirmed --
                         * see generate_trampoline_batch.py's APPLIES[51]. */
+    "test_resolve_item", /* TEMPORARY: loot-window
+                        * memory-hunting research -- verifies whether a
+                        * candidate integer found in a container's
+                        * item-reference-list-shaped record is a genuine,
+                        * resolvable script object id. Calls
+                        * KSE_ResolveItemId (host 638), logs result to
+                        * kse.log. Retire once this research concludes --
+                        * see generate_trampoline_batch.py's APPLIES[52]. */
 };
 /* IDs must match AP_ARM_NAMES position (1-indexed). scripts/generate_trampoline_batch.py's
  * APPLIES table is the single source of truth this array is kept in sync
@@ -561,6 +605,30 @@ static void ap_run_orchestrator(const char *args) {
     } else {
         ap_log("ap_run_orchestrator: ran '%s' (exit=0)", args);
     }
+}
+
+/* TSL Force Power pilot -- a standing feature of this build, not an
+ * AP-item pilot: these 9 spells.2da
+ * row ids (scripts/patch_tsl_powers.py's Revitalize/Force Scream/Force
+ * Barrier ports, all 3 tiers each -- see extender/backup/
+ * tsl_powers_manifest.json for the authoritative mapping on this dev
+ * machine) are queued through the exact same --queue-force-power= path
+ * the /ap_apply admin command already used, just fired automatically once
+ * per game launch instead of needing a seed/item/admin action. Safe to
+ * re-queue an already-granted id on a later launch: build_force_power_block()
+ * checks GetHasSpell() before granting, so this is a no-op once a save
+ * already has all 9. */
+static const int AP_TSL_FORCE_POWER_ROWS[] = { 133, 134, 135, 136, 137, 138, 139, 140, 141 };
+
+static void ap_bootstrap_tsl_force_powers(void) {
+    size_t n = sizeof(AP_TSL_FORCE_POWER_ROWS) / sizeof(AP_TSL_FORCE_POWER_ROWS[0]);
+    for (size_t i = 0; i < n; i++) {
+        char args[64];
+        _snprintf(args, sizeof(args) - 1, "--queue-force-power=%d", AP_TSL_FORCE_POWER_ROWS[i]);
+        args[sizeof(args) - 1] = '\0';
+        ap_run_orchestrator(args);
+    }
+    ap_log("bootstrapped %u standing TSL force powers.", (unsigned)n);
 }
 
 /* name -> arm ID lookup, shared by ap_apply() (queuing a new check) and the
@@ -925,10 +993,10 @@ static int ap_dump_mem(unsigned __int32 addr, unsigned int size, char *reply, si
 }
 
 /* WATCHPAGE/UNWATCHPAGE/WATCHCALL/UNWATCHCALL (software data watchpoint +
- * code breakpoint diagnostics, built 2026-09-06 for the HP/Force-Powers
+ * code breakpoint diagnostics, built for the HP/Force-Powers
  * offset hunt) were removed once that research concluded and its findings
- * shipped as real offsets/natives -- see FutureDesign.md's HP/Force Powers
- * entries and offsets.h's KSE_OBJ_CURRENT_HP_OFF/KSE_STATS_CATEGORY_TABLE_OFF.
+ * shipped as real offsets/natives -- see offsets.h's
+ * KSE_OBJ_CURRENT_HP_OFF/KSE_STATS_CATEGORY_TABLE_OFF.
  * Archived verbatim, with full derivation notes, at
  * extender/research_archive/watchpage_watchcall_2026-09-06.c.txt. */
 
@@ -1013,7 +1081,7 @@ static void ap_dispatch_command(char *buf, char *reply, size_t reply_size) {
                 }
             } else if (_stricmp(action, "trap") == 0) {
                 /* trap:<trap_type>:<params> -- ONE consolidated action for
-                 * all 12 EnableTraps items (Options.py). Like
+                 * all 12 Traps items (Options.py). Like
                  * additional_feats, every real specific (params) was
                  * decided entirely client-side (see KotorClient.py's
                  * _deliver_item trap: interception) from the character's
@@ -1053,10 +1121,46 @@ static void ap_dispatch_command(char *buf, char *reply, size_t reply_size) {
                 ap_log("APPLYVALUE: queued %s=%d via orchestrator.", action, value);
                 _snprintf(reply, reply_size - 1, "STAGED:%s:%d\n", action, value);
                 reply[reply_size - 1] = '\0';
+            } else if (_stricmp(action, "delevel") == 0) {
+                /* delevel:<level>:<xp>:<force> -- reconciler fix
+                 * for the documented SetXP gap (native SetXP() can't lower
+                 * XP below the current level's banked threshold). force=-1
+                 * means "don't touch Force" (non-Jedi PC). See
+                 * generate_trampoline_batch.py's build_delevel_block() for
+                 * the actual NWScript this produces. */
+                int level = 0, xp = 0, force = -1;
+                if (sscanf(after_action, "%d:%d:%d", &level, &xp, &force) == 3) {
+                    matched = 1;
+                    char args[64];
+                    _snprintf(args, sizeof(args) - 1, "--queue-delevel=%d:%d:%d", level, xp, force);
+                    args[sizeof(args) - 1] = '\0';
+                    ap_run_orchestrator(args);
+                    ap_log("APPLYVALUE: queued delevel level=%d xp=%d force=%d via orchestrator.", level, xp, force);
+                    _snprintf(reply, reply_size - 1, "STAGED:delevel:%d:%d:%d\n", level, xp, force);
+                    reply[reply_size - 1] = '\0';
+                }
+            } else if (_stricmp(action, "force_power") == 0) {
+                /* force_power:<spells.2da row id> -- grants one Force Power
+                 * to the PC via KSE_FIELD_ADD_FORCE_POWER (the
+                 * TSL power-port pilot's grant half; see
+                 * generate_trampoline_batch.py's build_force_power_block).
+                 * Id-keyed like give_item (several distinct powers can be
+                 * pending at once), not a replace-semantics slot. */
+                int spell_id = 0;
+                if (sscanf(after_action, "%d", &spell_id) == 1 && spell_id >= 0) {
+                    matched = 1;
+                    char args[64];
+                    _snprintf(args, sizeof(args) - 1, "--queue-force-power=%d", spell_id);
+                    args[sizeof(args) - 1] = '\0';
+                    ap_run_orchestrator(args);
+                    ap_log("APPLYVALUE: queued force_power %d via orchestrator.", spell_id);
+                    _snprintf(reply, reply_size - 1, "STAGED:force_power:%d\n", spell_id);
+                    reply[reply_size - 1] = '\0';
+                }
             }
         }
         if (!matched) {
-            _snprintf(reply, reply_size - 1, "ERROR:expected APPLYVALUE:set_xp|set_credits:<value> or give_item:<resref>:<count>\n");
+            _snprintf(reply, reply_size - 1, "ERROR:expected APPLYVALUE:set_xp|set_credits:<value>, give_item:<resref>:<count>, delevel:<level>:<xp>:<force>, or force_power:<spell_id>\n");
             reply[reply_size - 1] = '\0';
         }
     } else if (_strnicmp(buf, "SHOPSTOCK:", 10) == 0) {
@@ -1159,9 +1263,9 @@ static void ap_dispatch_command(char *buf, char *reply, size_t reply_size) {
 
 /* recv() has no concept of message boundaries -- it can return anywhere
  * from a partial line to several lines' worth of bytes in one call
- * (confirmed live: 6 rapid-fire APPLY:/APPLYVALUE: commands sent by the
- * client within the same asyncio tick coalesced into a single recv(),
- * silently losing 5 of the 6 items when the old code treated the whole
+ * (confirmed: 6 rapid-fire APPLY:/APPLYVALUE: commands sent by the
+ * client within the same asyncio tick can coalesce into a single recv(),
+ * silently losing 5 of the 6 items if the code treats the whole
  * blob as one command name). Accumulate into linebuf across calls and
  * dispatch exactly once per complete '\n'-terminated line, carrying any
  * trailing partial line over to the next recv(). */
@@ -1260,6 +1364,17 @@ static DWORD WINAPI ap_server_thread(LPVOID unused) {
 
     /* Log-tailer runs on its own thread so it isn't blocked by accept(). */
     CreateThread(NULL, 0, ap_kse_log_tail_thread, NULL, 0, NULL);
+
+    /* RETIRED -- none of the 9 ported TSL
+     * Force Power rows (Revitalize/Force Scream/Force Barrier) actually
+     * show up in the in-game Force Powers menu, despite this call adding
+     * them to the PC's known-spells list without error. Root cause not
+     * investigated yet -- lowest priority, revisit as a future patch (see
+     * FutureDesign.md's "TSL-ported Force Powers don't appear in the
+     * Force Powers menu" entry). Disabled here rather than removed so
+     * re-enabling later is a one-line uncomment; ap_bootstrap_tsl_force_powers()
+     * and AP_TSL_FORCE_POWER_ROWS above are left in place, unused.
+     * ap_bootstrap_tsl_force_powers(); */
 
     while (!g_shutdown) {
         struct sockaddr_in client_addr;

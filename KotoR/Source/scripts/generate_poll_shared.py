@@ -47,13 +47,13 @@ SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 # use case per this file's own Usage below, not hypothetical).
 SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_data.json")
 
-# 2026-08-31: this file used to be dev-only -- GAME_DIR was a hardcoded
-# constant, area_randomizer was always guessed from whichever AP_*.zip
-# happened to be newest in Archipelago/output/ (fine on a single dev
-# machine generating one seed at a time, wrong the moment a tester's own
-# machine/seed differs from that -- and broken entirely, found 2026-09-04,
-# for a player joining someone ELSE's multiworld, who never has that zip
-# at all), and the script only ever wrote the .nss source -- compiling
+# This file must not be dev-only: a hardcoded GAME_DIR constant, or
+# guessing area_randomizer from whichever AP_*.zip happened to be newest
+# in Archipelago/output/, is fine on a single dev machine generating one
+# seed at a time, but wrong the moment a tester's own machine/seed
+# differs from that -- and broken entirely for a player joining someone
+# ELSE's multiworld, who never has that zip at all. An earlier version
+# of the script also only ever wrote the .nss source -- compiling
 # and deploying to a live Override was always a separate manual step.
 # Real fix: KotorClient.py now calls this script directly, every
 # Connected, passing the ACTUAL connected slot_data's area_randomizer
@@ -65,8 +65,8 @@ SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_
 #
 # loot_mode used to also flow through here (bonus mode's grant logic
 # lived in this file as CheckPickupCount()) -- moved entirely into
-# patch_item_suppression.py's HandleAcquiredItem() instead (2026-08-31,
-# see that file's build_handler_body() docstring), since it already runs
+# patch_item_suppression.py's HandleAcquiredItem() instead (see that
+# file's build_handler_body() docstring), since it already runs
 # per real Mod_OnAcquirItem event rather than on a fixed timer regardless
 # of activity. Nothing in this file depends on loot_mode any more.
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -75,11 +75,32 @@ parser.add_argument("--game-dir", default=DEFAULT_GAME_DIR,
 parser.add_argument("--area-randomizer", type=int, default=None, choices=[0, 1],
                      help="1 if the seed has area_randomizer=True, 0 otherwise, to use directly instead of "
                           "reading it from _slot_data.json (see SLOT_DATA_PATH above).")
+parser.add_argument("--additional-enemies", type=int, default=None, choices=[0, 1],
+                     help="1 if the seed has additional_enemies_mode != 0, 0 otherwise, to use directly "
+                          "instead of reading it from _slot_data.json (see SLOT_DATA_PATH above).")
 parser.add_argument("--no-deploy", action="store_true",
                      help="Only write the .nss source -- skip compiling and deploying to --game-dir's Override "
                           "(matches this script's old dev-only behavior).")
 cli_args = parser.parse_args()
 GAME_DIR = cli_args.game_dir
+
+
+def _connected_wants_additional_enemies() -> bool:
+    """True if _slot_data.json has additional_enemies_mode != 0. Gates
+    CheckBountyCount() the same way _connected_wants_area_randomizer()
+    gates CheckPlanetAvailability() -- see that function's docstring for
+    why this file reads slot_data directly rather than assuming every
+    seed wants every check. Returns False (the safe default) if the file
+    is missing/unparseable."""
+    if not os.path.isfile(SLOT_DATA_PATH):
+        return False
+    try:
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return bool(data.get("additional_enemies_mode", 0))
+    except Exception as e:
+        print(f"  (couldn't read {SLOT_DATA_PATH}: {e})")
+        return False
 
 
 def _connected_wants_area_randomizer() -> bool:
@@ -275,16 +296,11 @@ lines.append("    object oPC = GetFirstPC();")
 lines.append('    string sReport = "AP|CLASSREPORT|guardian=" + IntToString(GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC))')
 lines.append('        + "|consular=" + IntToString(GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC))')
 lines.append('        + "|sentinel=" + IntToString(GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC));')
-# 2026-09-08, found live during Traps testing: kotor_reconciliation.py's
-# _CLASSREPORT_RE has always expected an optional trailing
-# "|baseclass=X|baselevel=Y" (its own comment even cites a specific fix
-# date for it), but this generator never actually emitted it -- confirmed
-# directly against the real deployed .ncs, byte-search found zero
-# occurrences of either string despite the file being otherwise current
-# (has this session's FEATREPORT/POWERREPORT additions). Real consequence:
-# KotorClient.py's cut_level trap reads current_classes.get("baselevel", 0)
-# and always got the 0 default, silently treating every non-Jedi character
-# as level 0 -> total_level<=1 -> permanent no-op regardless of real level.
+# kotor_reconciliation.py's _CLASSREPORT_RE expects an optional trailing
+# "|baseclass=X|baselevel=Y" -- this generator must actually emit it, or
+# any reader of current_classes.get("baselevel", 0) silently gets the 0
+# default and treats every non-Jedi character as level 0 regardless of
+# their real level.
 # Position 1 (NWScript's class positions are 1-indexed, confirmed via
 # nwscript.nss's own doc comment: "nClassPosition: 1, 2 or 3" -- a
 # single-class creature only ever has a value at position 1) is always the
@@ -306,7 +322,7 @@ lines.append("    KSE_Diag(65, sReport);")
 lines.append("}")
 lines.append("")
 
-# Traps (2026-09-08, see Options.py's EnableTraps): the Remove Half Known
+# Traps (see Options.py's Traps): the Remove Half Known
 # Feats / Remove Half Known Force Powers traps need to know WHICH ids the
 # character currently has before picking half at random -- there's no
 # "list every feat/power a creature knows" native, only per-id membership
@@ -314,7 +330,7 @@ lines.append("")
 # (comma-joined), not a full bitmap over every candidate id -- keeps the
 # report compact regardless of how large the candidate list grows.
 # force_powers_and_feats.json is this project's own confirmed real-id
-# reference data (feat.2da/spells.2da rows, see FutureDesign.md) -- feats
+# reference data (feat.2da/spells.2da rows, read via pykotor) -- feats
 # uses every row present (122, all real -- confirmed via pykotor, not a
 # placeholder subset), force_powers is filtered to rows with a real
 # in-game name (44 of 51 -- the other 7 are unused/master placeholder
@@ -324,7 +340,7 @@ with open(os.path.join(REPO_ROOT, "force_powers_and_feats.json"), encoding="utf-
 _ALL_FEAT_IDS = sorted(int(k) for k in _fp_feats["feats"].keys())
 _ALL_FORCE_POWER_IDS = sorted(int(k) for k, v in _fp_feats["force_powers"].items() if v.get("name"))
 
-lines.append("// Traps feature (2026-09-08) -- reports every feat.2da id the character")
+lines.append("// Traps feature -- reports every feat.2da id the character")
 lines.append("// currently holds (KSE_GetFeatAcquired is per-id membership only, there's")
 lines.append("// no 'list all feats' native), so the client can pick half at random for")
 lines.append("// the Remove Half Known Feats trap without guessing at what's held.")
@@ -339,9 +355,21 @@ lines.append("}")
 lines.append("")
 lines.append("// Same shape as CheckFeats() above, for spells.2da (force powers) --")
 lines.append("// GetHasSpell is likewise per-id membership only.")
+lines.append("//")
+lines.append("// GUARD: same reasoning as CheckForce()'s guard below --")
+lines.append("// GetHasSpell() running fine on a PERMANENTLY non-Jedi character (a")
+lines.append("// null/empty known-powers array is a well-defined state) does not prove")
+lines.append("// it's safe on a character that was JUST raw-multiclassed via")
+lines.append("// AddMultiClass() and never went through a real level-up -- that's a")
+lines.append("// different internal state, and this native has never been proven safe")
+lines.append("// against it specifically.")
 lines.append("void CheckForcePowers()")
 lines.append("{")
 lines.append("    object oPC = GetFirstPC();")
+lines.append("    int nJediTotal = GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC)")
+lines.append("        + GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC)")
+lines.append("        + GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC);")
+lines.append("    if (nJediTotal == 1) return;")
 lines.append('    string sHeld = "";')
 for power_id in _ALL_FORCE_POWER_IDS:
     lines.append(f"    if (GetHasSpell({power_id}, oPC)) sHeld += \"{power_id},\";")
@@ -378,46 +406,23 @@ lines.append('        + "|treatinjury=" + IntToString(GetSkillRank(SKILL_TREAT_I
 lines.append("    KSE_Diag(28, sReport);")
 lines.append("}")
 lines.append("")
-lines.append("// Same stateless design as CheckXP() -- the game doesn't decide what's")
-lines.append("// legitimate, it just honestly reports current inventory (backpack +")
-lines.append("// equipped slots) every poll. The AP client correlates this against its")
-lines.append("// own memory (starting kit, AP grants, and STOREOPENED snapshots from")
-lines.append("// ap_store suppressors) to decide what should be removed. Backpack items")
-lines.append("// use GetFirstItemInInventory/GetNextItemInInventory; GetFirstItemInInventory")
-lines.append("// does NOT include equipped gear, so equipped slots are checked separately.")
-lines.append("void CheckInventory()")
-lines.append("{")
-lines.append("    object oPC = GetFirstPC();")
-lines.append('    string sReport = "AP|INVENTORY|";')
-lines.append("")
-lines.append("    object oItem = GetFirstItemInInventory(oPC);")
-lines.append("    while (GetIsObjectValid(oItem))")
-lines.append("    {")
-lines.append('        sReport = sReport + GetTag(oItem) + ":" + IntToString(GetItemStackSize(oItem)) + ",";')
-lines.append("        oItem = GetNextItemInInventory(oPC);")
-lines.append("    }")
-lines.append("")
-lines.append("    object oEq;")
-equip_slots = [
-    ("HEAD", "EQ_HEAD"),
-    ("BODY", "EQ_BODY"),
-    ("HANDS", "EQ_HANDS"),
-    ("RIGHTWEAPON", "EQ_RWEAPON"),
-    ("LEFTWEAPON", "EQ_LWEAPON"),
-    ("LEFTARM", "EQ_LARM"),
-    ("RIGHTARM", "EQ_RARM"),
-    ("IMPLANT", "EQ_IMPLANT"),
-    ("BELT", "EQ_BELT"),
-]
-for slot_const, label in equip_slots:
-    lines.append(f"    oEq = GetItemInSlot(INVENTORY_SLOT_{slot_const}, oPC);")
-    lines.append("    if (GetIsObjectValid(oEq))")
-    lines.append("    {")
-    lines.append(f'        sReport = sReport + "{label}:" + GetTag(oEq) + ",";')
-    lines.append("    }")
-lines.append("")
-lines.append('    KSE_Diag(26, sReport);')
-lines.append("}")
+lines.append("// No CheckInventory() here: it used to build ONE giant string")
+lines.append("// via repeated concatenation across the whole backpack + equipped slots")
+lines.append("// (sReport = sReport + GetTag(oItem) + ...), reported as AP|INVENTORY|...")
+lines.append("// every poll. NWScript's own string type")
+lines.append("// has a hard ~512-byte engine limit, and a real 28+-item backpack")
+lines.append("// truncates mid-word well before the scan finishes. This silently lost")
+lines.append("// data for ANY tag near the end of a large enough backpack (see")
+lines.append("// CheckBountyCount() below for its targeted")
+lines.append("// single-tag replacement, which can't hit this limit since it only ever")
+lines.append("// emits a bounded integer, never a per-item concatenation). The only other")
+lines.append("// consumer, kotor_reconciliation.py's current_inventory (Remove Half")
+lines.append("// Inventory trap), no longer needs a live poll at all -- that trap now")
+lines.append("// does its own on-demand inventory walk + native random selection")
+lines.append("// entirely in NWScript at delivery time (see generate_trampoline_batch.py's")
+lines.append("// build_trap_block, remove_half_inventory branch), so dropping this")
+lines.append("// function removes a full inventory walk + string build from every single")
+lines.append("// 5-second heartbeat tick with no functional loss.")
 lines.append("")
 lines.append("// DeathLink outgoing half. Same stateless design as everything else here --")
 lines.append("// just honestly reports whether the PC is currently dead every poll, no")
@@ -434,6 +439,39 @@ lines.append('        KSE_Diag(64, "AP|CHECK|DEATH");')
 lines.append("    }")
 lines.append("}")
 lines.append("")
+wants_additional_enemies = bool(cli_args.additional_enemies) if cli_args.additional_enemies is not None else _connected_wants_additional_enemies()
+if wants_additional_enemies:
+    lines.append("// Bounty Card count -- replaces the old AP|INVENTORY-based")
+    lines.append("// _bounty_card_count parsing, which relied on CheckInventory()'s giant")
+    lines.append("// concatenated string (see the comment above for the 512-byte")
+    lines.append("// truncation this hit). This scans for exactly ONE tag and emits a")
+    lines.append("// single bounded integer, never a per-item string build, so it can't hit")
+    lines.append("// that limit no matter how large the backpack is. Only generated when")
+    lines.append("// additional_enemies_mode != 0 for this seed -- bounty carriers don't")
+    lines.append("// exist at all otherwise, so the scan would be pure waste.")
+    lines.append("void CheckBountyCount()")
+    lines.append("{")
+    lines.append("    object oPC = GetFirstPC();")
+    lines.append("    int nCount = 0;")
+    lines.append("    object oItem = GetFirstItemInInventory(oPC);")
+    lines.append("    while (GetIsObjectValid(oItem))")
+    lines.append("    {")
+    lines.append('        if (GetTag(oItem) == "ap_bounty_card") nCount = nCount + GetItemStackSize(oItem);')
+    lines.append("        oItem = GetNextItemInInventory(oPC);")
+    lines.append("    }")
+    lines.append("")
+    lines.append("    // Only report on an actual change -- same only-when-it-moves shape as")
+    lines.append("    // the rest of this file's stateful checks, avoids re-sending an")
+    lines.append("    // unchanged count every 5s for as long as the player holds any cards.")
+    lines.append("    int nLast = -1;")
+    lines.append('    if (KSE_HasData("bounty_last_count")) nLast = StringToInt(KSE_GetData("bounty_last_count"));')
+    lines.append("    if (nCount != nLast)")
+    lines.append("    {")
+    lines.append('        KSE_SetData("bounty_last_count", IntToString(nCount));')
+    lines.append('        KSE_Diag(157, "AP|BOUNTY|COUNT|" + IntToString(nCount));')
+    lines.append("    }")
+    lines.append("}")
+    lines.append("")
 lines.append("// Light/dark alignment, reported every poll -- same stateless design as")
 lines.append("// everything else here. GetGoodEvilValue is 0 (full dark) to 100 (full")
 lines.append("// light), 50 neutral. The client tracks the last-known value itself and")
@@ -471,11 +509,42 @@ lines.append("    object oPC = GetFirstPC();")
 lines.append('    KSE_Diag(85, "AP|LEVELREPORT|" + IntToString(GetHitDice(oPC)));')
 lines.append("}")
 lines.append("")
+lines.append("// Feeds the delevel reconciler's Force-point scaling (see")
+lines.append("// kotor_reconciliation.py's _FORCE_RE/current_force) -- GetCurrentForcePoints()/")
+lines.append("// GetMaxForcePoints() and GetLevelByClass() above are real standard")
+lines.append("// natives, no new offset/native needed just to READ these.")
+lines.append("//")
+lines.append("// GUARD: GetCurrentForcePoints()/")
+lines.append("// GetMaxForcePoints() crash the game when called on the PC immediately")
+lines.append("// after a raw AddMultiClass()+CLASS1_LEVEL=1 grant (class_consular),")
+lines.append("// before any real UI level-up has happened -- the crash fires")
+lines.append("// on this poll's own automatic next tick, not any player action (no")
+lines.append("// character sheet/inventory/Force Powers screen needs to be opened, and the class")
+lines.append("// change need never even be visually seen before the crash). Matches this")
+lines.append("// project's own earlier companion-class-switch finding that a freshly")
+lines.append("// multiclassed slot's underlying Force-power data isn't allocated until a")
+lines.append("// real level-up runs -- these two natives apparently need to walk that")
+lines.append("// same not-yet-allocated structure, unlike a raw KSE_FIELD_FORCE offset")
+lines.append("// read/write, which doesn't. Skip while any Jedi slot is fresh (total")
+lines.append("// Jedi levels == 1) -- exactly the dangerous state, and not useful data")
+lines.append("// anyway since every real formula data point so far came from levels well")
+lines.append("// past this point.")
+lines.append("void CheckForce()")
+lines.append("{")
+lines.append("    object oPC = GetFirstPC();")
+lines.append("    int nJediTotal = GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC)")
+lines.append("        + GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC)")
+lines.append("        + GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC);")
+lines.append("    if (nJediTotal == 1) return;")
+lines.append('    KSE_Diag(137, "AP|FORCEREPORT|current=" + IntToString(GetCurrentForcePoints(oPC))')
+lines.append('        + "|max=" + IntToString(GetMaxForcePoints(oPC)));')
+lines.append("}")
+lines.append("")
 wants_area_randomizer = bool(cli_args.area_randomizer) if cli_args.area_randomizer is not None else _connected_wants_area_randomizer()
 if wants_area_randomizer:
     lines.append("// Forces every real, non-scripted-cutscene planet available/selectable")
     lines.append("// on the Galaxy Map from the very start -- ONLY generated when the latest")
-    lines.append("// seed has area_randomizer=True. Confirmed live: with doors shuffled,")
+    lines.append("// seed has area_randomizer=True. With doors shuffled,")
     lines.append("// walking through a completely normal door can land a player on a planet")
     lines.append("// whose real story-progression trigger (the thing that would normally call")
     lines.append("// SetPlanetAvailable()) never fired, since they arrived out of the intended")
@@ -503,11 +572,11 @@ if wants_area_randomizer:
     lines.append("}")
     lines.append("")
 
-# 2026-08-31: bonus loot mode's grant logic used to live here, as a
+# Bonus loot mode's grant logic used to live here, as a
 # CheckPickupCount() re-scanning ALL 672 suppress-eligible tags against
 # current holdings on EVERY 5s heartbeat tick forever (an interim fix for
-# an earlier, even more expensive per-HELD-ITEM version -- see
-# FutureDesign.md). Both versions did real, unnecessary recurring work
+# an earlier, even more expensive per-HELD-ITEM version). Both versions
+# did real, unnecessary recurring work
 # regardless of whether anything changed. Moved entirely into
 # patch_item_suppression.py's HandleAcquiredItem() instead -- it already
 # runs the same 672-way whitelist check exactly once per actual
@@ -525,7 +594,6 @@ lines.append("    CheckPlot();")
 lines.append("    CheckJournal();")
 lines.append("    CheckXP();")
 lines.append("    CheckCredits();")
-lines.append("    CheckInventory();")
 lines.append("    CheckAbilityScores();")
 lines.append("    CheckClasses();")
 lines.append("    CheckFeats();")
@@ -533,9 +601,12 @@ lines.append("    CheckForcePowers();")
 lines.append("    CheckCharacterName();")
 lines.append("    CheckSkills();")
 lines.append("    CheckDeath();")
+if wants_additional_enemies:
+    lines.append("    CheckBountyCount();")
 lines.append("    CheckAlignment();")
 lines.append("    CheckGoal();")
 lines.append("    CheckLevel();")
+lines.append("    CheckForce();")
 if wants_area_randomizer:
     lines.append("    CheckPlanetAvailability();")
 lines.append("")

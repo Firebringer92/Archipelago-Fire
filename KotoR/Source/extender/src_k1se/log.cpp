@@ -11,8 +11,8 @@
 // permission failures, so we use %LOCALAPPDATA%\KSE\kse.log, falling back to
 // %TEMP% then the current directory.
 //
-// ONE HANDLE, HELD OPEN FOR THE WHOLE SESSION (changed 2026-09-10 -- see the
-// dated note below the rotation block for what this replaces and why).
+// ONE HANDLE, HELD OPEN FOR THE WHOLE SESSION -- see the
+// note below the rotation block for what this replaces and why.
 // fflush() after every line is what gives crash-survival: it pushes each line
 // out of the CRT's own buffer into the OS's file cache before the next line is
 // written, which is what a reader needs after the GAME process dies. The OS
@@ -50,10 +50,10 @@
 // concurrently, which would make the counter under-count further. See the
 // concurrent-writer note on LogRotateNow.
 //
-// 2026-09-10: THE OPEN-WRITE-CLOSE-PER-LINE PATH WAS REPLACED, NOT KEPT.
+// THE OPEN-WRITE-CLOSE-PER-LINE PATH WAS REPLACED, NOT KEPT.
 //
 // Found via a real tester's bug report and confirmed against their own kse.log
-// timestamps (see the project history, not repeated here): the always-on
+// timestamps: the always-on
 // heartbeat/poll cadence should be a steady ~5s, and 62 of 331 ticks in that
 // one session ran over 6s late, several over 30s, the worst over two minutes --
 // with NO area transition and NO orchestrator subprocess anywhere near the
@@ -78,7 +78,7 @@
 // -----------------------------------------------------------------------------
 static const long long KSE_LOG_CAP_BYTES = 8LL * 1024 * 1024;
 
-// FOUND LIVE, SAME DAY AS THE FIX THAT NEEDED THIS: plain _wfopen_s(path, L"a")
+// Real gap, found immediately after the fix above: plain _wfopen_s(path, L"a")
 // does NOT share the way the old per-line open+close pattern did. Holding that
 // handle open for the whole session locked kse.log so tightly that not even a
 // separate process (a plain `tail` from outside the game) could read it -- and,
@@ -105,7 +105,7 @@ static wchar_t g_logPathOld[MAX_PATH];      // kse.log.1 -- the single kept back
 static long long g_logBytes = 0;            // in-memory; see "COST OF THE CHECK"
 static bool g_logRotating = false;          // reentrancy guard: rotation logs
 static FILE* g_logFile = nullptr;           // held open for the session -- see the
-                                             // 2026-09-10 note above LogCheckRotate
+                                             // note above LogCheckRotate
 
 // Which PART of this session the current file holds. Only ONE backup is kept, so a
 // session that rotates TWICE discards its own part 1 -- and without a part number
@@ -210,12 +210,12 @@ void LogInit()
     g_logReady = true;
 
     // Opened ONCE here and held for the rest of the process's life (see the
-    // 2026-09-10 note above LogCheckRotate for why this replaced a per-line
+    // note above LogCheckRotate for why this replaced a per-line
     // open+close). If the byte counter below triggers a startup rotation,
     // LogRotateNow() closes this same handle, moves the file, and reopens it --
     // safe to open first because that path already handles an already-open
     // handle correctly. OpenLogFileShared, not a bare _wfopen_s -- see that
-    // helper's own comment for why (a real live regression, found 2026-09-11).
+    // helper's own comment for why (a real regression this avoids).
     g_logFile = OpenLogFileShared(g_logPath);
 
     SYSTEMTIME st0;
@@ -270,7 +270,7 @@ void Log(const char* fmt, ...)
         // fflush(), not fclose()+reopen: this is the whole fix. It pushes the line
         // to the OS before the next one is written -- the same durability the old
         // close-per-line design gave -- without the repeated CreateFile/CloseHandle
-        // pair that turned out to be the actual freeze risk. See the 2026-09-10
+        // pair that turned out to be the actual freeze risk. See the
         // note above LogCheckRotate.
         fflush(g_logFile);
 

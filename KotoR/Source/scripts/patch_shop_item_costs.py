@@ -1,5 +1,5 @@
 """
-Fixes a real gameplay bug found 2026-08-29: 142 of the 577 items in
+Fixes a real gameplay bug: 142 of the 577 items in
 gear_items.json's shop_randomize pool have a genuine in-game UTI Cost of
 0 (confirmed against the real UTI templates, not gear_items.json's own
 "cost" field, which is separately confirmed dead/unused -- see PHASE13.md).

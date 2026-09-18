@@ -334,7 +334,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
         // ends ambiguously.
         //
         // LogShutdown() first, closing the session-long handle Log()/LogDiag() have
-        // held open (2026-09-10) -- lock-free by design, see its own comment in
+        // held open -- lock-free by design, see its own comment in
         // log.cpp, same reason KseSt17_ShutdownFlush's marker line goes through the
         // separate lock-free LogRaw() path rather than Log() itself.
         __try { LogShutdown(); } __except (EXCEPTION_EXECUTE_HANDLER) { }

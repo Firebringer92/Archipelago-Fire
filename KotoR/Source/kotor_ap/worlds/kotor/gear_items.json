@@ -125,7 +125,7 @@
     "cost": 0,
     "first_seen_in": "CORE",
     "stack_limit": 99,
-    "quest_dependent": false,
+    "quest_dependent": true,
     "progression_dependent": false,
     "stat_modifiers": "",
     "description": "A vial of greenish, bubbling liquid",

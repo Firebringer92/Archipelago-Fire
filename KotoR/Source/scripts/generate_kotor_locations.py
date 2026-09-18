@@ -1,7 +1,6 @@
 """
 Generates Archipelago/worlds/kotor/Locations.py from the real, verified
-journal completion data (questtagmapping.json, renamed by the user from
-scratch_locations.json 2026-09-02 -- built by merging
+journal completion data (questtagmapping.json -- built by merging
 scan_journal_values.py's NCS-bytecode results with
 scan_journal_dlg_values.py's dialogue-node results -- global.jrl's own
 documented entries were confirmed unreliable and are NOT the source here.
@@ -15,12 +14,12 @@ rather than hand-editing Locations.py -- hand-transcription from a partial
 printed sample is exactly how the first draft of this file ended up with
 several wrong target values.
 
-IMPORTANT (2026-09-02): this file writes the ENTIRE Locations.py from
-scratch, every location type included -- confirmed the hard way when an
-earlier version of this script only knew about journal/companion/area,
-and re-running it after an unrelated fix (a hardcoded-path update) SILENTLY
-WIPED the 33 alignment/level/goal locations that had been added some other
-way, breaking every generation with a 4-location fill shortfall (the 4
+IMPORTANT: this file must write the ENTIRE Locations.py from scratch,
+every location type included -- an earlier version of this script only
+knew about journal/companion/area, and re-running it after an unrelated
+fix (a hardcoded-path update) SILENTLY WIPED the 33 alignment/level/goal
+locations that had been added some other way, breaking every generation
+with a 4-location fill shortfall (the 4
 GOAL_EVENT_LOCATIONS in __init__.py -- Malak Defeated, Level 20 Reached,
 and the two alignment extremes -- losing their locked-Event-item targets).
 Reconstructed from first principles by cross-referencing every place that
@@ -81,6 +80,51 @@ LEVEL_RANGE = range(2, 21)
 # Must byte-for-byte match __init__.py's GOAL_EVENT_LOCATIONS key for the
 # Malak entry.
 MALAK_LOCATION_NAME = "Malak Defeated"
+
+# Companion personal-subplot locations -- each "Ebon Hawk: ..."
+# entry below is real vanilla content gated on a SPECIFIC companion being
+# an active party member when it triggers (5 confirmed directly via a
+# game-wide NCS disassembly scan for IsNPCPartyMember/IsAvailableCreature
+# calls co-occurring with a journal advance; the plain "Ebon Hawk:
+# <Companion>" generic-banter entries included defensively -- same category
+# of risk even unconfirmed, since some companion-talk scripts live in the
+# game's core chitin.key BIFs rather than any module .rim this scan
+# covered). Single source of truth for two consumers: Rules.py's
+# companion_mode=ap_gated self-referential access-rule guard (a
+# companion's own item can't be circularly placed at their own gated
+# check), and __init__.py's _active_locations() companion_mode=none
+# filter (these are location_type="journal", not "companion", so they
+# weren't caught by that filter's original "companion" type check even
+# though companions never joining at all makes them just as permanently
+# uncompletable as the 9 real "Companion Recruited: ..." locations are).
+# Keyed by location name -> the AP item name for the companion it needs.
+# NOT emitted as its own location_table entries -- these names must
+# already exist as real journal locations from LOCATIONS_JSON above; this
+# is purely a curated cross-reference of which of those need the guard.
+COMPANION_SUBPLOT_LOCATIONS = {
+    "Ebon Hawk: Bastila": "Companion: Bastila Shan",
+    "Ebon Hawk: Bastila's Mother": "Companion: Bastila Shan",
+    "Ebon Hawk: Canderous": "Companion: Canderous Ordo",
+    "Ebon Hawk: Jagi's Challenge": "Companion: Canderous Ordo",
+    "Ebon Hawk: Carth": "Companion: Carth Onasi",
+    "Ebon Hawk: HK-47": "Companion: HK-47",
+    "Ebon Hawk: Jolee Bindo": "Companion: Jolee Bindo",
+    "Ebon Hawk: Juhani": "Companion: Juhani",
+    "Ebon Hawk: Threat from Xor": "Companion: Juhani",
+    "Ebon Hawk: Mission's Brother": "Companion: Mission Vao",
+}
+
+# Additional Enemies bounty cards: one location per bounty
+# card the player can be carrying, count-based exactly like LEVEL_RANGE
+# above (Plot=1 quest items can't be sold/dropped/destroyed, so the count
+# in inventory only ever goes up -- same monotonic-counter shape as
+# character level, just from a different source). 40 cards total, matching
+# the 40 modules Additional Enemies places into (one bounty-carrying
+# enemy per module) -- see scripts/patch_additional_enemies.py. Only
+# active when additional_enemies isn't off (see __init__.py's
+# _active_locations()); generated unconditionally here same as every
+# other location type, filtering happens at the world level not here.
+BOUNTY_CARD_COUNT = 40
 
 # NPC_* index -> display name, matching nwscript.nss's NPC_BASTILA=0 etc.
 COMPANIONS = [
@@ -148,7 +192,7 @@ def main():
     lines.append("    id: int")
     lines.append('    region: str = "Adventure"')
     lines.append('    location_type: str = "journal"  # "journal", "companion", "area", "alignment",')
-    lines.append('    # "alignment_bonus", "level", or "malak_defeated" -- see')
+    lines.append('    # "alignment_bonus", "level", "malak_defeated", or "bounty" -- see')
     lines.append("    # kotor_location_tracker.py's LocationTracker.__init__ for how each is")
     lines.append("    # consumed; every field below is read directly from there, this is not")
     lines.append("    # a schema this file invented independently.")
@@ -175,6 +219,10 @@ def main():
     lines.append('    alignment_bonus: str = ""')
     lines.append("    # level: character level 2-20 (1 is the starting value, not tracked).")
     lines.append("    level_value: int = -1")
+    lines.append("    # bounty: how many Additional Enemies bounty cards the player must be")
+    lines.append("    # carrying (1-40) -- a plain count threshold, same shape as level_value,")
+    lines.append("    # just driven by inventory count instead of character level.")
+    lines.append("    bounty_value: int = -1")
     lines.append("")
     lines.append("")
     lines.append("class KotorLocation(Location):")
@@ -186,10 +234,10 @@ def main():
     lines.append("# incident where a version of this script that DIDN'T cover every location")
     lines.append("# type below silently wiped 33 of them on a re-run).")
     lines.append("#")
-    lines.append("# Seven location types, all detected the same way client-side (the game")
-    lines.append("# reports raw state every poll via CHECK|.../ALIGNMENT/LEVELREPORT events;")
-    lines.append("# the client tracks what's already been converted into a check and fires")
-    lines.append("# on first occurrence -- see kotor_location_tracker.py):")
+    lines.append("# Eight location types, all detected the same way client-side (the game")
+    lines.append("# reports raw state every poll via CHECK|.../ALIGNMENT/LEVELREPORT/INVENTORY")
+    lines.append("# events; the client tracks what's already been converted into a check and")
+    lines.append("# fires on first occurrence -- see kotor_location_tracker.py):")
     lines.append("#   - journal: 100 real quest-completion checks spanning every planet")
     lines.append("#   - companion: 9 checks, one per companion, firing when they'd first")
     lines.append("#     become available (recruitment point reached)")
@@ -199,6 +247,8 @@ def main():
     lines.append("#     redeemed_sith)")
     lines.append("#   - level: character levels 2-20 (1 is the starting value)")
     lines.append("#   - malak_defeated: one-shot, Malak's defeat")
+    lines.append("#   - bounty: 40 checks, one per Additional Enemies bounty card carried")
+    lines.append("#     (only active when additional_enemies isn't off)")
     lines.append(f"base_id = {BASE_ID}")
     lines.append("")
     lines.append("location_table: typing.Dict[str, LocationData] = {")
@@ -274,16 +324,62 @@ def main():
     )
     idx_counter += 1
 
+    for n in range(1, BOUNTY_CARD_COUNT + 1):
+        display = f"Bounty Card #{n}"
+        lines.append(
+            f'    "{display}": LocationData(base_id + {idx_counter}, region="Additional Enemies", '
+            f'location_type="bounty", bounty_value={n}),'
+        )
+        idx_counter += 1
+
     lines.append("}")
     lines.append("")
     lines.append("location_name_to_id: typing.Dict[str, int] = {name: data.id for name, data in location_table.items()}")
     lines.append("lookup_id_to_name: typing.Dict[int, str] = {data.id: name for name, data in location_table.items()}")
 
+    # Fail loudly, not silently, if a curated cross-reference above ever
+    # names a location that doesn't actually exist in what was just
+    # generated -- exactly the class of drift this whole file's own
+    # docstring warns about (a real location set silently disappearing on
+    # a re-run went unnoticed for a while last time).
+    generated_names = set()
+    for loc in journal_locations:
+        region = region_for(loc["tag"])
+        name = loc["display_name"]
+        generated_names.add(name if (name.startswith(region + ":") or name == region) else f"{region}: {name}")
+    missing = sorted(set(COMPANION_SUBPLOT_LOCATIONS) - generated_names)
+    if missing:
+        sys.exit(f"COMPANION_SUBPLOT_LOCATIONS names not found among generated journal locations "
+                 f"(typo, or the underlying journal data changed): {missing}")
+
+    lines.append("")
+    lines.append("# Companion personal-subplot locations -- each \"Ebon Hawk: ...\"")
+    lines.append("# entry below is real vanilla content gated on a SPECIFIC companion being")
+    lines.append("# an active party member when it triggers (5 confirmed directly via a")
+    lines.append("# game-wide NCS disassembly scan for IsNPCPartyMember/IsAvailableCreature")
+    lines.append("# calls co-occurring with a journal advance; the plain \"Ebon Hawk:")
+    lines.append("# <Companion>\" generic-banter entries included defensively -- same category")
+    lines.append("# of risk even unconfirmed, since some companion-talk scripts live in the")
+    lines.append("# game's core chitin.key BIFs rather than any module .rim this scan")
+    lines.append("# covered). Single source of truth for two consumers: Rules.py's")
+    lines.append("# companion_mode=ap_gated self-referential access-rule guard (a")
+    lines.append("# companion's own item can't be circularly placed at their own gated")
+    lines.append("# check), and __init__.py's _active_locations() companion_mode=none")
+    lines.append("# filter (these are location_type=\"journal\", not \"companion\", so they")
+    lines.append("# weren't caught by that filter's original \"companion\" type check even")
+    lines.append("# though companions never joining at all makes them just as permanently")
+    lines.append("# uncompletable as the 9 real \"Companion Recruited: ...\" locations are).")
+    lines.append("# Keyed by location name -> the AP item name for the companion it needs.")
+    lines.append("COMPANION_SUBPLOT_LOCATIONS: typing.Dict[str, str] = {")
+    for name, item_name in COMPANION_SUBPLOT_LOCATIONS.items():
+        lines.append(f'    "{name}": "{item_name}",')
+    lines.append("}")
+
     with open(OUT_PATH, "w") as f:
         f.write("\n".join(lines) + "\n")
     print(f"Wrote {OUT_PATH} ({idx_counter} locations: {len(journal_locations)} journal, {len(COMPANIONS)} companion, "
           f"{len(areas)} area, {len(ALIGNMENT_THRESHOLDS)} alignment, {len(ALIGNMENT_BONUS)} alignment_bonus, "
-          f"{len(list(LEVEL_RANGE))} level, 1 malak_defeated)")
+          f"{len(list(LEVEL_RANGE))} level, 1 malak_defeated, {BOUNTY_CARD_COUNT} bounty)")
 
 
 if __name__ == "__main__":

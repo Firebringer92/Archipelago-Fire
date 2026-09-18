@@ -1234,6 +1234,7 @@ void HandleAcquiredItem()
             }
         }
         KSE_SetData("last_credits", IntToString(nCurCredits));
+        KSE_Diag(155, "AP|BONUS_MILESTONE_START|" + sTag);
         int nHeld = 0;
         object oScan = GetFirstItemInInventory(oPC);
         while (GetIsObjectValid(oScan))
@@ -1261,6 +1262,7 @@ void HandleAcquiredItem()
             KSE_Diag(87, "AP|BONUS_ITEM|milestone=" + IntToString(i + 1) + "|" + sRandom);
             i = i + 1;
         }
+        KSE_Diag(156, "AP|BONUS_MILESTONE_END|" + sTag);
     }
 }
 

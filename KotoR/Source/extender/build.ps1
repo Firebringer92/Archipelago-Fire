@@ -2,10 +2,9 @@
 # (socket bridge, log-tailer, orchestrator shell-out) merged with K1SE's
 # dispatcher-hook code (feats, skills, saves, and this project's own
 # SetCreatureField addition), forwarding bink calls directly to the real
-# Bink DLL. See src_k1se/ for the merged source and
-# kotor_engine_constraints.md / kotor_project_status.md (project memory)
-# for why this replaced the old three-layer proxy-chain-to-a-separately-
-# installed-K1SE architecture.
+# Bink DLL. See src_k1se/ for the merged source. This replaced the old
+# three-layer proxy chain to a separately-installed K1SE: one DLL to
+# install, no version coupling with an external K1SE build.
 #
 # Must be run where vswhere.exe can find a VC++ toolchain (VS Build Tools or VS).
 

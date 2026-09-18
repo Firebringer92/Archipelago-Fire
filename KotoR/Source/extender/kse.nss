@@ -368,8 +368,8 @@ void KSE_RemoveFeatArrayA(int nFeat, object oCreature = OBJECT_SELF) { _kse_remo
 //
 // A generic fixed-slot writer for class type, class level, and Force points --
 // the class/level/Force offsets this project's own live testing confirmed
-// (see kotor_engine_constraints.md in project memory for the full test
-// history). Same one-write-per-call discipline as KSE_AdjustCreatureSkills
+// (confirmed live: a companion converted to a working Level 20 Guardian
+// with 76 Force Points). Same one-write-per-call discipline as KSE_AdjustCreatureSkills
 // above: no lists, no counts, no capacity, just a value written to a slot
 // the engine's own reader already reads.
 //
@@ -401,7 +401,7 @@ void KSE_SetCreatureField(object oCreature, int nFieldType, int nValue)
 // KOTOR AP ADDITION (2026-09-06): Current HP getter -- the read-side
 // counterpart to KSE_FIELD_CURRENT_HP() above. Max HP has NO equivalent
 // native: it has no memory field at all (confirmed via a thorough double-
-// diff, see FutureDesign.md), and is computed instead from class/level/CON
+// diff), and is computed instead from class/level/CON
 // -- read it with the standard GetMaxHitPoints(). Current and Max Force
 // Points also need no new native -- GetCurrentForcePoints()/
 // GetMaxForcePoints() already work; only the write side

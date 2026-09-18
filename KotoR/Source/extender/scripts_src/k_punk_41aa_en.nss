@@ -2,7 +2,7 @@
 // area-enter script (originally unk_m41aa's k_punk_41aa_en, preserved as
 // apo_unk41aa_en_orig).
 //
-// FOUND 2026-09-10: the real script unconditionally calls
+// The real script unconditionally calls
 // SpawnAvailableNPC on Carth/Canderous/Mission/T3-M4 -- no
 // IsAvailableCreature guard at all, unlike HK-47/Zaalbar a few lines
 // later in that same script, which DO check first and gracefully skip
@@ -11,7 +11,7 @@
 // assumes the NPC was already properly initialized via an earlier
 // AddAvailableNPCByTemplate call; if that never happened, the result is a
 // genuine engine-level crash, not a graceful NWScript no-op. Confirmed
-// live via an Area Randomizer door that used to connect here early (that
+// via an Area Randomizer door that used to connect here early (that
 // specific door is now excluded from the randomizer's shuffle pool), but
 // the underlying gap is real independent of how this area gets reached --
 // companion_mode=none never recruits anyone at all, and companion_mode=

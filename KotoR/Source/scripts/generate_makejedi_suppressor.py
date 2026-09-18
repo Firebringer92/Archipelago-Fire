@@ -8,8 +8,8 @@ baked into that script, completely bypassing starting_class's item-gating
 (granted mode) or double-granting on top of a class they may not have
 gotten yet at all.
 
-Investigated 2026-09-02, not assumed -- decompiled the real k_pdan_makejedi
-via pykotor's read_ncs() (see research/scan_globals.py for the global-
+Confirmed via decompiling the real k_pdan_makejedi via pykotor's
+read_ncs() (see research/scan_globals.py for the global-
 dependency half of this): confirmed safe to skip wholesale under any
 non-off mode, wrapper style like generate_companion_suppressors.py's
 existing-vanilla-script case (Override-resref-wins, no RIM/IFO edit
@@ -71,8 +71,9 @@ NWNNSSCOMP = resolve_nwnnsscomp()
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 # Same path generate_poll_shared.py/the two patch_*.py scripts read --
 # see patch_item_suppression.py's copy of this same constant/comment for
-# the full reasoning (found broken 2026-09-04: the old zip-reading
-# fallback never worked for a player joining someone ELSE's multiworld).
+# the full reasoning (a zip-reading fallback would never work for a
+# player joining someone ELSE's multiworld, since only the machine that
+# ran Generate.py has that zip).
 SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_data.json")
 
 MODULE = "danm13_s.rim"

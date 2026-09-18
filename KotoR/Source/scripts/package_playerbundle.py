@@ -4,7 +4,7 @@ and play on their own machine, aside from kotor.apworld itself (see
 package_apworld.py for that half). This is the counterpart bundle
 referenced throughout README.md's Step 1.
 
-Why this exists as a real script (2026-09-04): the first PlayerBundle
+Why this exists as a real script: the first PlayerBundle
 zips this project shipped (v0.1.1, v0.1.2) were built from an ad hoc
 one-off script that never got checked into the repo -- meaning the exact
 file list was undocumented and not reproducible except by re-deriving it
@@ -33,7 +33,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # Step 1). No shared constant between the two scripts on purpose: bumping
 # one without the other would be a silent mistake either way, so each
 # script's own default should be updated by hand at release time.
-BUNDLE_VERSION = "0.1.4"
+BUNDLE_VERSION = "0.1.5"
 
 # REMINDER: this list does not update itself. Every time a NEW file (not
 # just an edit to an existing one) becomes something a tester needs to run
@@ -54,8 +54,7 @@ FILES = [
     # The Step-2 installer script is the thing that actually knows to copy
     # this one to a different place than everything else in this list --
     # not a generic "unzip everything into the same folder" operation.
-    # Redistribution permission confirmed directly with the tool's dev,
-    # 2026-09-08 (see FutureDesign.md's Q1).
+    # Redistribution permission confirmed directly with the tool's dev.
     (("extender", "nwnnsscomp.exe"), "to_game_folder/nwnnsscomp.exe"),
     (("scripts", "nwnnsscomp_path.py"), "scripts/nwnnsscomp_path.py"),
     (("extender", "install.ps1"), "extender/install.ps1"),
@@ -64,7 +63,7 @@ FILES = [
     (("extender", "area_trampolines", "_idx_to_name.json"), "extender/area_trampolines/_idx_to_name.json"),
     (("extender", "area_trampolines", "_mapping.json"), "extender/area_trampolines/_mapping.json"),
     (("extender", "area_trampolines", "_shop_map.json"), "extender/area_trampolines/_shop_map.json"),
-    # Found missing 2026-09-10 via a real tester's extender.log: EVERY
+    # Found missing via a real tester's extender.log: EVERY
     # trampoline compile failed with `Error: Unable to open the include
     # file "kse"`, forever -- generate_trampoline_batch.py's SRC_DIR is
     # extender/area_trampolines (that's the nwnnsscomp cwd, so that's
@@ -82,7 +81,7 @@ FILES = [
     # extender/scripts_src/kse.nss) confirmed byte-identical before fixing
     # this, so shipping the area_trampolines one is not a version-drift risk.
     (("extender", "area_trampolines", "kse.nss"), "extender/area_trampolines/kse.nss"),
-    # 2026-09-08 fix: these 4 used to land in a "KotorClient/" subfolder,
+    # These 4 used to land in a "KotorClient/" subfolder,
     # requiring a manual "open it, move the 4 files out, delete the empty
     # folder" step (README.md's old Step 1) -- easy to get wrong, and
     # directly undercuts the whole point of the new 3-step simplified
@@ -98,7 +97,7 @@ FILES = [
     (("Archipelago", "kotor_extender_bridge.py"), "kotor_extender_bridge.py"),
     (("Archipelago", "kotor_location_tracker.py"), "kotor_location_tracker.py"),
     (("Archipelago", "kotor_reconciliation.py"), "kotor_reconciliation.py"),
-    # 2026-09-09: double-clickable installer -- testers don't run command
+    # Double-clickable installer -- testers don't run command
     # prompt commands. Ships at the Client folder root (sibling of
     # CommonClient.py, same level as scripts\) so `cd /d "%~dp0"` inside it
     # resolves to the Client folder itself and `scripts\install_playerbundle.py`
@@ -111,21 +110,44 @@ FILES = [
     (("scripts", "generate_trampoline_batch.py"), "scripts/generate_trampoline_batch.py"),
     (("scripts", "setup_game.py"), "scripts/setup_game.py"),
     (("scripts", "install_playerbundle.py"), "scripts/install_playerbundle.py"),
-    # Found missing entirely from v0.1.1/v0.1.2 (2026-09-04) -- both are
+    # Found missing entirely from v0.1.1/v0.1.2 -- both are
     # explicitly documented as tester-run steps in README.md Step 4, but
     # the ad hoc script those releases were built from never included them.
     (("scripts", "patch_item_suppression.py"), "scripts/patch_item_suppression.py"),
     (("scripts", "patch_door_randomizer.py"), "scripts/patch_door_randomizer.py"),
-    # Same gap, caught this time before release (2026-09-08): Additional
+    # Same gap: patch_loot_disturb.py
+    # replaces patch_item_suppression.py's old Mod_OnAcquirItem mechanism
+    # for Loot Mode entirely -- it's called automatically from
+    # KotorClient.py's on_package Connect handler (not something a tester
+    # runs by hand), but install_playerbundle.py --uninstall still needs
+    # the actual file present to call its --restore.
+    (("scripts", "patch_loot_disturb.py"), "scripts/patch_loot_disturb.py"),
+    # Same gap: Additional
     # Enemies' tester-run patch script and its 4 persisted reference tables
     # (Tables A/B/C + the safe pool) were both missing here entirely.
     (("scripts", "patch_additional_enemies.py"), "scripts/patch_additional_enemies.py"),
+    # Galactic Shop's tester-run module/template patch (runs
+    # from KotorClient.py on Connect, same as the three above), and the
+    # TSL Force Power port pilot installer (dev/tester-run by hand only --
+    # it needs a local KOTOR 2 install to copy assets from).
+    (("scripts", "patch_galactic_shop.py"), "scripts/patch_galactic_shop.py"),
+    (("scripts", "patch_tsl_powers.py"), "scripts/patch_tsl_powers.py"),
+    # Same gap as loot_disturb/galactic_shop above -- runs
+    # automatically from KotorClient.py's Connect handler
+    # (apply_new_companion_assets()), not something a tester runs by hand,
+    # but missing here would mean the subprocess call fails outright the
+    # first time a real tester connects with new_companion=on. The 3
+    # precompiled trigger variants it deploys (apo_hk47_vanilla.ncs/
+    # apo_hk47_new.ncs/.nss) are already covered by the whole-directory
+    # extender/scripts_src copy below -- only this script itself needed
+    # adding.
+    (("scripts", "generate_new_companion_assets.py"), "scripts/generate_new_companion_assets.py"),
     (("extender", "area_trampolines", "_enemy_spawn_points.json"), "extender/area_trampolines/_enemy_spawn_points.json"),
     (("extender", "area_trampolines", "_enemy_cr_bands.json"), "extender/area_trampolines/_enemy_cr_bands.json"),
     (("extender", "area_trampolines", "_enemy_category_pools.json"), "extender/area_trampolines/_enemy_category_pools.json"),
     (("extender", "area_trampolines", "_enemy_safe_pool.json"), "extender/area_trampolines/_enemy_safe_pool.json"),
-    # patch_item_suppression.py's item whitelist -- found broken 2026-09-04:
-    # a real tester's checkout only ever has kotor.apworld as a zip in
+    # patch_item_suppression.py's item whitelist -- a real tester's
+    # checkout only ever has kotor.apworld as a zip in
     # custom_worlds/, never an extracted worlds/kotor/gear_items.json file
     # on disk, so this can't be read from the Archipelago checkout at all.
     # This is a fixed classification tied to the apworld's own version, not

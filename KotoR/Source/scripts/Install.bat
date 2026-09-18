@@ -29,6 +29,17 @@ if %ERRORLEVEL%==0 (
 )
 
 echo.
+echo Installing Archipelago's own base dependencies...
+%PYCMD% -m pip install -r requirements.txt
+if not %ERRORLEVEL%==0 (
+    echo.
+    echo ERROR: pip install -r requirements.txt failed -- see the output above.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo.
 if "%GAMEDIR%"=="" (
     %PYCMD% scripts\install_playerbundle.py
 ) else (

@@ -1,74 +1,34 @@
 r"""
-Wires up item-pickup handling via KOTOR's native Mod_OnAcquirItem module
-event (confirmed live via 11 real vanilla scripts already using it -- see
-project research notes). What happens to a NON-whitelisted pickup (not
-quest_dependent in gear_items.json -- whitelisted items are always left
-alone no matter what) depends on the single loot_mode seed option --
-see Options.py's LootMode docstring for the full description:
+Deploys Progression System's checkpoint wrappers (apply_progression_
+checkpoint_wrappers(), see main()) -- an Override-swap "gate-and-delegate"
+mechanism for Sith Papers/Manaan Enviro Suit, unrelated to loot pickups.
+Only active when Options.py's ProgressionSystem is on; a no-op otherwise.
 
-  normal (internal name "skip")  -- nothing is wired up at all, vanilla
-    loot behaves exactly like stock KOTOR.
-  destroy -- the pickup is destroyed immediately, no replacement (pure
-    suppression).
-  bonus   -- the pickup is kept, untouched; separately, one random item
-    (drawn from the shop_randomize pool) is granted every time a running
-    count of genuine non-whitelisted finds crosses a new multiple of 5 --
-    see generate_poll_shared.py's CheckPickupCount() for the actual grant
-    logic, which lives there now, not in this file's per-acquisition
-    handler.
-  replace -- the pickup is destroyed and immediately replaced with one
-    random item from the same pool, one-for-one.
-
-Two different mechanisms depending on what a module already has (this part
-is mode-independent -- only WHAT the shared/wrapper scripts' CONTENT does
-changes per mode, never whether a module needs its RIM touched at all):
-
-  - ~86 modules with an EMPTY Mod_OnAcquirItem slot: the field itself has
-    to be set (once, to the fixed SHARED_SUPPRESS_RESREF name), which
-    means a real GFF edit inside that module's own RIM (module.ifo's
-    resref is "module" for every module -- a loose Override copy would
-    apply identically to ALL modules and corrupt their other per-module
-    data, so this can't go through Override at all). This is the ONLY
-    part of this project that directly repacks a base game file, hence
-    the backup step -- see restore() / this script's --restore flag.
-    Re-running with a DIFFERENT mode later does NOT need another RIM
-    edit -- the field already points at SHARED_SUPPRESS_RESREF, only the
-    Override file's CONTENT under that name needs to change.
-
-  - 11 modules that ALREADY have a real vanilla script there (map reveals,
-    quest-journal triggers keyed on specific pickups) -- these have their
-    own unique resref names, so the existing, already-proven
-    Override-file-swap trick (same one used for companion suppression)
-    works untouched: preserve the original .ncs under a new resref, deploy
-    a wrapper that runs it first then adds the pickup-handling check,
-    under the ORIGINAL resref name. No RIM/IFO edit needed for these at
-    all, in any mode.
+Loot Mode's own destroy/bonus/replace handling of ordinary pickups (via
+KOTOR's native Mod_OnAcquirItem module event) used to live in this file,
+but has moved entirely to scripts/patch_loot_disturb.py's pure static
+template edits -- see that file's own docstring for why (Mod_OnAcquirItem
+re-fires for already-held items, an unfixable engine quirk this design
+sidesteps entirely). The old Mod_OnAcquirItem-based functions
+(build_handler_body/build_random_pick_fn/the module-wiring logic in
+main()) are still present below main()'s early return, but are dead code
+kept only as the documented origin of patch_loot_disturb.py's own handler
+logic -- not something this script still executes.
 
 Usage:
   python patch_item_suppression.py                          -- apply (backs up first)
   python patch_item_suppression.py --restore                -- restore all patched modules from backup
   python patch_item_suppression.py --game-dir "D:\...\swkotor" -- apply against a non-default install
-  python patch_item_suppression.py --force --mode=<destroy|bonus|replace|skip> -- skip reading real
-    seed data entirely, apply a manually-chosen mode instead
 
 You must connect once with KotorClient.py before running this (see
-README.md Step 6) -- loot_mode comes from your seed's real slot_data,
-which KotorClient.py receives over the network on every Connect and
-writes to extender/area_trampolines/_slot_data.json for this script to
-read (see KotorClient.py's SLOT_DATA_PATH). This works identically
-whether you're hosting or joining someone else's multiworld -- neither
-needs local access to a generated AP_<seed>.zip at all (found broken
-2026-09-04: the previous approach read the zip directly, which only ever
-existed on whichever machine ran Generate.py -- a joining player never
-has it, so this literally couldn't work for them before).
-
-Doesn't need nwnnsscomp.exe (the NWScript compiler) on a tester's machine:
-each mode's shared suppressor and all 11 wrapper scripts are deterministic
-given the same gear_items.json whitelist, so precompiled copies for all 3
-non-skip modes are checked into extender/scripts_src/ and get used
-directly whenever the compiler isn't present. Only someone actually
-changing the whitelist and rebuilding needs the compiler -- see
-compile_and_deploy() below.
+README.md Step 6) -- progression_system comes from your seed's real
+slot_data, which KotorClient.py receives over the network on every
+Connect and writes to extender/area_trampolines/_slot_data.json for this
+script to read (see KotorClient.py's SLOT_DATA_PATH). This works
+identically whether you're hosting or joining someone else's multiworld
+-- neither needs local access to a generated AP_<seed>.zip at all (the
+zip only ever exists on whichever machine ran Generate.py, so a joining
+player never has it).
 """
 import json
 import os
@@ -76,10 +36,12 @@ import shutil
 import subprocess
 import sys
 
+from pykotor.common.language import LocalizedString
 from pykotor.common.misc import ResRef
 from pykotor.extract.installation import Installation
 from pykotor.resource.formats.rim import read_rim, write_rim
 from pykotor.resource.formats.gff import read_gff, write_gff
+from pykotor.resource.generics.uti import construct_uti, dismantle_uti
 from pykotor.resource.type import ResourceType
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -104,9 +66,9 @@ SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 BACKUP_DIR = os.path.join(REPO_ROOT, "extender", "backup", "modules")
 # Written by KotorClient.py on every successful Connect -- see its own
 # SLOT_DATA_PATH/write_slot_data_for_patch_scripts() for why this replaced
-# reading a locally generated AP_<seed>.zip directly (found broken
-# 2026-09-04: that file never exists at all for a player joining someone
-# ELSE's multiworld, and the old code didn't even filter for THIS
+# reading a locally generated AP_<seed>.zip directly (that file never
+# exists at all for a player joining someone
+# ELSE's multiworld, and reading it wouldn't even filter for THIS
 # player's own slot). Same path both scripts must agree on -- kept as a
 # plain module-level constant rather than a flag, since there's no
 # reason it would ever need to be anywhere else: both this script and
@@ -118,17 +80,15 @@ SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_
 # find on disk there at all, since the apworld's contents are never
 # extracted. This whitelist is a fixed classification tied to the
 # apworld's own version, not per-seed data, so package_playerbundle.py
-# ships a static copy of it directly alongside this script (found broken
-# 2026-09-04, fixed by shipping that copy) -- no cross-checkout dependency
-# needed for a PlayerBundle-style install.
+# ships a static copy of it directly alongside this script -- no
+# cross-checkout dependency needed for a PlayerBundle-style install.
 #
 # BUT a dev checkout (this repo, running scripts/ directly against the
 # real Archipelago/worlds/kotor/ folder) never has scripts/gear_items.json
 # at all -- package_playerbundle.py only creates it as a packaging step,
-# not something that exists by default. Found broken live 2026-09-08
-# (FileNotFoundError running this against a real dev-machine test seed)
-# -- fixed by falling back to the real source location when the packaged
-# copy isn't present, so this script works in both layouts.
+# not something that exists by default, so this falls back to the real
+# source location when the packaged copy isn't present, letting this
+# script work in both layouts.
 GEAR_JSON = os.path.join(REPO_ROOT, "scripts", "gear_items.json")
 if not os.path.isfile(GEAR_JSON):
     GEAR_JSON = os.path.join(REPO_ROOT, "Archipelago", "worlds", "kotor", "gear_items.json")
@@ -192,7 +152,7 @@ _MODE_DIAG = {
 # other "off" namings already coexist elsewhere).
 _LOOT_MODE_NAMES = {0: "skip", 1: "destroy", 2: "bonus", 3: "replace"}
 
-# REDESIGNED 2026-08-30: the two time-based debounces that used to live
+# REDESIGNED: the two time-based debounces that used to live
 # here (BONUS_DEBOUNCE_SECONDS=3, PER_TAG_COOLDOWN_SECONDS=5) are gone,
 # replaced by a real fix instead of a timing-window workaround -- see
 # build_handler_body()'s docstring for the full reasoning. Short version:
@@ -241,7 +201,7 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
     it, which is the same assumption everything else in this project
     already makes.
 
-    Root cause, confirmed live across both bonus AND replace mode:
+    Root cause, confirmed across both bonus AND replace mode:
     Mod_OnAcquirItem does not only fire on a genuine ground pickup -- it
     ALSO re-fires for non-whitelisted items you're already holding, most
     often correlated with area transitions but not exclusively (see
@@ -255,7 +215,7 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
     next area's OnEnter reports (during the loading-screen gap after
     leaving the OLD module), which an entry-side-only stamp can't see. The
     natural fix -- also instrumenting OnExit to close that gap -- turned
-    out to be a dead end: confirmed live (fresh game restart, first-ever
+    out to be a dead end: confirmed (fresh game restart, first-ever
     load of a test area, genuine door-based exit) that OnExit does not
     fire at all in this engine build. Also found at least one duplicate
     with no nearby transition at all (11.6s from the same tag's own prior
@@ -272,7 +232,7 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
     behavior whose exact cadence was never fully characterized), and a
     later live session found fresh duplicate cases even with it in place.
 
-    **REDESIGNED 2026-08-30: replaced with a real held-quantity-based
+    **REDESIGNED: replaced with a real held-quantity-based
     fix for each of bonus/replace, not another timing window.** The
     insight: a spurious Mod_OnAcquirItem re-fire for an item you already
     hold produces NO actual change in how much of it you're holding --
@@ -284,8 +244,8 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
         sTag in KSE_SetData). Proceeds (destroy + immediately grant a
         replacement, same 1:1 instant behavior as before) only if the
         quantity actually increased; otherwise it's a re-fire echo, no
-        timing window involved at all. Explicit design choice, confirmed
-        with the user: replace mode keeps its original "destroy the
+        timing window involved at all. Explicit design choice: replace
+        mode keeps its original "destroy the
         pickup and immediately provide a replacement" shape -- it does
         NOT move to the count-based milestone system bonus mode uses
         below, since replace inherently needs to react to a specific
@@ -300,13 +260,13 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
         trigger a spurious grant -- same reasoning as `replace`'s guard,
         just feeding a shared counter instead of gating a 1:1 swap.
 
-        REVISED 2026-08-31 (superseding an intermediate design): an
+        REVISED (superseding an intermediate design): an
         earlier version of this fix moved bonus mode's grant logic
         entirely into a periodic generate_poll_shared.py
         CheckPickupCount(), snapshotting TOTAL held quantity across
         every one of 672 suppress-eligible tags COMBINED on every 5s
-        heartbeat tick. That confirmed-live regression (see
-        FutureDesign.md): scanning either every held ITEM against all
+        heartbeat tick. That was a real regression: scanning either
+        every held ITEM against all
         672 tags (the original version) or all 672 tags against current
         holdings (an interim fix) on EVERY tick, forever, regardless of
         whether anything changed, is real recurring cost that isn't
@@ -328,7 +288,7 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
     object is a harmless no-op, so a stray re-registration echo there was
     never a visible bug.
 
-    Purchase detection (2026-08-29, applies to ALL THREE modes): the
+    Purchase detection (applies to ALL THREE modes): the
     whitelist was narrowed from "quest_dependent OR included_as_item OR
     shop_randomize" down to "quest_dependent" only, so curated gear and
     shop-pool items are no longer automatically exempt when found as
@@ -343,7 +303,7 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
     mode-specific action, using the same KSE_SetData timestamp-style
     pattern as the debounces below.
 
-    Permanent per-tag exemption (2026-08-29, "granted_exempt_" + sTag,
+    Permanent per-tag exemption ("granted_exempt_" + sTag,
     applies to ALL THREE modes): the debounces above only cover re-fires
     landing within a few seconds of each other -- they say nothing about
     Mod_OnAcquirItem re-firing HOURS later for an item this project itself
@@ -351,7 +311,7 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
     or a shop purchase). That's a real, still-unsolved case: this project
     has no general way to tell "genuine fresh pickup" from "engine
     re-registered something you already own" at the moment the event
-    fires (confirmed this session: even a same-instant re-fire couldn't be
+    fires (even a same-instant re-fire can't be
     distinguished by object identity, which is why the debounces are
     purely time-based). Closing that gap for EVERY resref would need a
     real acquired-vs-owned distinction this engine doesn't expose.
@@ -367,9 +327,9 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
     has no grant/purchase history yet, so a spurious re-registration of it
     is still only covered by the short debounces) -- it specifically
     protects items the player already has because of this project's own
-    delivery mechanism, which is the case the user asked to close given
+    delivery mechanism, the one case actually closable given
     the debounces alone can't fully solve the general problem."""
-    # 2026-09-08: "skip" has no _MODE_DIAG entry -- never needed one before
+    # "skip" has no _MODE_DIAG entry -- never needed one before
     # progression_system existed, since this whole function was never
     # deployed at all for skip. Guarded here; the actual skip early-return
     # happens further down, after the progression check is emitted.
@@ -382,9 +342,9 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
         lines.append("    if (GetLocalBoolean(oItem, 0)) return;")
     lines.append("    string sTag = GetStringLowerCase(GetTag(oItem));")
     if progression_resrefs:
-        # 2026-09-08, Progression System: unconditional, ALWAYS-destroy
+        # Progression System: unconditional, ALWAYS-destroy
         # check, completely independent of loot_mode/the whitelist below.
-        # NARROWED 2026-09-08 (same day, later) to just 2 items -- Sith
+        # NARROWED to just 2 items -- Sith
         # Armor (ptar_sitharmor, via k_ptar_acquire) and Shield Codes
         # (ptar_shieldcodes, via tar09_acquire) -- the only 2 of the 8
         # Progression System items whose real vanilla acquisition
@@ -394,18 +354,17 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
         # their real gates are dedicated wrapper scripts generated by
         # apply_progression_checkpoint_wrappers() below (Sith Papers'/the
         # Star Maps'/Enviro Suit's real creation or completion points
-        # turned out not to be simple item-pickup scripts; see
-        # FutureDesign.md's 2026-09-08 entries for the full derivation of
-        # each one). These 2 are quest_dependent=True (protected from the
+        # turned out not to be simple item-pickup scripts, so each gets
+        # its own wrapper there). These 2 are quest_dependent=True (protected from the
         # generic suppression this whole function otherwise applies), but
         # when Progression System is on they need the OPPOSITE treatment:
         # always suppressed at their normal vanilla acquisition point,
         # regardless of mode, since the real grant comes from the paired
         # AP check via give_item: instead (see Items.py's
         # PROGRESSION_ITEM_RESREFS). No conditional "already delivered?"
-        # check needed -- destroying is correct either way, per the design
-        # confirmed with the user: suppression before delivery, harmless
-        # no-op after (the player already has their AP-granted copy).
+        # check needed -- destroying is correct either way: suppression
+        # before delivery, harmless no-op after (the player already has
+        # their AP-granted copy).
         # Checked BEFORE granted_exempt_/whitelist logic since none of
         # that applies to this category at all.
         prog_conditions = " ||\n        ".join(f'sTag == "{r}"' for r in progression_resrefs)
@@ -416,7 +375,7 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
         lines.append("        return;")
         lines.append("    }")
     if mode == "skip":
-        # 2026-09-08: mode=="skip" (loot_mode=normal) means the GENERAL
+        # mode=="skip" (loot_mode=normal) means the GENERAL
         # suppression system is off, but this function can still be
         # deployed for the progression check alone -- see main()'s
         # adjusted early-exit. _MODE_DIAG has no "skip" entry (there was
@@ -452,6 +411,18 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
         # counter/grant bookkeeping below happens. Per-tag held-quantity
         # delta guard identical in shape to replace mode's below (see
         # docstring for why this replaced a periodic heartbeat scan).
+        #
+        # Diagnostic instrumentation -- BONUS_MILESTONE_START/
+        # _END bracket this whole handler (inventory scan + milestone
+        # grant loop), matching generate_heartbeat.py's own TICK_START/
+        # TICK_RESCHEDULED markers. Together these let
+        # a real timing overlap between this handler and a heartbeat tick
+        # be checked directly from the log, rather than inferred from a
+        # coincidence -- see that generator's own module docstring for the
+        # full reasoning (a real, live silent-heartbeat-death case had a
+        # BONUS_ITEM grant in the same one-second burst as the last tick
+        # before it died).
+        lines.append('        KSE_Diag(155, "AP|BONUS_MILESTONE_START|" + sTag);')
         lines.append("        int nHeld = 0;")
         lines.append("        object oScan = GetFirstItemInInventory(oPC);")
         lines.append("        while (GetIsObjectValid(oScan))")
@@ -479,6 +450,13 @@ def build_handler_body(mode, suppress_resrefs, loot_pool, progression_resrefs=()
         lines.append(f'            KSE_Diag({diag_code}, "{diag_marker}milestone=" + IntToString(i + 1) + "|" + sRandom);')
         lines.append("            i = i + 1;")
         lines.append("        }")
+        # Note: the "if (nDelta <= 0) return;" line above exits BEFORE this
+        # point for the common spurious-refire case (no real quantity
+        # increase) -- a START with no matching END is expected/benign for
+        # those, not a sign of anything broken. A genuine milestone-crossing
+        # invocation (the interesting case for this diagnostic) always
+        # reaches here.
+        lines.append('        KSE_Diag(156, "AP|BONUS_MILESTONE_END|" + sTag);')
     else:  # replace -- destroy + immediately grant, guarded by a
         # per-tag held-quantity delta instead of a timing window (see
         # docstring). A spurious re-fire for an already-held tag produces
@@ -541,11 +519,10 @@ def compile_and_deploy(nss_path, ncs_path, deploy_name):
     return True
 
 
-# Progression System checkpoint wrappers (2026-09-08): 4 vanilla scripts
+# Progression System checkpoint wrappers: 4 vanilla scripts
 # whose REAL gate isn't a Mod_OnAcquirItem-style item pickup at all, so
-# the generic HandleAcquiredItem() mechanism above never touches them --
-# see FutureDesign.md's 2026-09-08 entries for the full derivation of
-# each one's real mechanism. All 4 live at the CHITIN level (confirmed
+# the generic HandleAcquiredItem() mechanism above never touches them.
+# All 4 live at the CHITIN level (confirmed
 # via Installation.resource() succeeding with no module context loaded),
 # not any module's own _s.rim overlay -- unlike EXISTING_SCRIPT_NAMES,
 # this is a ONE-TIME global extraction, not a per-module RIM-scanning
@@ -567,23 +544,89 @@ PROGRESSION_CHECKPOINT_WRAPPERS = {
 }
 PROGRESSION_CHECKPOINT_NEEDS_ORIG = {"k_sup_galaxymap", "k_pla_actmap", "k_pman_suituse"}
 
+# k_sup_galaxymap/k_pla_actmap's real "has this planet's Star Map check
+# been delivered" state needs to survive a game restart -- KSE_SetData
+# doesn't (in-DLL memory only, confirmed dead on process restart). Custom
+# SetGlobalBoolean names don't persist either in this engine build
+# (confirmed project-wide finding: any name not pre-declared in
+# globalcat.2da silently fails to stick, even same-tick). Checking
+# possession of the starpad item itself (the fix used for Sith Papers)
+# is NOT safe here either -- confirmed via exhaustive disassembly that
+# tat_starpad/kas_starpad/man_starpad/kor_starpad each have a genuine,
+# independent vanilla creation point (k_ptat_pause/k_pkas_openmap/
+# k_pkor_givemap/demo_trig03) that can create the same resref completely
+# outside our own give_item delivery.
+#
+# So: a single dedicated, Plot=1, AP-invented marker item (never
+# referenced by any vanilla script, so zero namespace-collision risk)
+# carries one LocalBoolean bit per planet. LocalBoolean is confirmed
+# genuinely save-persistent in this engine build (unlike LocalNumber,
+# a dead stub, or custom globals). scripts/generate_trampoline_batch.py's
+# build_give_item_block() lazily creates this item on the first starpad
+# grant and sets the matching bit; see STARPAD_MARKER_BIT there for the
+# per-planet index assignment, which must stay in sync with the reads in
+# k_sup_galaxymap_progression.nss/k_pla_actmap_progression.nss.
+PROGRESS_MARKER_RESREF = "ap_progress_marker"
+PROGRESS_MARKER_BASE_ITEM = "g_i_datapad001"  # same known-good icon/model choice as the bounty card
+
+
+def write_progress_marker_template(installation: Installation, override_dir: str) -> None:
+    """One shared item (not one per planet) -- see PROGRESS_MARKER_RESREF's
+    own comment for why this exists. Plot=1 so it can't be sold, dropped,
+    or destroyed, matching write_bounty_card_template's precedent in
+    patch_additional_enemies.py."""
+    src = installation.resource(PROGRESS_MARKER_BASE_ITEM, ResourceType.UTI)
+    if src is None:
+        sys.exit(f"vanilla {PROGRESS_MARKER_BASE_ITEM}.uti not found -- is --game-dir a real KOTOR install?")
+    uti = construct_uti(read_gff(src.data))
+    uti.resref = ResRef(PROGRESS_MARKER_RESREF)
+    uti.tag = PROGRESS_MARKER_RESREF
+    uti.name = LocalizedString.from_english("Progression Log")
+    uti.description = LocalizedString.from_english(
+        "A record of Progression System checkpoints you've cleared. Can't be sold, dropped, or destroyed.")
+    uti.plot = 1
+    uti.stack_size = 1
+    data = bytearray()
+    write_gff(dismantle_uti(uti), data)
+    with open(os.path.join(override_dir, f"{PROGRESS_MARKER_RESREF}.uti"), "wb") as f:
+        f.write(bytes(data))
+    print(f"  wrote Override/{PROGRESS_MARKER_RESREF}.uti")
+
 
 def apply_progression_checkpoint_wrappers(game_dir):
     """Deploys the 4 Progression System checkpoint wrappers (see
     PROGRESSION_CHECKPOINT_WRAPPERS above). Only called when
     progression_system is on. Returns the count successfully deployed."""
     install = Installation(game_dir)
+    write_progress_marker_template(install, os.path.join(game_dir, "Override"))
     deployed = 0
     for real_name, dev_basename in PROGRESSION_CHECKPOINT_WRAPPERS.items():
         if real_name in PROGRESSION_CHECKPOINT_NEEDS_ORIG:
-            res = install.resource(real_name, ResourceType.NCS)
-            if res is None:
-                print(f"  {real_name}: TRUE ORIGINAL NOT FOUND in installation -- skipping, "
+            # CHITIN ONLY -- install.resource() resolves through the
+            # override-aware precedence chain (Override > Modules > chitin)
+            # and would silently read back THIS SAME FUNCTION'S OWN prior
+            # wrapper deployment as if it were pristine on a second run,
+            # permanently corrupting apo_<name>_orig.ncs into a copy of the
+            # wrapper itself -- the exact same class of bug already caught
+            # and fixed in patch_loot_disturb.py's discover_chitin_
+            # templates(). Confirmed live: all 3 of these had exactly this
+            # corruption (apo_*_orig.ncs byte-identical to the deployed
+            # wrapper, both far smaller than the real chitin original),
+            # causing ExecuteScript("apo_<name>_orig", ...) to call the
+            # wrapper again instead of real vanilla logic once travel was
+            # actually granted.
+            orig_data = None
+            for chitin_res in install.chitin_resources():
+                if chitin_res.restype() == ResourceType.NCS and chitin_res.resname() == real_name:
+                    orig_data = chitin_res.data()
+                    break
+            if orig_data is None:
+                print(f"  {real_name}: TRUE ORIGINAL NOT FOUND in chitin -- skipping, "
                       "Progression System's gate for this script will NOT be applied.")
                 continue
             orig_deploy = os.path.join(OVERRIDE, f"apo_{real_name}_orig.ncs")
             with open(orig_deploy, "wb") as f:
-                f.write(res.data)
+                f.write(orig_data)
             print(f"  {real_name}: true original preserved -> {orig_deploy}")
         nss_path = os.path.join(SRC_DIR, f"{dev_basename}.nss")
         ncs_path = os.path.join(SRC_DIR, f"{dev_basename}.ncs")
@@ -597,7 +640,41 @@ def apply_progression_checkpoint_wrappers(game_dir):
     return deployed
 
 
+def restore_progression_checkpoint_wrappers(game_dir):
+    """Reverts the 3 gate-and-delegate checkpoint wrappers
+    (PROGRESSION_CHECKPOINT_NEEDS_ORIG) back to their preserved true
+    originals. Needed because these 3 are a static Override-file swap, not
+    something regenerated fresh per connected seed the way
+    ap_poll_shared.ncs/the make-jedi suppressor are -- confirmed live as a
+    real bug: a wrapper deployed for an earlier seed with
+    progression_system=True stayed deployed and kept blocking galaxy-map
+    travel even after reconnecting to a LATER seed with
+    progression_system=False, since main() below used to just print a
+    message and return in the "off" case without ever undoing a prior
+    "on" seed's deployment. k_ptar_sithpaper (the 4th checkpoint) is
+    deliberately excluded -- it gates on real item possession, not a
+    progression_system-specific marker, so it's already correct in every
+    mode and was never given an _orig to restore from (see its own file's
+    comment). Safe to call even if nothing was ever deployed -- silently
+    skips whichever _orig files aren't present."""
+    restored = 0
+    for real_name in PROGRESSION_CHECKPOINT_NEEDS_ORIG:
+        orig_path = os.path.join(OVERRIDE, f"apo_{real_name}_orig.ncs")
+        if not os.path.isfile(orig_path):
+            continue
+        deploy_path = os.path.join(OVERRIDE, f"{real_name}.ncs")
+        shutil.copy2(orig_path, deploy_path)
+        restored += 1
+        print(f"  {real_name}: reverted to true original (progression_system is off for this seed)")
+    return restored
+
+
 def restore():
+    # Checkpoint wrappers are an Override-file swap, not a module RIM edit,
+    # so they're not covered by the BACKUP_DIR loop below at all -- revert
+    # them too, same as main()'s progression_system=off path, so
+    # /ap_restore_all's "back to vanilla" promise actually holds for these.
+    restore_progression_checkpoint_wrappers(GAME_DIR)
     if not os.path.isdir(BACKUP_DIR):
         print("No backup directory found -- nothing to restore.")
         return
@@ -645,58 +722,54 @@ def _connected_progression_system() -> bool:
 
 
 def main():
+    # See this file's module docstring for why the Mod_OnAcquirItem-based
+    # loot-suppression mechanism below is retired in favor of
+    # scripts/patch_loot_disturb.py.
+    #
+    # What's LEFT here, still real and still needed: Sith Papers/Enviro
+    # Suit's Progression System gating (apply_progression_checkpoint_
+    # wrappers() below) never went through Mod_OnAcquirItem at all -- it's
+    # a completely separate "gate-and-delegate" Override-swap mechanism
+    # (see PROGRESSION_CHECKPOINT_WRAPPERS above), so main() now ONLY
+    # drives that, nothing else. Sith Armor/Shield Codes' progression
+    # suppression (the 2 items that DID go through Mod_OnAcquirItem) has
+    # moved to patch_loot_disturb.py's own progression_resrefs handling,
+    # verified against their real corpse/container acquisition point.
+    #
+    # --restore still works (restores any of this file's PAST RIM edits
+    # from backup) but nothing here creates new RIM edits anymore --
+    # checkpoint wrappers are Override-swap only, same as before.
     if "--restore" in sys.argv:
         restore()
         return
-
-    if "--force" not in sys.argv:
-        mode = _connected_seed_mode()
-        if mode is None:
-            print(f"No usable data at {SLOT_DATA_PATH} -- connect once with KotorClient.py first "
-                  "(see README.md Step 6), which writes your seed's real loot_mode there on every "
-                  "successful Connect. Otherwise, pass --force with a manually-set mode.")
-            return
-        print(f"Connected seed resolves to mode={mode!r} -- applying.")
-    else:
-        mode = _arg_value("--mode", None)
-        if mode == "normal":
-            mode = "skip"
-        if mode not in ("destroy", "bonus", "replace", "skip"):
-            print("--force given but no valid --mode=<destroy|bonus|replace|skip> -- nothing to apply.")
-            return
 
     if "--force" in sys.argv:
         progression_system = "--progression-system" in sys.argv
     else:
         progression_system = _connected_progression_system()
 
-    if mode == "skip" and not progression_system:
-        print("Mode is 'skip' (randomize_loot=False, allow_normal_loot=True) and Progression System "
-              "is off -- nothing to wire up, vanilla loot is left alone.")
+    if not progression_system:
+        restored = restore_progression_checkpoint_wrappers(GAME_DIR)
+        print("Progression System is off -- nothing for this file to do any more "
+              "(loot suppression itself now lives in patch_loot_disturb.py)."
+              + (f" Reverted {restored} stale checkpoint wrapper(s) from a prior seed." if restored else ""))
         return
 
+    deployed = apply_progression_checkpoint_wrappers(GAME_DIR)
+    print(f"Progression System checkpoint wrappers: {deployed}/{len(PROGRESSION_CHECKPOINT_WRAPPERS)} deployed.")
+    return
+
+    # Everything below this point is RETIRED/unreachable -- kept in place
+    # (not deleted) since build_handler_body()/build_random_pick_fn() are
+    # the real, documented origin of patch_loot_disturb.py's own handler
+    # logic (deliberately adapted, not copied verbatim -- see that file's
+    # docstring for what changed and why). Archive, not dead weight to be
+    # confused with live behavior.
     with open(GEAR_JSON, encoding="utf-8") as f:
         gear = json.load(f)
-    # 2026-09-08: only 2 of the 8 Progression System items (Sith Armor,
-    # Shield Codes) actually flow through Mod_OnAcquirItem -- ALWAYS
-    # suppressed at their vanilla acquisition point when progression_system
-    # is on, completely independent of loot_mode/the whitelist below (see
-    # build_handler_body's own comment on this). Empty list (no-op) when
-    # the option is off, same as before this feature existed. The other 6
-    # items are handled by apply_progression_checkpoint_wrappers() below,
-    # a completely separate mechanism (their real gates aren't
-    # Mod_OnAcquirItem pickups at all).
-    progression_resrefs = sorted(
-        r for r, v in gear.items() if v.get("progression_suppression") == "1"
-    ) if progression_system else []
-    if progression_system:
-        print(f"Progression System is on -- {len(progression_resrefs)} quest item(s) always-suppressed "
-              f"at their vanilla acquisition point.")
-        deployed = apply_progression_checkpoint_wrappers(GAME_DIR)
-        print(f"Progression System checkpoint wrappers: {deployed}/{len(PROGRESSION_CHECKPOINT_WRAPPERS)} deployed.")
-    # NARROWED 2026-08-29 (second attempt) to quest_dependent-only.
+    # NARROWED (second attempt) to quest_dependent-only.
     #
-    # First attempt (same day, earlier) narrowed this the same way and was
+    # First attempt narrowed this the same way and was
     # REVERTED after live testing found a real structural conflict:
     # build_random_pick_fn's GetRandomLootItem() loot pool is drawn from
     # shop_randomize items, and every included_as_item item is ALSO

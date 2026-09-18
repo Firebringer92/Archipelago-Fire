@@ -11,12 +11,11 @@ KotorClient.py's SLOT_DATA_PATH/write_slot_data_for_patch_scripts()).
 You must connect once with KotorClient.py before running this (see
 README.md Step 6). This works identically whether you're hosting or
 joining someone else's multiworld -- neither needs local access to a
-generated AP_<seed>.zip at all (found broken 2026-09-04: the previous
-approach read the zip directly, which only ever existed on whichever
-machine ran Generate.py -- a joining player never has it, so this
-literally couldn't work for them before; it also didn't filter for THIS
-player's own slot, grabbing whichever slot's data happened to be read
-first in a multiworld with more than one KOTOR player).
+generated AP_<seed>.zip at all -- reading the zip directly would only
+ever work on whichever machine ran Generate.py, since a joining player
+never has it, and would need to filter for THIS player's own slot rather
+than grabbing whichever slot's data happened to be read first in a
+multiworld with more than one KOTOR player.
 
 Shares the same backup directory as patch_item_suppression.py
 (extender/backup/modules/) -- both scripts repack the same underlying

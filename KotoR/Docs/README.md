@@ -90,10 +90,23 @@ This mod repacks real game files in place — `modules\*.rim` and
 
 
 ## Other Notes
-Kotor on steam defaults to a windowed mode that is horrible. I suggest all players modify their settings text file that is stored in the swtor folder at "C:\Program Files (x86)\Steam\steamapps\common\swkotor". Find section for graphics and change the settings for FullScreen Mode to 0 and also add the following:
+Kotor on steam defaults to a fullscreen mode that is horrible. I suggest all players modify their settings text file that is stored in the swtor folder at "C:\Program Files (x86)\Steam\steamapps\common\swkotor". Find section for graphics and change the settings for FullScreen Mode to 0 and also add the following:
 AllowWindowedMode=1
 Width=1680
 Height=1050
+
+**If you crash, these are the two known culprits and they're both vanilla
+engine issues, not this mod** — worth ruling out before reporting a bug:
+- **Crash during a cutscene/dialogue, especially with a lot of VO
+  playing:** a known old-engine audio crash (Miles Sound System, the same
+  library other 2003-era BioWare games use) on modern multi-core CPUs.
+  Try the Steam launch option `-affinity 0` (right-click KOTOR in your
+  Steam library → Properties → General → Launch Options) to restrict it
+  to one CPU core.
+- **Crash on Taris, especially in the Undercity:** looks like an Intel
+  integrated graphics driver issue. Try lowering or disabling dynamic
+  lighting/particle effects and anti-aliasing, or run in windowed mode
+  (see above).
 
 
 
@@ -111,7 +124,7 @@ For more technical details on how it all works refer to DESIGN.md
   files — see the backup section above before enabling either.
 - A handful of doors are structurally impossible to randomize and are left on their
   vanilla exit automatically. This is expected. Not a bug
-= Door-randomization also doesn't begin until after tutorial (Endar Spire) until you leave Apartments on Taris.
+- Door-randomization also doesn't begin until after tutorial (Endar Spire) until you leave Apartments on Taris.
   So you will go from Endar Spire > Hideout > Apartments and then next door is randomed. 
   additionally while game is set to try to couple doors, some may not be directly linked back ot previous. This is done to ensure you always are allowed to go to all areas and are never soft locked from reaching an area. If you have suggestions on a mapping system that is less random and more sane let me know of how  we can better map this. 
   Ebon hawk travel to all planets is enabled automatically in this mode to ensure you can still use it as a hub
@@ -124,12 +137,14 @@ For more technical details on how it all works refer to DESIGN.md
   zero known Force Powers yet (our grant mechanism doesn't run the normal
   "learn initial powers" step a real level-up would), and the Force
   Powers screen isn't built to render a completely empty list for a
-  character it considers Jedi. **Workaround: don't open that screen for a
-  companion who was just converted until they've leveled up at least
-  once** (companion leveling happens only through real combat XP —
-  confirmed no scriptable way to grant a companion levels or XP directly
-  in this engine build). No code fix yet; this is still very real. Note will only happen when
-  `companion_class`'s `jedi_companion`/`randomize_all` modes are selected. DO NOT OPEN FORCE POWERS MENU ON COMPANION
+  character it considers Jedi. DO NOT OPEN FORCE POWERS MENU ON COMPANION THATS LEVLE 1
+- `jedi_start: granted` fixes a real, confirmed KOTOR 1 engine bug for the
+  4 cutscenes known to trigger it — an undiscovered 5th could still hang
+  at a "CutStart" object. If that happens, a full game restart (not just
+  reloading) is needed regardless, so it isn't a lost save.
+- `progression_system` can only be combined with `goal: defeat_malak` or
+  `goal: reach_leviathan` — enforced at generation time, so an invalid
+  combination just fails to generate rather than shipping a broken seed.
 - Only tested against the Steam release of KOTOR 1.
 
 ## Credits

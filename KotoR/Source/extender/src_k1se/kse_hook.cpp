@@ -1650,17 +1650,141 @@ static void KseField_Core(void* statBlock, int nFieldType, int nValue)
 // duplicate-grant test confirmed this would otherwise be
 // harmless anyway, but skipping keeps count/capacity honest). Remove
 // safely no-ops if the id isn't found, as explicitly required.
-static void KseForcePowerOp(void* statBlock, int nFieldType, int spellId)
+//
+// CATEGORY IS A CLASS SLOT, NOT A FIXED CONSTANT (found 2026-09-20): this
+// "category table" IS the real classes[] array (LaneDibello/Kotor-Patch-
+// Manager's AddressDatabases/kotor1_0_3.db confirms KSE_STATS_CATEGORY_
+// TABLE_OFF/STRIDE are byte-identical to CSWSCreatureStats.classes's own
+// offset/stride, and known_spells sits at offset 0 of each ClassInfo entry,
+// matching this record's ptr/count/cap layout exactly). The OLD hardcoded
+// KSE_FORCE_POWER_CATEGORY=1 was only ever confirmed correct for a
+// naturally-leveled character (Jedi taken as a genuine SECOND class via the
+// Dantooine-trials path, base class staying in slot 0) -- but this
+// project's OWN class_guardian/class_sentinel admin arms overwrite slot 0
+// directly instead, and Bastila/Jolee/Juhani start Jedi-only in slot 0 too.
+// A fixed category is wrong for one of those two real, common cases no
+// matter which value is picked. Fixed by resolving which slot ACTUALLY
+// holds a Jedi class fresh, every call, from a live CLASS0_TYPE/CLASS1_TYPE
+// read -- never cached, never assumed from a prior write, since which slot
+// is Jedi depends on how THIS specific character became Jedi.
+static int KseResolveJediClassSlot(void* statBlock, const char** why)
 {
+    int class0 = (int)*(reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CLASS0_TYPE_OFF);
+    int class1 = (int)*(reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CLASS1_TYPE_OFF);
+    bool isJedi0 = (class0 == 3 || class0 == 4 || class0 == 5);   // Guardian/Consular/Sentinel
+    bool isJedi1 = (class1 == 3 || class1 == 4 || class1 == 5);
+    if (isJedi0 && isJedi1) {
+        // Never legitimately both -- a creature has at most one Jedi class.
+        // Prefer slot 0 rather than refuse outright, but log loudly: this
+        // means something else already wrote a nonsense class arrangement.
+        Log("K1SE ANOMALY forcepowerop: BOTH class slots read as Jedi (class0=%d class1=%d) -- "
+            "preferring slot 0, but this class arrangement should not exist", class0, class1);
+        return 0;
+    }
+    if (isJedi0) return 0;
+    if (isJedi1) return 1;
+    *why = "neither class slot is a Jedi class";
+    return -1;
+}
+
+// ADD side EXPERIMENTALLY REWIRED (2026-09-20) to call the engine's own real
+// AddKnownSpell function instead of the raw array append below -- see
+// offsets.h's KSE_ADD_KNOWN_SPELL_RVA comment for the address source and
+// exactly what this is testing (whether the PC-specific persistence gap
+// already confirmed for feats -- KotorClient.py's additional_feats
+// research -- also affects force powers, UNCONFIRMED either way, not
+// assumed). classId is now the SAME resolved Jedi slot the array-record
+// lookup below uses, not a hardcoded guess. The duplicate/capacity
+// pre-checks below are KEPT as a safety net even though the real function
+// likely does its own validation (same reasoning AddFeat's own
+// real-function call already relies on) -- redundant is fine, silent is
+// not. REMOVE is untouched: no confirmed real engine RemoveKnownSpell
+// exists in the same address database, and shift-and-decrement removal
+// from a known array isn't the mechanism under test here.
+typedef void (__fastcall *KseAddKnownSpellFn)(void* thisptr, void* edx, unsigned char classId, unsigned long spellId);
+
+// REAL FIX, 2026-09-20 -- mirrors a successful server-side ADD into the
+// CLIENT-side CSWCCreatureStats too, via the confirmed-live chain: obj ->
+// GetClientObject() -> clientObj+KSE_HOLDER_CONTAINER_OFF -> client
+// CSWCCreatureStats* -> its own real AddKnownSpell. See offsets.h's
+// KSE_CLIENT_ADD_KNOWN_SPELL_RVA comment for the full confirmation
+// (a real memory-snapshot diff around Juhani learning Force Valor). This
+// is what the live hotbar/combat menu actually reads from -- the
+// server-side write alone (already correct, already confirmed to
+// persist) was never enough to make a grant hotbar-usable, since nothing
+// ever pushed it into this separate client-side mirror before now.
+// Best-effort: logs clearly and returns without failing the overall grant
+// if any step of this chain comes back null (confirmed to happen for the
+// PC specifically -- GetClientObject() returns null for the PC even
+// though it works for companions, a separate, still-unresolved gap) --
+// the server-side grant this function's caller already performed is real
+// and already persists either way.
+// Same typedef re-declared here (identical definition, legal in C++) so
+// this function -- defined earlier in the file than the diagnostic code
+// that originally introduced it -- can use it too, without reordering the
+// whole file's typedef layout.
+typedef void* (__fastcall *KseGetClientObjectFn)(void* thisptr, void* edx);
+
+static void KseSyncClientKnownSpell(void* obj, int jediSlot, int spellId)
+{
+    BYTE* base = KseImageBase();
+    KseGetClientObjectFn getClientObject = reinterpret_cast<KseGetClientObjectFn>(base + KSE_CREATURE_GETHOLDER_RVA);
+    void* clientObj = nullptr;
+    __try {
+        clientObj = getClientObject(obj, nullptr);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE SYNC: GetClientObject() faulted -- client-side mirror not updated for spell %d", spellId);
+        return;
+    }
+    if (!clientObj) {
+        // obj is the resolved SERVER object GetClientObject() was called
+        // on -- logging its address here gives a real, live pointer to
+        // chase in the next memory-diff pass (rather than only knowing
+        // the call failed) whenever this fires for the PC specifically.
+        Log("K1SE SYNC: GetClientObject() returned null for obj=%p -- client-side mirror not updated for spell %d "
+            "(confirmed PC-specific gap; server-side grant already succeeded and persists regardless)", obj, spellId);
+        return;
+    }
+    void* clientStats = nullptr;
+    __try {
+        clientStats = *reinterpret_cast<void**>(reinterpret_cast<BYTE*>(clientObj) + KSE_HOLDER_CONTAINER_OFF);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE SYNC: faulted reading client stats pointer -- client-side mirror not updated for spell %d", spellId);
+        return;
+    }
+    if (!clientStats) {
+        Log("K1SE SYNC: client stats pointer is null -- client-side mirror not updated for spell %d", spellId);
+        return;
+    }
+    KseAddKnownSpellFn clientAddKnownSpell =
+        reinterpret_cast<KseAddKnownSpellFn>(base + KSE_CLIENT_ADD_KNOWN_SPELL_RVA);
+    __try {
+        clientAddKnownSpell(clientStats, nullptr, (unsigned char)jediSlot, (unsigned long)spellId);
+        Log("K1SE SYNC: spell %d mirrored into client CSWCCreatureStats(classId=%d) at %p",
+            spellId, jediSlot, clientStats);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE SYNC: client AddKnownSpell() faulted for spell %d", spellId);
+    }
+}
+
+static void KseForcePowerOp(void* obj, void* statBlock, int nFieldType, int spellId)
+{
+    const char* slotWhy = "";
+    int jediSlot = KseResolveJediClassSlot(statBlock, &slotWhy);
+    if (jediSlot < 0) {
+        Log("K1SE ANOMALY forcepowerop: %s; no write performed for spell %d", slotWhy, spellId);
+        return;
+    }
+
     BYTE* record = reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CATEGORY_TABLE_OFF
-                 + KSE_FORCE_POWER_CATEGORY * KSE_STATS_CATEGORY_STRIDE;
+                 + jediSlot * KSE_STATS_CATEGORY_STRIDE;
     int* arrayPtr   = *reinterpret_cast<int**>(record + KSE_CATEGORY_PTR_OFF);
     int* countPtr   = reinterpret_cast<int*>(record + KSE_CATEGORY_COUNT_OFF);
     int  capacity   = *reinterpret_cast<int*>(record + KSE_CATEGORY_CAP_OFF);
     int  count      = *countPtr;
 
     if (!arrayPtr) {
-        Log("K1SE ANOMALY forcepowerop: known-powers array ptr null; no write");
+        Log("K1SE ANOMALY forcepowerop: known-powers array ptr null (slot=%d); no write", jediSlot);
         return;
     }
 
@@ -1671,30 +1795,411 @@ static void KseForcePowerOp(void* statBlock, int nFieldType, int spellId)
 
     if (nFieldType == KSE_FIELD_ADD_FORCE_POWER) {
         if (foundIndex >= 0) {
-            Log("K1SE SetCreatureField ADD_FORCE_POWER: spell %d already known at index %d; no-op",
-                spellId, foundIndex);
+            Log("K1SE SetCreatureField ADD_FORCE_POWER: spell %d already known at index %d (slot=%d); no-op",
+                spellId, foundIndex, jediSlot);
             return;
         }
         if (count >= capacity) {
-            Log("K1SE ANOMALY forcepowerop: known-powers list full (count=%d cap=%d); cannot add spell %d",
-                count, capacity, spellId);
+            Log("K1SE ANOMALY forcepowerop: known-powers list full (count=%d cap=%d slot=%d); cannot add spell %d",
+                count, capacity, jediSlot, spellId);
             return;
         }
-        arrayPtr[count] = spellId;
-        *countPtr = count + 1;
-        Log("K1SE SetCreatureField ADD_FORCE_POWER: spell %d added at index %d, count %d -> %d [write #%ld]",
-            spellId, count, count, count + 1, (long)InterlockedIncrement(&g_fieldWrites));
+        BYTE* base = KseImageBase();
+        KseAddKnownSpellFn addKnownSpell = reinterpret_cast<KseAddKnownSpellFn>(base + KSE_ADD_KNOWN_SPELL_RVA);
+        addKnownSpell(statBlock, nullptr, (unsigned char)jediSlot, (unsigned long)spellId);
+        Log("K1SE SetCreatureField ADD_FORCE_POWER: spell %d added via real AddKnownSpell(classId=%d) "
+            "[write #%ld]", spellId, jediSlot, (long)InterlockedIncrement(&g_fieldWrites));
+        // REAL FIX: mirror the same grant into the client-side stats
+        // object too -- see KseSyncClientKnownSpell's own comment. The
+        // server-side grant above already succeeded and persists
+        // regardless of whether this succeeds.
+        KseSyncClientKnownSpell(obj, jediSlot, spellId);
     } else { // KSE_FIELD_REMOVE_FORCE_POWER
         if (foundIndex < 0) {
-            Log("K1SE SetCreatureField REMOVE_FORCE_POWER: spell %d not known; no-op", spellId);
+            Log("K1SE SetCreatureField REMOVE_FORCE_POWER: spell %d not known (slot=%d); no-op", spellId, jediSlot);
             return;
         }
         for (int i = foundIndex; i < count - 1; i++) {
             arrayPtr[i] = arrayPtr[i + 1];
         }
         *countPtr = count - 1;
-        Log("K1SE SetCreatureField REMOVE_FORCE_POWER: spell %d removed from index %d, count %d -> %d [write #%ld]",
-            spellId, foundIndex, count, count - 1, (long)InterlockedIncrement(&g_fieldWrites));
+        Log("K1SE SetCreatureField REMOVE_FORCE_POWER: spell %d removed from index %d, count %d -> %d (slot=%d) [write #%ld]",
+            spellId, foundIndex, count, count - 1, jediSlot, (long)InterlockedIncrement(&g_fieldWrites));
+    }
+}
+
+// KOTOR AP ADDITION: absolute base-ability-score setters (STR/DEX/INT/WIS/
+// CHA), sharing host 688 rather than claiming a new opcode -- same reasoning
+// as KseForcePowerOp above. Calls the engine's own real CSWSCreatureStats
+// member function (byte-for-byte the same "call the engine's own function
+// via a __fastcall-with-dummy-edx thunk over a __thiscall target" pattern
+// already proven live for AddFeat/KseArrayAAddFn), NOT a raw offset poke --
+// see offsets.h's KSE_FIELD_SET_STR_BASE-family comment for why this exists
+// and where these 5 addresses came from. `this` is `block`, the SAME
+// resolved statBlock pointer AddFeat itself is called with (KseField_
+// StatBlock's own derivation), matching the confirmed-working precedent
+// exactly rather than guessing a different pointer for a new call site.
+typedef void (__fastcall *KseSetAbilityBaseFn)(void* thisptr, void* edx, unsigned char value);
+
+static void KseSetAbilityBase(void* statBlock, int nFieldType, int nValue)
+{
+    BYTE* base = KseImageBase();
+    uintptr_t rva;
+    const char* name;
+    switch (nFieldType) {
+    case KSE_FIELD_SET_STR_BASE: rva = KSE_SET_STR_BASE_RVA; name = "SET_STR_BASE"; break;
+    case KSE_FIELD_SET_DEX_BASE: rva = KSE_SET_DEX_BASE_RVA; name = "SET_DEX_BASE"; break;
+    case KSE_FIELD_SET_INT_BASE: rva = KSE_SET_INT_BASE_RVA; name = "SET_INT_BASE"; break;
+    case KSE_FIELD_SET_WIS_BASE: rva = KSE_SET_WIS_BASE_RVA; name = "SET_WIS_BASE"; break;
+    case KSE_FIELD_SET_CHA_BASE: rva = KSE_SET_CHA_BASE_RVA; name = "SET_CHA_BASE"; break;
+    default:
+        Log("K1SE ANOMALY field: nFieldType=%d not a known ability-base setter; no write", nFieldType);
+        return;
+    }
+    if (nValue < 0 || nValue > 255) {
+        Log("K1SE ANOMALY field: %s nValue=%d out of BYTE range; no write", name, nValue);
+        return;
+    }
+    KseSetAbilityBaseFn setter = reinterpret_cast<KseSetAbilityBaseFn>(base + rva);
+    setter(statBlock, nullptr, (unsigned char)nValue);
+    Log("K1SE SetCreatureField %s : -> %d [write #%ld]",
+        name, nValue, (long)InterlockedIncrement(&g_fieldWrites));
+}
+
+// CON's real engine setter takes an extra (int setHP) parameter the other
+// 5 abilities' setters don't -- see offsets.h's KSE_SET_CON_BASE_RVA
+// comment. Always passes setHP=TRUE so the engine recomputes Max HP
+// itself rather than this project inventing its own formula.
+typedef void (__fastcall *KseSetConBaseFn)(void* thisptr, void* edx, unsigned char value, int setHP);
+
+static void KseSetConBase(void* statBlock, int nValue)
+{
+    if (nValue < 0 || nValue > 255) {
+        Log("K1SE ANOMALY field: SET_CON_BASE nValue=%d out of BYTE range; no write", nValue);
+        return;
+    }
+    BYTE* base = KseImageBase();
+    KseSetConBaseFn setter = reinterpret_cast<KseSetConBaseFn>(base + KSE_SET_CON_BASE_RVA);
+    __try {
+        setter(statBlock, nullptr, (unsigned char)nValue, TRUE);
+        Log("K1SE SetCreatureField SET_CON_BASE : -> %d (setHP=TRUE) [write #%ld]",
+            nValue, (long)InterlockedIncrement(&g_fieldWrites));
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE ANOMALY field: SET_CON_BASE faulted calling real engine setter; no write");
+    }
+}
+
+// Reads the true base ability byte directly (never via NWScript's
+// GetAbilityScore, which has no base-only variant in this engine -- see
+// offsets.h's KSE_STATS_STR_BASE_OFF comment), adds nValue as a signed
+// delta, clamps to the BYTE range the real engine setter expects, then
+// calls that setter -- reuses KseSetAbilityBaseFn/KSE_SET_*_BASE_RVA,
+// the same ones the absolute-set fields use, just with a computed value.
+static void KseIncrementAbilityBase(void* statBlock, int nFieldType, int nValue)
+{
+    BYTE* base = KseImageBase();
+    uintptr_t rva, readOff;
+    const char* name;
+    switch (nFieldType) {
+    case KSE_FIELD_INCREMENT_STR_BASE: rva = KSE_SET_STR_BASE_RVA; readOff = KSE_STATS_STR_BASE_OFF; name = "INCREMENT_STR_BASE"; break;
+    case KSE_FIELD_INCREMENT_DEX_BASE: rva = KSE_SET_DEX_BASE_RVA; readOff = KSE_STATS_DEX_BASE_OFF; name = "INCREMENT_DEX_BASE"; break;
+    case KSE_FIELD_INCREMENT_INT_BASE: rva = KSE_SET_INT_BASE_RVA; readOff = KSE_STATS_INT_BASE_OFF; name = "INCREMENT_INT_BASE"; break;
+    case KSE_FIELD_INCREMENT_WIS_BASE: rva = KSE_SET_WIS_BASE_RVA; readOff = KSE_STATS_WIS_BASE_OFF; name = "INCREMENT_WIS_BASE"; break;
+    case KSE_FIELD_INCREMENT_CHA_BASE: rva = KSE_SET_CHA_BASE_RVA; readOff = KSE_STATS_CHA_BASE_OFF; name = "INCREMENT_CHA_BASE"; break;
+    default:
+        Log("K1SE ANOMALY field: nFieldType=%d not a known ability-base increment; no write", nFieldType);
+        return;
+    }
+    unsigned char currentBase = *reinterpret_cast<BYTE*>(reinterpret_cast<BYTE*>(statBlock) + readOff);
+    int newValue = (int)currentBase + nValue;
+    if (newValue < 0) newValue = 0;
+    if (newValue > 255) newValue = 255;
+    KseSetAbilityBaseFn setter = reinterpret_cast<KseSetAbilityBaseFn>(base + rva);
+    setter(statBlock, nullptr, (unsigned char)newValue);
+    Log("K1SE SetCreatureField %s : base %d + delta %d -> %d [write #%ld]",
+        name, currentBase, nValue, newValue, (long)InterlockedIncrement(&g_fieldWrites));
+}
+
+// Same shape as KseIncrementAbilityBase, routed through KseSetConBase
+// (setHP=TRUE) since CON's real engine setter takes the extra HP-recalc
+// parameter the other 5 don't.
+static void KseIncrementConBase(void* statBlock, int nValue)
+{
+    unsigned char currentBase = *reinterpret_cast<BYTE*>(reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CON_BASE_OFF);
+    int newValue = (int)currentBase + nValue;
+    if (newValue < 0) newValue = 0;
+    if (newValue > 255) newValue = 255;
+    Log("K1SE SetCreatureField INCREMENT_CON_BASE : base %d + delta %d -> %d",
+        currentBase, nValue, newValue);
+    KseSetConBase(statBlock, newValue);
+}
+
+// Reads the true base score, computes base - (base/2), and writes it via
+// the real setter -- entirely native, since the caller has no way to
+// compute this from the true base itself (see KseIncrementAbilityBase's
+// own comment on why NWScript can't read it directly). No-ops when the
+// base is already <= 1, same floor the equivalent NWScript-side check
+// used before this moved server-side.
+static void KseHalveAbilityBase(void* statBlock, int nFieldType)
+{
+    BYTE* base = KseImageBase();
+    uintptr_t rva, readOff;
+    const char* name;
+    switch (nFieldType) {
+    case KSE_FIELD_HALVE_STR_BASE: rva = KSE_SET_STR_BASE_RVA; readOff = KSE_STATS_STR_BASE_OFF; name = "HALVE_STR_BASE"; break;
+    case KSE_FIELD_HALVE_DEX_BASE: rva = KSE_SET_DEX_BASE_RVA; readOff = KSE_STATS_DEX_BASE_OFF; name = "HALVE_DEX_BASE"; break;
+    case KSE_FIELD_HALVE_INT_BASE: rva = KSE_SET_INT_BASE_RVA; readOff = KSE_STATS_INT_BASE_OFF; name = "HALVE_INT_BASE"; break;
+    case KSE_FIELD_HALVE_WIS_BASE: rva = KSE_SET_WIS_BASE_RVA; readOff = KSE_STATS_WIS_BASE_OFF; name = "HALVE_WIS_BASE"; break;
+    case KSE_FIELD_HALVE_CHA_BASE: rva = KSE_SET_CHA_BASE_RVA; readOff = KSE_STATS_CHA_BASE_OFF; name = "HALVE_CHA_BASE"; break;
+    default:
+        Log("K1SE ANOMALY field: nFieldType=%d not a known ability-base halve; no write", nFieldType);
+        return;
+    }
+    unsigned char currentBase = *reinterpret_cast<BYTE*>(reinterpret_cast<BYTE*>(statBlock) + readOff);
+    if (currentBase <= 1) {
+        Log("K1SE SetCreatureField %s : base %d already minimal; no-op", name, currentBase);
+        return;
+    }
+    int newValue = (int)currentBase - (currentBase / 2);
+    KseSetAbilityBaseFn setter = reinterpret_cast<KseSetAbilityBaseFn>(base + rva);
+    setter(statBlock, nullptr, (unsigned char)newValue);
+    Log("K1SE SetCreatureField %s : base %d -> %d [write #%ld]",
+        name, currentBase, newValue, (long)InterlockedIncrement(&g_fieldWrites));
+}
+
+// Floor division matching Python's `//` for negative numerators (C's `/`
+// truncates toward zero instead) -- needed since (con - 10) can be
+// negative for a very low CON.
+static int KseFloorDiv(int a, int b)
+{
+    int q = a / b;
+    int r = a % b;
+    if (r != 0 && ((r < 0) != (b < 0))) q--;
+    return q;
+}
+
+// classes.2da's own hitdie column, row order matching real CLASS_TYPE_*
+// values 0-5 (Soldier/Scout/Scoundrel/JediGuardian/JediConsular/
+// JediSentinel) -- the only classes a PC can hold, which is all
+// KSE_FIELD_HALVE_MAX_HP_VIA_CON needs.
+static int KseClassHitDie(int classType)
+{
+    switch (classType) {
+    case 0: return 10; // Soldier
+    case 1: return 8;  // Scout
+    case 2: return 6;  // Scoundrel
+    case 3: return 10; // Jedi Guardian
+    case 4: return 6;  // Jedi Consular
+    case 5: return 8;  // Jedi Sentinel
+    default: return 8;
+    }
+}
+
+// MaxHP = sum(class_level * hitdie) + floor((CON-10)/2) * total_level.
+// jediType/jediLevel are 0/-1 when the creature has no second class yet.
+static int KseComputeMaxHpFromCon(int baseClass, int baseLevel, int jediType, int jediLevel, int con)
+{
+    int hitdieSum = baseLevel * KseClassHitDie(baseClass);
+    if (jediType >= 0) hitdieSum += jediLevel * KseClassHitDie(jediType);
+    int totalLevel = baseLevel + jediLevel;
+    int conBonus = KseFloorDiv(con - 10, 2);
+    return hitdieSum + conBonus * totalLevel;
+}
+
+// Self-contained "Cut Max Health in Half" operation -- see offsets.h's
+// KSE_FIELD_HALVE_MAX_HP_VIA_CON comment for why this replaced a Python-
+// side calculation. Classifies each of the two class slots by its own
+// type byte rather than assuming slot 0/1 ordering (a base class and a
+// Jedi class can occupy either slot depending on how the character
+// became Jedi -- same reasoning as KseResolveJediClassSlot above), then
+// runs the same brute-force search over real CON values the removed
+// Python version used, preferring the larger decrease on an exact tie.
+static void KseHalveMaxHpViaCon(void* statBlock)
+{
+    int class0Type = (int)*(reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CLASS0_TYPE_OFF);
+    int class0Level = (int)*(reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CLASS0_LEVEL_OFF);
+    int class1Type = (int)*(reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CLASS1_TYPE_OFF);
+    int class1Level = (int)*(reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CLASS1_LEVEL_OFF);
+
+    int baseClass = -1, baseLevel = 0, jediType = -1, jediLevel = 0;
+    int types[2] = { class0Type, class1Type };
+    int levels[2] = { class0Level, class1Level };
+    for (int i = 0; i < 2; i++) {
+        if (types[i] >= 0 && types[i] <= 2) { baseClass = types[i]; baseLevel = levels[i]; }
+        else if (types[i] >= 3 && types[i] <= 5) { jediType = types[i]; jediLevel = levels[i]; }
+    }
+
+    int con = (int)*(reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_CON_BASE_OFF);
+    if (con <= 1 || baseLevel <= 0) {
+        Log("K1SE SetCreatureField HALVE_MAX_HP_VIA_CON : con=%d baseLevel=%d; no-op", con, baseLevel);
+        return;
+    }
+
+    int maxHpCurrent = KseComputeMaxHpFromCon(baseClass, baseLevel, jediType, jediLevel, con);
+    int target = KseFloorDiv(maxHpCurrent, 2);
+    int bestDecrease = 0;
+    int bestDiff = -1;
+    bool haveBest = false;
+    for (int newCon = con - 1; newCon >= 1; newCon--) {
+        int decrease = con - newCon;
+        int diff = KseComputeMaxHpFromCon(baseClass, baseLevel, jediType, jediLevel, newCon) - target;
+        if (diff < 0) diff = -diff;
+        if (!haveBest || diff < bestDiff || (diff == bestDiff && decrease > bestDecrease)) {
+            haveBest = true;
+            bestDiff = diff;
+            bestDecrease = decrease;
+        }
+    }
+
+    if (bestDecrease <= 0) {
+        Log("K1SE SetCreatureField HALVE_MAX_HP_VIA_CON : no viable decrease found; no-op");
+        return;
+    }
+
+    Log("K1SE SetCreatureField HALVE_MAX_HP_VIA_CON : con=%d maxHpBefore=%d target=%d -> decrease=%d",
+        con, maxHpCurrent, target, bestDecrease);
+    KseSetConBase(statBlock, con - bestDecrease);
+}
+
+// TEMPORARY RESEARCH DIAGNOSTIC -- see offsets.h's KSE_FIELD_DIAG_SCAN_
+// CLIENT_STATS comment. Scans the client object's own memory for a
+// pointer whose target starts with CSWCCreatureStats's own known vtable
+// address, to find the real client-stats offset empirically. Logs every
+// match found (there should be exactly one, at whatever offset the real
+// engine stores this pointer). Read-only -- never writes anything.
+//
+// REWIRED 2026-09-20: calls the engine's own real CSWSObject::
+// GetClientObject() (KSE_CREATURE_GETHOLDER_RVA -- old label, real
+// identity confirmed via Patch Manager's DB, see that constant's own
+// comment) instead of reading CSWSObject.client_object (offset 548)
+// directly. That raw read came back NULL live for the PC on the first
+// attempt -- calling the real function instead, in case it does more
+// than a plain field read or the field isn't populated the same way for
+// the locally-controlled player.
+typedef void* (__fastcall *KseGetClientObjectFn)(void* thisptr, void* edx);
+
+static void KseDiagScanClientStats(void* obj)
+{
+    BYTE* base = KseImageBase();
+    KseGetClientObjectFn getClientObject = reinterpret_cast<KseGetClientObjectFn>(base + KSE_CREATURE_GETHOLDER_RVA);
+    void* clientObj = nullptr;
+    __try {
+        clientObj = getClientObject(obj, nullptr);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE DIAGSCAN: GetClientObject() faulted -- cannot scan");
+        return;
+    }
+    if (!clientObj) {
+        Log("K1SE DIAGSCAN: GetClientObject() returned null -- cannot scan");
+        return;
+    }
+    Log("K1SE DIAGSCAN: client_object=%p, scanning offsets 0..2000 for vtable "
+        "0x%08x (both as a direct embedded value AND as a pointer target)",
+        clientObj, KSE_CLIENT_STATS_VTABLE_VA);
+    int matches = 0;
+    for (int off = 0; off <= 2000; off += 4) {
+        BYTE* slot = reinterpret_cast<BYTE*>(clientObj) + off;
+        __try {
+            // Case A: CSWCCreatureStats is EMBEDDED directly in the client
+            // creature object (not pointed to) -- its own vtable would then
+            // be a direct 4-byte value at this offset, not something to
+            // dereference through first.
+            unsigned long direct = *reinterpret_cast<unsigned long*>(slot);
+            if (direct == KSE_CLIENT_STATS_VTABLE_VA) {
+                Log("K1SE DIAGSCAN: DIRECT MATCH at client_object+0x%03x (embedded vtable)", off);
+                matches++;
+                continue;
+            }
+            // Case B: a separate pointer TO a heap-allocated CSWCCreatureStats
+            // -- the original theory, dereference once more.
+            void* candidate = *reinterpret_cast<void**>(slot);
+            if (!candidate) continue;
+            uintptr_t addr = reinterpret_cast<uintptr_t>(candidate);
+            if (addr < 0x10000 || addr > 0x7fffffff) continue;
+            unsigned long firstBytes = *reinterpret_cast<unsigned long*>(candidate);
+            if (firstBytes == KSE_CLIENT_STATS_VTABLE_VA) {
+                Log("K1SE DIAGSCAN: POINTER MATCH at client_object+0x%03x -> %p (vtable confirmed)", off, candidate);
+                matches++;
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            // Unmapped/invalid memory at this offset -- skip, not a crash.
+        }
+    }
+    Log("K1SE DIAGSCAN: scan complete, %d match(es) found", matches);
+
+    // Neither embedded-value nor pointer-to search found the stats object as
+    // plain data -- next candidate is a VIRTUAL FUNCTION getter, matching
+    // how the server side already does this (KSE_VT_GETSTATS_OFF). SAFE
+    // version: read-only dump of the object's own vtable slot VALUES (pure
+    // memory reads, calls nothing) -- cross-referencing which named function
+    // occupies each slot happens externally against Patch Manager's own
+    // function database, not by blindly invoking unknown functions here.
+    // Only once a specific slot is externally identified as a confirmed
+    // zero-argument getter should a real call ever be attempted.
+    void* vtbl = nullptr;
+    __try {
+        vtbl = *reinterpret_cast<void**>(clientObj);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE DIAGSCAN: could not read client_object's own vtable pointer");
+        return;
+    }
+    if (!vtbl) {
+        Log("K1SE DIAGSCAN: client_object's vtable pointer is null");
+        return;
+    }
+    Log("K1SE DIAGSCAN: dumping vtable slots 0..80 (read-only, no calls) at %p", vtbl);
+    for (int slot = 0; slot < 80; slot++) {
+        __try {
+            void* fn = reinterpret_cast<void**>(vtbl)[slot];
+            Log("K1SE DIAGSCAN: vtable[%2d] (off 0x%02x) = %p", slot, slot * 4, fn);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            Log("K1SE DIAGSCAN: vtable[%2d] read faulted -- stopping dump", slot);
+            break;
+        }
+    }
+    Log("K1SE DIAGSCAN: vtable dump complete");
+}
+
+// PIVOT DIAGNOSTIC -- see offsets.h's KSE_FIELD_DIAG_CALL_GET_SELF_FORCE_
+// POWERS comment. Calls the real, non-virtual CSWCCreature::
+// GetSelfForcePowers(CExoArrayList* outList) directly (this project's own
+// established "call the real engine function by address" pattern, same as
+// AddFeat/AddKnownSpell/Set*Base), with a fresh empty CExoArrayList on the
+// stack ({ptr=null, count=0, capacity=0} -- the same 12-byte shape already
+// proven for the force-power category record). Logs whatever the function
+// populates: if the granted power's id shows up, the underlying data is
+// already correct and the real hotbar bug is a UI-refresh/cache issue, not
+// a missing client-side sync.
+struct KseExoArrayListShape { void* ptr; int count; int capacity; };
+typedef void (__fastcall *KseGetSelfForcePowersFn)(void* thisptr, void* edx, KseExoArrayListShape* outList);
+
+static void KseDiagCallGetSelfForcePowers(void* clientObj)
+{
+    BYTE* base = KseImageBase();
+    KseGetSelfForcePowersFn getSelfForcePowers =
+        reinterpret_cast<KseGetSelfForcePowersFn>(base + KSE_GET_SELF_FORCE_POWERS_RVA);
+    KseExoArrayListShape outList = { nullptr, 0, 0 };
+    __try {
+        getSelfForcePowers(clientObj, nullptr, &outList);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE DIAGSCAN: GetSelfForcePowers() faulted");
+        return;
+    }
+    Log("K1SE DIAGSCAN: GetSelfForcePowers() returned ptr=%p count=%d capacity=%d",
+        outList.ptr, outList.count, outList.capacity);
+    if (!outList.ptr || outList.count <= 0) {
+        Log("K1SE DIAGSCAN: nothing to dump (empty or null list)");
+        return;
+    }
+    int dumpCount = outList.count < 40 ? outList.count : 40;
+    __try {
+        int* asInts = reinterpret_cast<int*>(outList.ptr);
+        for (int i = 0; i < dumpCount; i++) {
+            Log("K1SE DIAGSCAN: GetSelfForcePowers()[%d] (as int) = %d (0x%08x)",
+                i, asInts[i], asInts[i]);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE DIAGSCAN: faulted while dumping list contents");
     }
 }
 
@@ -1723,10 +2228,81 @@ extern "C" int __stdcall KseSetCreatureField(int argCount)
         return 0;
     }
 
+    if (nFieldType == KSE_FIELD_DIAG_SCAN_CLIENT_STATS) {
+        void* obj = KseField_Obj(objId, &why);
+        if (!obj) { Log("K1SE ANOMALY field: %s; no scan performed", why); return 0; }
+        KseDiagScanClientStats(obj);
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_DIAG_CALL_GET_SELF_FORCE_POWERS) {
+        void* obj = KseField_Obj(objId, &why);
+        if (!obj) { Log("K1SE ANOMALY field: %s; no call performed", why); return 0; }
+        BYTE* base = KseImageBase();
+        KseGetClientObjectFn getClientObject = reinterpret_cast<KseGetClientObjectFn>(base + KSE_CREATURE_GETHOLDER_RVA);
+        void* clientObj = nullptr;
+        __try {
+            clientObj = getClientObject(obj, nullptr);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            Log("K1SE DIAGSCAN: GetClientObject() faulted -- cannot call GetSelfForcePowers");
+            return 0;
+        }
+        if (!clientObj) {
+            Log("K1SE DIAGSCAN: GetClientObject() returned null -- cannot call GetSelfForcePowers");
+            return 0;
+        }
+        KseDiagCallGetSelfForcePowers(clientObj);
+        return 0;
+    }
+
     if (nFieldType == KSE_FIELD_ADD_FORCE_POWER || nFieldType == KSE_FIELD_REMOVE_FORCE_POWER) {
+        void* obj = KseField_Obj(objId, &why);
+        if (!obj) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
         void* block = KseField_StatBlock(objId, &why);
         if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
-        KseForcePowerOp(block, nFieldType, nValue);
+        KseForcePowerOp(obj, block, nFieldType, nValue);
+        return 0;
+    }
+
+    if (nFieldType >= KSE_FIELD_SET_STR_BASE && nFieldType <= KSE_FIELD_SET_CHA_BASE) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        KseSetAbilityBase(block, nFieldType, nValue);
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_SET_CON_BASE) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        KseSetConBase(block, nValue);
+        return 0;
+    }
+
+    if (nFieldType >= KSE_FIELD_INCREMENT_STR_BASE && nFieldType <= KSE_FIELD_INCREMENT_CHA_BASE) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        KseIncrementAbilityBase(block, nFieldType, nValue);
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_INCREMENT_CON_BASE) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        KseIncrementConBase(block, nValue);
+        return 0;
+    }
+
+    if (nFieldType >= KSE_FIELD_HALVE_STR_BASE && nFieldType <= KSE_FIELD_HALVE_CHA_BASE) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        KseHalveAbilityBase(block, nFieldType);
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_HALVE_MAX_HP_VIA_CON) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        KseHalveMaxHpViaCon(block);
         return 0;
     }
 

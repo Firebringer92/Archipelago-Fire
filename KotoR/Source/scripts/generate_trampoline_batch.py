@@ -45,6 +45,48 @@ NWNNSSCOMP = resolve_nwnnsscomp()
 _SLOT_DATA_PATH = os.path.join(SRC_DIR, "_slot_data.json")
 
 
+def _connected_galactic_shop() -> bool:
+    if not os.path.isfile(_SLOT_DATA_PATH):
+        return False
+    try:
+        with open(_SLOT_DATA_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return bool(data.get("galactic_shop", False))
+    except Exception:
+        return False
+
+
+_GALACTIC_SHOP_ON = _connected_galactic_shop()
+
+# Permanent-object spawns that must survive every regeneration of an
+# area's OnEnter trampoline -- this script rebuilds the target area's
+# trampoline from scratch on every real arm delivery, so a permanent
+# addition has to live here (and in generate_area_trampolines.py's own
+# copy of this same dict), never hand-edited into a generated .nss.
+#
+# The AP Vendor's own spawn is gated on Options.py's GalacticShop (the
+# same option that drives the Void Trade cargo-hold crates via
+# patch_galactic_shop.py) -- selecting Galactic Shop gets you both the
+# trade crates AND the vendor NPC together, ungated for every purchase
+# category (per-item/per-category gating on receiving a specific AP item
+# is a real, deliberately deferred follow-up, not built here). Read the
+# same way _connected_new_companion() reads its own per-seed flag --
+# see that function's own comment for why this is safe to compute once
+# at module-parse time rather than per-call.
+AREA_PERMANENT_SPAWNS = {
+    "ebo_m12aa": [
+        'if (!GetIsObjectValid(GetObjectByTag("ap_vendor_npc")))',
+        '{',
+        '    CreateObject(OBJECT_TYPE_CREATURE, "ap_vendor_npc", Location(Vector(55.5, 36.5, 1.80), 0.0));',
+        '}',
+    ],
+} if _GALACTIC_SHOP_ON else {}
+
+
+def permanent_spawn_lines_for(base, indent):
+    return [f"{indent}{stmt}" for stmt in AREA_PERMANENT_SPAWNS.get(base, [])]
+
+
 def _connected_new_companion() -> bool:
     if not os.path.isfile(_SLOT_DATA_PATH):
         return False
@@ -68,13 +110,15 @@ _USE_NEW_COMPANION = _connected_new_companion()
 # needs to know quest_dependent tags at CODEGEN time to bake an exemption
 # check directly into the generated NWScript (see that branch's own
 # docstring for why -- avoids ever re-introducing the 512-byte inventory-
-# report string limit this project hit live). Same packaged-vs-dev-checkout
-# fallback as patch_item_suppression.py/patch_additional_enemies.py: a real
-# PlayerBundle install only ever has the packaged copy alongside scripts/,
-# a dev checkout only has the real Archipelago/worlds/kotor/ source.
+# report string limit this project hit live). Same three-location fallback
+# as patch_item_suppression.py/patch_additional_enemies.py: old bundled
+# location, dev checkout's real Archipelago/worlds/kotor/ source, then the
+# current PlayerBundle location (worlds/kotor/ at the bundle root).
 GEAR_JSON = os.path.join(REPO_ROOT, "scripts", "gear_items.json")
 if not os.path.isfile(GEAR_JSON):
     GEAR_JSON = os.path.join(REPO_ROOT, "Archipelago", "worlds", "kotor", "gear_items.json")
+if not os.path.isfile(GEAR_JSON):
+    GEAR_JSON = os.path.join(REPO_ROOT, "worlds", "kotor", "gear_items.json")
 try:
     with open(GEAR_JSON, encoding="utf-8") as _f:
         _GEAR = json.load(_f)
@@ -367,9 +411,18 @@ APPLIES = {
         # never cleared the pending queue -- confirmed: it silently
         # re-fires on every single area transition indefinitely once
         # received, until caught.
+        # REWRITTEN to an absolute KSE_SetCreatureField SET instead of
+        # ApplyEffectToObject + EffectAbilityIncrease -- see arms 27-31's own
+        # comment (same file) for the full reasoning: the old Effect-based
+        # approach stacks a new effect object every single firing, and this
+        # arm is specifically designed to fire N times in a row for a "+N"
+        # starting preset, which is exactly the repeated-firing pattern that
+        # exhausted a real character's stacked-effect budget live. Same "+1
+        # per firing" external behavior, just reading the live current value
+        # and writing current+1 as an absolute base instead of stacking.
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_CHARISMA);',
-        'ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityIncrease(ABILITY_CHARISMA, 1), oPC);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_CHA_BASE(), nBefore + 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_CHARISMA);',
         'KSE_Diag(92, "AP|APPLIED|grant_test_ability|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
@@ -498,22 +551,36 @@ APPLIES = {
     ]),
     # Ability-score increases 27-31 -- same shape as grant_test_ability (18,
     # Charisma) above, covering the remaining 5 abilities for the starting-
-    # abilities option. Deliberately increment-only (matching how
-    # grant_test_ability already works) rather than an exact-value setter --
-    # KOTOR has no native "set ability score" call, only relative Effect-based
-    # increases, so starting-ability presets are built by firing N of these,
-    # not by clamping to a target the way set_xp/set_credits do.
+    # abilities option. Increment-only (fire N times for a "+N" preset,
+    # matching how grant_test_ability already works) -- unlike set_xp/
+    # set_credits there's no single "clamp to target" call site, since each
+    # firing only knows "add one more," not the eventual total.
+    #
+    # 4 of 5 REWRITTEN to an absolute KSE_SetCreatureField SET instead of
+    # ApplyEffectToObject + EffectAbilityIncrease -- same reasoning as
+    # grant_test_ability/the 5 ability traps: the old approach stacks a new
+    # effect object every firing, and firing N times in a row for a preset
+    # is exactly the repeated pattern that exhausted a real character's
+    # stacked-effect budget live (confirmed by the tester's own follow-up:
+    # equipping a real vanilla +DEX item afterward produced no change either
+    # -- the ability's modifier-effect slot was completely full, not just
+    # this project's own traps/grants being blocked). Same "+1 per firing"
+    # external behavior, just reading the live current value and writing
+    # current+1 as an absolute base instead of stacking. CONSTITUTION (29)
+    # deliberately NOT converted -- see offsets.h's KSE_FIELD_SET_STR_BASE-
+    # family comment for why CON needs its own Max-HP-interaction decision
+    # first, same as the reduce_* traps.
     27: ("ability_strength", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_STRENGTH);',
-        'ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityIncrease(ABILITY_STRENGTH, 1), oPC);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_STR_BASE(), nBefore + 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_STRENGTH);',
         'KSE_Diag(58, "AP|APPLIED|ability_strength|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
     28: ("ability_dexterity", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_DEXTERITY);',
-        'ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityIncrease(ABILITY_DEXTERITY, 1), oPC);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_DEX_BASE(), nBefore + 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_DEXTERITY);',
         'KSE_Diag(59, "AP|APPLIED|ability_dexterity|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
@@ -527,14 +594,14 @@ APPLIES = {
     30: ("ability_intelligence", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_INTELLIGENCE);',
-        'ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityIncrease(ABILITY_INTELLIGENCE, 1), oPC);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_INT_BASE(), nBefore + 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_INTELLIGENCE);',
         'KSE_Diag(61, "AP|APPLIED|ability_intelligence|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
     31: ("ability_wisdom", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_WISDOM);',
-        'ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityIncrease(ABILITY_WISDOM, 1), oPC);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_WIS_BASE(), nBefore + 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_WISDOM);',
         'KSE_Diag(62, "AP|APPLIED|ability_wisdom|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
@@ -629,44 +696,37 @@ APPLIES = {
     # current-HP native behavior relevant to real features is now
     # confirmed. Archived at extender/research_archive/
     # test_hp_fp_alignment_arms_2026-09-06.py.txt.
-    51: ("test_grant_active_feat", [
-        # TEMPORARY: live verification of whether granting an
-        # ACTIVE/hotbar combat feat via KSE_GrantFeatArrayA (already
-        # proven for PASSIVE feats only -- the 4 mandatory Jedi feats) also
-        # makes it genuinely USABLE (hotbar-addable), not just present on
-        # the character sheet. Blocks the planned Feats [Add/Remove]
-        # equipment-access feature's "ability" pool, which includes real
-        # active feats (Critical Strike, Flurry, Rapid Shot, Power Attack,
-        # etc.). Grants Critical Strike (feat id
-        # 8, a level-1 Scoundrel entitlement) to the PC regardless of
-        # class, since the point is only whether the GRANT mechanism
-        # works for an active feat, not whether the PC would normally
-        # have it. User must check in-game (combat feats / hotbar screen)
-        # whether it shows up as a usable ability, not just log output.
-        'object oPC = GetFirstPC();',
-        'int nHasBefore = GetHasFeat(8, oPC);',
-        'KSE_GrantFeatArrayA(8, oPC);',
-        'int nHasAfter = GetHasFeat(8, oPC);',
-        'KSE_Diag(121, "AP|APPLIED|test_grant_active_feat|hadBefore=" + IntToString(nHasBefore) + "|hasAfter=" + IntToString(nHasAfter));',
-    ]),
-    52: ("test_resolve_item", [
-        # TEMPORARY research arm -- resolves the "Parts Pile" container
-        # (partpile001, tag "PartPile") directly by GetObjectByTag instead
-        # of a hardcoded object id. This sidesteps the OnOpen/
-        # module-instance-caching problem entirely -- this arm is a fresh
-        # script execution triggered via /ap_apply, not a placeable event
-        # tied to a template that was already loaded before an Override
-        # edit landed, so no new save/relaunch is required. Just re-run
-        # /ap_apply test_resolve_item while standing near the container.
-        # Retire (leave the gap) once this research concludes. Result logs
-        # to kse.log as
-        # "K1SE RESOLVEITEM source=object-arg objFromArg=<id> ... -> obj=<ptr>
-        # type=<n> qty=<n>" (or a failure reason) -- read that directly,
-        # this arm's own KSE_Diag call just marks that it fired.
-        'object oPartPile = GetObjectByTag("PartPile");',
-        'KSE_ResolveItemId(oPartPile, 0, 0);',
-        'KSE_Diag(158, "AP|APPLIED|test_resolve_item|tag=PartPile");',
-    ]),
+    # 51 (test_grant_active_feat) RETIRED -- CONFIRMED NEGATIVE, 2026-09-19,
+    # via the Archipelago Vendor's real Train Feat option (not this arm
+    # directly, but the same question, same underlying native): granting
+    # Flurry (an active/toggle combat feat) to the PC via
+    # KSE_GrantFeatArrayA logged as fired (KSE_Diag confirmed, credits
+    # deducted) but the feat did NOT appear in the character sheet's
+    # trained/usable feats list, and did not work in real combat against
+    # a live enemy. Retested after a REAL area transition (not just
+    # closing/reopening the menu) -- no change. Same shape confirmed for
+    # Force Powers: KSE_SetCreatureField's ADD_FORCE_POWER field granted
+    # Resist Energy I (a real, non-cut power, confirmed via spells.2da),
+    # logged as fired, but never appeared in the Force Powers menu either,
+    # also unaffected by an area transition. See FutureDesign.md's
+    # "Archipelago Vendor" section for the full research trail and next
+    # steps (a save+reload test, and a promising unused-native lead in
+    # offsets.h's KSE_CONTAINER_FEATLIST_OFF/KSE_LIST_FEAT_ADD_RVA family
+    # -- reverse-engineered but never wired into the shipping grant path).
+    # Passive feats (weapon/armor profs, Implant Level 1, Sneak Attack I,
+    # Scoundrel's Luck, Force Focus, Force Immunity: Fear) are NOT
+    # affected -- confirmed working via this exact native elsewhere in
+    # the project, no hotbar/quickbar slot needed for those.
+    # 52 (test_resolve_item) RETIRED -- its later repurposing (proving out
+    # the Archipelago Vendor's spawn-a-real-NPC dialogue mechanism) is
+    # concluded: the real Vendor is fully built and shipped. See
+    # DEVELOPMENT_HISTORY.md's Vendor section for the real feature.
+    # 53 (diag_scan_client_stats) RETIRED -- the client-stats offset
+    # question it existed to answer is resolved and shipped (the real
+    # force-power client-mirror-sync fix). See DEVELOPMENT_HISTORY.md.
+    # 54 (test_grant_juhani_power) RETIRED -- confirmed the client-mirror-
+    # sync fix works end to end via a granted (not just naturally learned)
+    # power. See DEVELOPMENT_HISTORY.md's Vendor section.
 }
 
 
@@ -1337,12 +1397,14 @@ def build_trap_block(trap_type, params_str):
     KSE_SetCredits (credits), KSE_SetCreatureField's CLASS0_LEVEL/
     CLASS1_LEVEL fields + SetXP (level), KSE_RemoveFeatArrayA (feats),
     KSE_SetCreatureField's REMOVE_FORCE_POWER field (force powers),
-    EffectAbilityDecrease (Max HP via Constitution, and the 5 standalone
-    ability traps), RemoveAvailableNPC (companion removal, confirmed
-    to eject an ACTIVE party member, not just mark unavailable), and the
-    existing GetFirstItemInInventory/GetNextItemInInventory/DestroyObject
-    walk (inventory removal, same pattern as ap_remove_test_item.nss).
-    No new native code needed for any of the 12.
+    KSE_FIELD_HALVE_MAX_HP_VIA_CON (Max HP via Constitution, entirely
+    self-contained -- reads true CON and both class slots live, no
+    params needed) and KSE_FIELD_HALVE_*_BASE (the 5 standalone ability
+    traps, same self-contained shape), RemoveAvailableNPC (companion
+    removal, confirmed to eject an ACTIVE party member, not just mark
+    unavailable), and the existing GetFirstItemInInventory/
+    GetNextItemInInventory/DestroyObject walk (inventory removal, same
+    pattern as ap_remove_test_item.nss).
 
     "remove_credits" is deliberately NOT one of the cases below --
     KotorClient.py calls the ALREADY-EXISTING set_credits action
@@ -1359,19 +1421,48 @@ def build_trap_block(trap_type, params_str):
         # inconsistent with no reliable fix. EffectSkillDecrease is a
         # plain vanilla effect with no such threshold -- same pattern
         # already proven for the 5 ability traps below.
-        # params_str = "<skill_key>:<decrease_amount>"
-        skill_key, amount = params_str.split(":")
+        #
+        # Decrease amount computed LIVE here from a fresh GetSkillRank()
+        # read, NOT client-side from KotorClient.py's reconciler.current_
+        # skills (a cache from the last SKILLREPORT poll) -- same real bug
+        # class confirmed live for the 5 ability traps below (see that
+        # block's own comment): a stale cached rank would halve the wrong
+        # (stale) number instead of the true live one, and would compound
+        # incorrectly if this trap type is ever received more than once.
+        # params_str is now just "<skill_key>" -- Python still picks WHICH
+        # skill randomly (NWScript would need to query all 8 skills live to
+        # replicate that eligibility list, not worth it here), but the
+        # decrease AMOUNT for whichever skill got chosen is computed here.
+        skill_key = params_str
         skill_const = {
             "computeruse": "SKILL_COMPUTER_USE", "demolitions": "SKILL_DEMOLITIONS",
             "stealth": "SKILL_STEALTH", "awareness": "SKILL_AWARENESS",
             "persuade": "SKILL_PERSUADE", "repair": "SKILL_REPAIR",
             "security": "SKILL_SECURITY", "treatinjury": "SKILL_TREAT_INJURY",
         }[skill_key]
+        # REWRITTEN to KSE_AdjustCreatureSkills (routine 684) instead of
+        # ApplyEffectToObject + EffectSkillDecrease -- same reasoning as the
+        # 5 ability traps above: EffectSkillDecrease stacks a new effect
+        # object every call with no ceiling, while KSE_AdjustCreatureSkills
+        # writes directly to the real base skill-rank byte (already proven
+        # live -- the Train Skill vendor feature above already uses it the
+        # same way, just with a positive amount). Still a relative amount,
+        # not an absolute set like the ability fields, but that's fine here:
+        # the write itself doesn't stack, so there's nothing to accumulate
+        # and no ceiling to hit regardless of delta-vs-absolute shape.
         lines += [
             f"int nBefore = GetSkillRank({skill_const}, oPC);",
-            f"ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectSkillDecrease({skill_const}, {amount}), oPC);",
-            f"int nAfter = GetSkillRank({skill_const}, oPC);",
-            f'KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill={skill_key}|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+            "if (nBefore <= 0)",
+            "{",
+            f'    KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill={skill_key}|current=" + IntToString(nBefore));',
+            "}",
+            "else",
+            "{",
+            "    int nDecrease = nBefore - (nBefore / 2);",
+            f"    KSE_AdjustCreatureSkills(oPC, {skill_const}, -nDecrease);",
+            f"    int nAfter = GetSkillRank({skill_const}, oPC);",
+            f'    KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill={skill_key}|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+            "}",
         ]
 
     elif trap_type == "remove_half_feats":
@@ -1405,16 +1496,16 @@ def build_trap_block(trap_type, params_str):
         lines.append(f'KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_powers|ids={params_str}");')
 
     elif trap_type == "cut_max_hp":
-        # params_str = "<con_decrease_amount>" -- already computed
-        # client-side to get as close to half Max HP as this character's
-        # build allows (fixed hit-die term can't be reduced via CON
-        # alone, see Options.py's Traps docstring).
-        # Same EffectAbilityDecrease call confirmed to
-        # correctly recompute Max HP downward, formula-exact.
-        amount = params_str
+        # No params needed -- KSE_FIELD_HALVE_MAX_HP_VIA_CON computes the
+        # CON decrease that lands Max HP closest to half entirely
+        # natively (fixed hit-die term can't be reduced via CON alone,
+        # see Options.py's Traps docstring) and applies it via the same
+        # real engine setter INCREMENT_CON_BASE uses (setHP=TRUE), as a
+        # real base-score rewrite rather than a stacking effect object
+        # with no ceiling on repeated triggers.
         lines += [
             "int nMaxBefore = GetMaxHitPoints(oPC);",
-            f"ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityDecrease(ABILITY_CONSTITUTION, {amount}), oPC);",
+            "KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_MAX_HP_VIA_CON(), 0);",
             "int nMaxAfter = GetMaxHitPoints(oPC);",
             f'KSE_Diag(134, "AP|APPLIED|trap|type=cut_max_hp|maxbefore=" + IntToString(nMaxBefore) + "|maxafter=" + IntToString(nMaxAfter));',
         ]
@@ -1512,22 +1603,39 @@ def build_trap_block(trap_type, params_str):
         lines.append('KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_inventory|removed=" + IntToString(nRemoved));')
 
     elif trap_type in ("reduce_str", "reduce_dex", "reduce_int", "reduce_wis", "reduce_cha"):
-        # params_str = "<decrease_amount>" -- current score minus half,
-        # computed client-side from the already-tracked ABILITYREPORT.
-        # Same EffectAbilityDecrease call as cut_max_hp above, just a
-        # different ability constant -- CON deliberately has no
-        # standalone case here (Cut Max Health in Half already uses it).
+        # Uses KSE_FIELD_HALVE_*_BASE: reads the TRUE base score and writes
+        # base - (base/2) entirely natively, via the real engine setter --
+        # not ApplyEffectToObject + EffectAbilityDecrease (stacks a new
+        # effect object every call, no ceiling on how many accumulate), and
+        # not NWScript's own GetAbilityScore() + KSE_FIELD_SET_*_BASE (that
+        # reads the EFFECTIVE score -- base plus any equipped item bonus --
+        # so it could compute "half" from an inflated number and bake the
+        # item's bonus into the new permanent base). See offsets.h's
+        # KSE_FIELD_HALVE_STR_BASE comment. CON isn't included here --
+        # "Cut Max Health in Half" needs a specific decrease amount, not a
+        # flat halving, and uses KSE_FIELD_INCREMENT_CON_BASE instead.
         ability_const = {
             "reduce_str": "ABILITY_STRENGTH", "reduce_dex": "ABILITY_DEXTERITY",
             "reduce_int": "ABILITY_INTELLIGENCE", "reduce_wis": "ABILITY_WISDOM",
             "reduce_cha": "ABILITY_CHARISMA",
         }[trap_type]
-        amount = params_str
+        field_const = {
+            "reduce_str": "KSE_FIELD_HALVE_STR_BASE", "reduce_dex": "KSE_FIELD_HALVE_DEX_BASE",
+            "reduce_int": "KSE_FIELD_HALVE_INT_BASE", "reduce_wis": "KSE_FIELD_HALVE_WIS_BASE",
+            "reduce_cha": "KSE_FIELD_HALVE_CHA_BASE",
+        }[trap_type]
         lines += [
             f"int nBefore = GetAbilityScore(oPC, {ability_const});",
-            f"ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityDecrease({ability_const}, {amount}), oPC);",
+            f"KSE_SetCreatureField(oPC, {field_const}(), 0);",
             f"int nAfter = GetAbilityScore(oPC, {ability_const});",
-            f'KSE_Diag(134, "AP|APPLIED|trap|type={trap_type}|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+            "if (nAfter == nBefore)",
+            "{",
+            f'    KSE_Diag(134, "AP|NOOP|trap|type={trap_type}|current=" + IntToString(nBefore));',
+            "}",
+            "else",
+            "{",
+            f'    KSE_Diag(134, "AP|APPLIED|trap|type={trap_type}|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+            "}",
         ]
 
     else:
@@ -1872,6 +1980,7 @@ def main():
             idx = mapping[base]["idx"]
             lines = [f'        KSE_Diag(20, "AP|CHECK|AREA|{idx}");']
             lines.extend(f"        {stmt}" for stmt in shop_lines_for(base))
+            lines.extend(permanent_spawn_lines_for(base, "        "))
             report_block = "\n".join(lines)
         else:
             lines = ['        string sAreaTag = GetTag(GetArea(OBJECT_SELF));']
@@ -1882,6 +1991,7 @@ def main():
                 lines.append('        {')
                 lines.append(f'            KSE_Diag(20, "AP|CHECK|AREA|{idx}");')
                 lines.extend(f"            {stmt}" for stmt in shop_lines_for(base))
+                lines.extend(permanent_spawn_lines_for(base, "            "))
                 lines.append('        }')
             report_block = "\n".join(lines)
 

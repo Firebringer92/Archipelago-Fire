@@ -430,7 +430,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Body",
     "progression_suppression": "0"
   },
@@ -1524,8 +1524,8 @@
     "progression_dependent": false,
     "stat_modifiers": "",
     "description": "",
-    "included_as_item": true,
-    "shop_randomize": true,
+    "included_as_item": false,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -1675,7 +1675,7 @@
     "stat_modifiers": "AttackBonus +5",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -1780,7 +1780,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -1795,7 +1795,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -1825,7 +1825,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -1855,7 +1855,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -1870,7 +1870,7 @@
     "stat_modifiers": "AttackPenalty +-5; Damage; DamageNone",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -2005,7 +2005,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -2020,7 +2020,7 @@
     "stat_modifiers": "AttackPenalty +-5; Damage; DamageNone",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -2125,7 +2125,7 @@
     "stat_modifiers": "AttackPenalty +-5; Damage; DamageNone",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -6444,8 +6444,8 @@
     "progression_dependent": false,
     "stat_modifiers": "",
     "description": "",
-    "included_as_item": true,
-    "shop_randomize": true,
+    "included_as_item": false,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -6520,7 +6520,7 @@
     "stat_modifiers": "Damage; Damage; OnHit +14",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -6669,8 +6669,8 @@
     "progression_dependent": false,
     "stat_modifiers": "",
     "description": "This implant releases synthetic versions of the natural stimulants produced by the body, temporarily boosting the user's stamina.",
-    "included_as_item": true,
-    "shop_randomize": true,
+    "included_as_item": false,
+    "shop_randomize": false,
     "equipment_slot": "Implant",
     "progression_suppression": "0"
   },
@@ -6730,7 +6730,7 @@
     "stat_modifiers": "",
     "description": "This implant bolsters the immune system, prompting it to react immediately aggressively toward any virus or bacterium that might have otherwise resulted in a debilitating sickness.",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Implant",
     "progression_suppression": "0"
   },
@@ -7075,7 +7075,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -7300,7 +7300,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Body",
     "progression_suppression": "0"
   },
@@ -7404,8 +7404,8 @@
     "progression_dependent": false,
     "stat_modifiers": "",
     "description": "Traditionally associated with the Jedi, the lightsaber is a devastating weapon difficult to master. Properties can vary with the type of focusing crystal used in construction.",
-    "included_as_item": true,
-    "shop_randomize": true,
+    "included_as_item": false,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -7420,7 +7420,7 @@
     "stat_modifiers": "",
     "description": "Traditionally associated with the Jedi, the lightsaber is a devastating weapon difficult to master. Properties can vary with the type of focusing crystal used in construction.",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -7435,7 +7435,7 @@
     "stat_modifiers": "",
     "description": "Traditionally associated with the Jedi, the lightsaber is a devastating weapon difficult to master. Properties can vary with the type of focusing crystal used in construction.",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -7450,7 +7450,7 @@
     "stat_modifiers": "",
     "description": "Traditionally associated with the Jedi, the lightsaber is a devastating weapon difficult to master. Properties can vary with the type of focusing crystal used in construction.",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -7495,7 +7495,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -7615,7 +7615,7 @@
     "stat_modifiers": "AttackBonus +3",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -7630,7 +7630,7 @@
     "stat_modifiers": "AttackBonus +3",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -8200,7 +8200,7 @@
     "stat_modifiers": "",
     "description": "Here is where the roots of the lightsaber begin, with traditional swords still wielded today in many primitive cultures. They are simple, but still effective in the right hands.",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -10735,7 +10735,7 @@
     "stat_modifiers": "",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -10930,7 +10930,7 @@
     "stat_modifiers": "AttackBonus +2",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -10945,7 +10945,7 @@
     "stat_modifiers": "AttackBonus +2",
     "description": "",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },
@@ -11800,7 +11800,7 @@
     "stat_modifiers": "DamageNone",
     "description": "Small size makes this a good off hand weapon. Echani vibroblades use a rare cortosis weave to prevent lightsaber sparring damage, allowing traditional swordplay to continue in the time of Jedi and Sith.",
     "included_as_item": false,
-    "shop_randomize": true,
+    "shop_randomize": false,
     "equipment_slot": "Weapon",
     "progression_suppression": "0"
   },

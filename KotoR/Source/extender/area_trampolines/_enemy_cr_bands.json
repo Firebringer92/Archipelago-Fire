@@ -1,0 +1,362 @@
+{
+  "danm14aa": {
+    "cr_min": 3.0,
+    "cr_max": 6.0,
+    "cr_avg": 3.6,
+    "planet": "Dantooine",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 5
+  },
+  "danm14ab": {
+    "cr_min": 3.0,
+    "cr_max": 6.0,
+    "cr_avg": 5.33,
+    "planet": "Dantooine",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 5
+  },
+  "danm14ac": {
+    "cr_min": 3.0,
+    "cr_max": 9.0,
+    "cr_avg": 5.47,
+    "planet": "Dantooine",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 10
+  },
+  "danm14ad": {
+    "cr_min": 3.0,
+    "cr_max": 9.0,
+    "cr_avg": 4.23,
+    "planet": "Dantooine",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 7
+  },
+  "danm15": {
+    "cr_min": 1.0,
+    "cr_max": 1.0,
+    "cr_avg": 1.0,
+    "planet": "Dantooine",
+    "planet_confidence": "confirmed",
+    "dominant_category": "droid",
+    "target_new_enemies": 1
+  },
+  "end_m01aa": {
+    "cr_min": 1.0,
+    "cr_max": 1.0,
+    "cr_avg": 1.0,
+    "planet": "Endar Spire",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 2
+  },
+  "end_m01ab": {
+    "cr_min": 1.0,
+    "cr_max": 1.0,
+    "cr_avg": 1.0,
+    "planet": "Endar Spire",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 3
+  },
+  "kas_m25aa": {
+    "cr_min": 6.0,
+    "cr_max": 6.0,
+    "cr_avg": 6.0,
+    "planet": "Kashyyyk",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 2
+  },
+  "korr_m34aa": {
+    "cr_min": 16.0,
+    "cr_max": 16.0,
+    "cr_avg": 16.0,
+    "planet": "Korriban",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 1
+  },
+  "korr_m38ab": {
+    "cr_min": 9.0,
+    "cr_max": 9.0,
+    "cr_avg": 9.0,
+    "planet": "Korriban",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 1
+  },
+  "korr_m39aa": {
+    "cr_min": 16.0,
+    "cr_max": 16.0,
+    "cr_avg": 16.0,
+    "planet": "Korriban",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 1
+  },
+  "lev_m40aa": {
+    "cr_min": 4.0,
+    "cr_max": 8.0,
+    "cr_avg": 5.0,
+    "planet": "Leviathan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 7
+  },
+  "lev_m40ab": {
+    "cr_min": 0.5,
+    "cr_max": 12.0,
+    "cr_avg": 4.98,
+    "planet": "Leviathan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 13
+  },
+  "lev_m40ac": {
+    "cr_min": 1.0,
+    "cr_max": 12.0,
+    "cr_avg": 4.62,
+    "planet": "Leviathan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 8
+  },
+  "lev_m40ad": {
+    "cr_min": 1.0,
+    "cr_max": 1.0,
+    "cr_avg": 1.0,
+    "planet": "Leviathan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 3
+  },
+  "manm26ad": {
+    "cr_min": 1.0,
+    "cr_max": 12.0,
+    "cr_avg": 3.8,
+    "planet": "Manaan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 3
+  },
+  "manm27aa": {
+    "cr_min": 1.0,
+    "cr_max": 12.0,
+    "cr_avg": 6.44,
+    "planet": "Manaan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 16
+  },
+  "manm28aa": {
+    "cr_min": 2.0,
+    "cr_max": 12.0,
+    "cr_avg": 8.33,
+    "planet": "Manaan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "alien_mercenary",
+    "target_new_enemies": 17
+  },
+  "manm28ab": {
+    "cr_min": 4.0,
+    "cr_max": 4.0,
+    "cr_avg": 4.0,
+    "planet": "Manaan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 3
+  },
+  "manm28ac": {
+    "cr_min": 6.0,
+    "cr_max": 6.0,
+    "cr_avg": 6.0,
+    "planet": "Manaan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "alien_mercenary",
+    "target_new_enemies": 4
+  },
+  "manm28ad": {
+    "cr_min": 4.0,
+    "cr_max": 4.0,
+    "cr_avg": 4.0,
+    "planet": "Manaan",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 1
+  },
+  "sta_m45ac": {
+    "cr_min": 10.0,
+    "cr_max": 12.0,
+    "cr_avg": 11.0,
+    "planet": "Star Forge",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 2
+  },
+  "tar_m02aa": {
+    "cr_min": 1.0,
+    "cr_max": 1.0,
+    "cr_avg": 1.0,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "sith_military",
+    "target_new_enemies": 1
+  },
+  "tar_m03aa": {
+    "cr_min": 3.0,
+    "cr_max": 3.0,
+    "cr_avg": 3.0,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "criminal_gang",
+    "target_new_enemies": 1
+  },
+  "tar_m03ab": {
+    "cr_min": 2.0,
+    "cr_max": 4.0,
+    "cr_avg": 2.67,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "criminal_gang",
+    "target_new_enemies": 2
+  },
+  "tar_m03ad": {
+    "cr_min": 2.0,
+    "cr_max": 4.0,
+    "cr_avg": 2.67,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "criminal_gang",
+    "target_new_enemies": 2
+  },
+  "tar_m04aa": {
+    "cr_min": 1.0,
+    "cr_max": 5.0,
+    "cr_avg": 2.22,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "beast",
+    "target_new_enemies": 9
+  },
+  "tar_m05aa": {
+    "cr_min": 2.0,
+    "cr_max": 6.0,
+    "cr_avg": 2.52,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "alien_mercenary",
+    "target_new_enemies": 14
+  },
+  "tar_m05ab": {
+    "cr_min": 2.0,
+    "cr_max": 4.0,
+    "cr_avg": 3.0,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "alien_mercenary",
+    "target_new_enemies": 7
+  },
+  "tar_m08aa": {
+    "cr_min": 1.0,
+    "cr_max": 6.0,
+    "cr_avg": 4.0,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "alien_mercenary",
+    "target_new_enemies": 12
+  },
+  "tar_m10aa": {
+    "cr_min": 1.0,
+    "cr_max": 8.0,
+    "cr_avg": 3.96,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "criminal_gang",
+    "target_new_enemies": 12
+  },
+  "tar_m10ab": {
+    "cr_min": 0.33,
+    "cr_max": 4.0,
+    "cr_avg": 0.73,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "criminal_gang",
+    "target_new_enemies": 10
+  },
+  "tar_m10ac": {
+    "cr_min": 0.33,
+    "cr_max": 6.0,
+    "cr_avg": 2.62,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "criminal_gang",
+    "target_new_enemies": 7
+  },
+  "tar_m11aa": {
+    "cr_min": 6.0,
+    "cr_max": 6.0,
+    "cr_avg": 6.0,
+    "planet": "Taris",
+    "planet_confidence": "confirmed",
+    "dominant_category": "droid",
+    "target_new_enemies": 1
+  },
+  "tat_m18aa": {
+    "cr_min": 6.0,
+    "cr_max": 7.0,
+    "cr_avg": 6.4,
+    "planet": "Tatooine",
+    "planet_confidence": "confirmed",
+    "dominant_category": "alien_mercenary",
+    "target_new_enemies": 3
+  },
+  "tat_m18ab": {
+    "cr_min": 3.0,
+    "cr_max": 6.0,
+    "cr_avg": 4.57,
+    "planet": "Tatooine",
+    "planet_confidence": "confirmed",
+    "dominant_category": "other",
+    "target_new_enemies": 7
+  },
+  "tat_m20aa": {
+    "cr_min": 4.0,
+    "cr_max": 9.0,
+    "cr_avg": 5.88,
+    "planet": "Tatooine",
+    "planet_confidence": "confirmed",
+    "dominant_category": "alien_mercenary",
+    "target_new_enemies": 12
+  },
+  "unk_m41ab": {
+    "cr_min": 15.0,
+    "cr_max": 15.0,
+    "cr_avg": 15.0,
+    "planet": "Unknown World (Korriban tomb complex?)",
+    "planet_confidence": "uncertain",
+    "dominant_category": "beast",
+    "target_new_enemies": 1
+  },
+  "unk_m41ad": {
+    "cr_min": 8.0,
+    "cr_max": 15.0,
+    "cr_avg": 13.4,
+    "planet": "Unknown World (Korriban tomb complex?)",
+    "planet_confidence": "uncertain",
+    "dominant_category": "beast",
+    "target_new_enemies": 5
+  },
+  "unk_m44aa": {
+    "cr_min": 10.0,
+    "cr_max": 15.0,
+    "cr_avg": 12.11,
+    "planet": "Unknown World (Korriban tomb complex?)",
+    "planet_confidence": "uncertain",
+    "dominant_category": "droid",
+    "target_new_enemies": 9
+  }
+}

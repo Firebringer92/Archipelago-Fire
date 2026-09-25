@@ -33,7 +33,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # Step 1). No shared constant between the two scripts on purpose: bumping
 # one without the other would be a silent mistake either way, so each
 # script's own default should be updated by hand at release time.
-BUNDLE_VERSION = "0.1.5"
+BUNDLE_VERSION = "0.1.6"
 
 # REMINDER: this list does not update itself. Every time a NEW file (not
 # just an edit to an existing one) becomes something a tester needs to run
@@ -107,6 +107,16 @@ FILES = [
     (("scripts", "arm_orchestrator.py"), "scripts/arm_orchestrator.py"),
     (("scripts", "generate_makejedi_suppressor.py"), "scripts/generate_makejedi_suppressor.py"),
     (("scripts", "generate_poll_shared.py"), "scripts/generate_poll_shared.py"),
+    # Found missing entirely, 2026-09-19 -- a real player hit
+    # FileNotFoundError on this exact path on every Connect, since
+    # generate_poll_shared.py's REPO_ROOT (dirname(dirname(__file__)),
+    # i.e. the PlayerBundle root itself once shipped) needs this file
+    # sitting right next to it. Static feat.2da/spells.2da reference data
+    # (122 feats, 44 real force powers) the Traps feature's CheckFeats()/
+    # force-power reporting reads -- same for every player, not
+    # per-seed-generated, so one copy ships with the bundle rather than
+    # being regenerated on the player's own machine.
+    (("force_powers_and_feats.json",), "force_powers_and_feats.json"),
     (("scripts", "generate_trampoline_batch.py"), "scripts/generate_trampoline_batch.py"),
     (("scripts", "setup_game.py"), "scripts/setup_game.py"),
     (("scripts", "install_playerbundle.py"), "scripts/install_playerbundle.py"),
@@ -132,6 +142,13 @@ FILES = [
     # it needs a local KOTOR 2 install to copy assets from).
     (("scripts", "patch_galactic_shop.py"), "scripts/patch_galactic_shop.py"),
     (("scripts", "patch_tsl_powers.py"), "scripts/patch_tsl_powers.py"),
+    # Found missing entirely -- runs automatically from KotorClient.py's
+    # Connect handler (apply_shop_item_costs()), universal/not seed-gated,
+    # but had never actually been wired into the PlayerBundle or the
+    # Connect flow at all before this, so no real tester ever received the
+    # fix despite it being built and verified once on the dev's own
+    # machine. Same class of gap as the ones documented above.
+    (("scripts", "patch_shop_item_costs.py"), "scripts/patch_shop_item_costs.py"),
     # Same gap as loot_disturb/galactic_shop above -- runs
     # automatically from KotorClient.py's Connect handler
     # (apply_new_companion_assets()), not something a tester runs by hand,
@@ -154,7 +171,7 @@ FILES = [
     # per-seed data, so shipping a static copy here (kept in sync with
     # worlds/kotor/gear_items.json whenever that changes, same as any other
     # release-versioned artifact) is safe.
-    (("Archipelago", "worlds", "kotor", "gear_items.json"), "scripts/gear_items.json"),
+    (("Archipelago", "worlds", "kotor", "gear_items.json"), "worlds/kotor/gear_items.json"),
 ]
 
 # Whole directories, copied recursively.

@@ -57,6 +57,28 @@ AREA_LIST = [
 os.makedirs(TRAMPOLINE_SRC_DIR, exist_ok=True)
 installation = Installation(GAME_DIR)
 
+# Permanent-object spawns that must survive every regeneration of an
+# area's OnEnter trampoline (this generator AND generate_trampoline_
+# batch.py's live pending-arm-batch variant both rebuild these files from
+# scratch, so a permanent addition has to live in the generator source,
+# never hand-edited into a generated .nss). base -> list of NWScript
+# statement strings, no leading indentation (added by the caller).
+#
+# Deliberately EMPTY here -- this generator runs once at packaging time,
+# with no connected seed to read Options.py's GalacticShop from, so it
+# can't know whether any given player wants the AP Vendor spawned at all.
+# Defaults to matching GalacticShop's own `default = False` (no vendor)
+# rather than guessing "always on." generate_trampoline_batch.py's own
+# copy of this dict is the real, per-seed-correct source of truth once a
+# player actually connects (gated on _connected_galactic_shop()) -- this
+# packaging-time baseline only matters until the first real regeneration
+# for ebo_m12aa happens for that player's own seed.
+AREA_PERMANENT_SPAWNS = {}
+
+
+def permanent_spawn_lines_for(base, indent):
+    return [f"{indent}{stmt}" for stmt in AREA_PERMANENT_SPAWNS.get(base, [])]
+
 
 def get_onenter_and_tag(base):
     r = read_rim(rf"{GAME_DIR}\modules\{base}.rim")
@@ -109,7 +131,9 @@ for onenter, bases in by_onenter.items():
     if len(bases) == 1:
         base = bases[0]
         idx = area_info[base]["idx"]
-        report_block = f'        KSE_Diag(20, "AP|CHECK|AREA|{idx}");'
+        lines = [f'        KSE_Diag(20, "AP|CHECK|AREA|{idx}");']
+        lines.extend(permanent_spawn_lines_for(base, "        "))
+        report_block = "\n".join(lines)
     else:
         # Shared OnEnter across multiple modules -- disambiguate at runtime
         # via the area's own tag, which IS distinct even when the OnEnter
@@ -122,6 +146,7 @@ for onenter, bases in by_onenter.items():
             lines.append(f'        {kw} (sAreaTag == "{tag}")')
             lines.append('        {')
             lines.append(f'            KSE_Diag(20, "AP|CHECK|AREA|{idx}");')
+            lines.extend(permanent_spawn_lines_for(base, "            "))
             lines.append('        }')
         report_block = "\n".join(lines)
 

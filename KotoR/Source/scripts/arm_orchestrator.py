@@ -125,37 +125,36 @@ def _kse_log_path():
     return os.path.join(base, "KSE", "kse.log")
 
 
-def _push_queue_bloat_warning_to_client(count):
-    """The ORCHESTRATOR WARNING print below only ever reached this
-    script's own stdout -- captured by ap_run_orchestrator() in the C
-    extender, but that function only logs captured output when the
-    orchestrator call exits non-zero (see its own if (exitCode != 0)
-    branch); a bloated queue doesn't make THIS call fail, so the warning
-    was silently dropped every time, never reaching extender.log let
-    alone the player. The actual intent was for this to reach the CLIENT,
-    not just a local log.
-
-    Fix: append a line containing an AP| marker directly to kse.log --
-    the exact file the extender's log-tail thread already watches
+def _append_ap_diag_line(marker):
+    """Appends a line containing an AP| marker directly to kse.log -- the
+    exact file the extender's log-tail thread already watches
     (ap_kse_log_tail_thread in ap_extender.c matches ANY line containing
     "AP|", not just ones the KSE DLL itself wrote, and relays it verbatim
-    over the socket as "EVENT:<line>"). This reuses that already-working
-    relay with zero C-side changes -- KotorClient.py's _on_extender_event
-    just needs its own regex for this marker (see that file).
+    over the socket as "EVENT:<line>"). Reuses that already-working relay
+    with zero C-side changes. Originally built for the queue-bloat warning
+    (a print() that only ever reached this script's own stdout -- captured
+    by ap_run_orchestrator() in the C extender only when the orchestrator
+    call exits non-zero -- so a warning on a call that still exits 0 was
+    silently dropped every time); also used by --queue-add='s one-shot-arm
+    diagnostic below, same reasoning.
 
     Best-effort: a missing kse.log directory (extender never launched at
     all this session) or a transient write collision with the KSE DLL's
     own concurrent writes (same file, no cross-process lock -- an
     accepted, pre-existing risk class for this diagnostic-only, rare-by-
     threshold append, not something worth adding real IPC locking for)
-    should never crash the orchestrator over a warning message."""
+    should never crash the orchestrator over a diagnostic line."""
     try:
         path = _kse_log_path()
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "a", encoding="utf-8", errors="ignore") as f:
-            f.write(f"AP|WARNING|QUEUE_BLOAT|{count}\n")
+            f.write(marker + "\n")
     except Exception as e:
-        print(f"  (couldn't push queue-bloat warning to kse.log: {e})")
+        print(f"  (couldn't push {marker!r} to kse.log: {e})")
+
+
+def _push_queue_bloat_warning_to_client(count):
+    _append_ap_diag_line(f"AP|WARNING|QUEUE_BLOAT|{count}")
 
 
 def save_queue(queue):
@@ -240,12 +239,29 @@ def _cli_token(item):
 _had_failure = False
 
 
+# Bastila's companion grant (arm 9) must never be armed into end_m01aa --
+# the Endar Spire's own scripted hand-off of Trask into the party uses the
+# same party slot a CreateObject+AddPartyMember for Bastila would claim,
+# and firing there first leaves Trask unable to join. Centralized here
+# (rather than at each regenerate() call site) so every caller -- area
+# entry, --queue-add= re-arming, etc. -- is covered automatically.
+_BLOCK_ARM_IN_AREA = {9: "end_m01aa"}
+
+
 def regenerate(area_bases, batch_items):
     """Regenerate+compile+deploy a list of areas with the given batch (empty
-    list = clear back to the plain preserved-original+poll_shared form)."""
+    list = clear back to the plain preserved-original+poll_shared form).
+    See _BLOCK_ARM_IN_AREA for the one hardcoded arm/area exclusion."""
     global _had_failure
     if not area_bases:
         return
+    for arm_id, blocked_base in _BLOCK_ARM_IN_AREA.items():
+        if blocked_base in area_bases and arm_id in batch_items:
+            others = [b for b in area_bases if b != blocked_base]
+            regenerate([blocked_base], [item for item in batch_items if item != arm_id])
+            if others:
+                regenerate(others, batch_items)
+            return
     args = ["python", BATCH_GEN] + [_cli_token(x) for x in batch_items] + [f"--areas={','.join(area_bases)}", f"--game-dir={GAME_DIR}"]
     # timeout=90 (hang-safeguard): "a handful of recompiles"
     # (per ap_extender.c's own comment on this call's caller) takes well
@@ -466,6 +482,7 @@ def _dispatch():
     if arg.startswith("--queue-add="):
         arm_id = int(arg.split("=", 1)[1])
         queue = load_json(QUEUE_PATH, [])
+        current = load_json(CURRENT_AREA_PATH, {}).get("area")
         if arm_id in ONE_SHOT_ARM_IDS and arm_id in queue:
             # See ONE_SHOT_ARM_IDS' own comment -- a second copy of a
             # class-switch/companion-recruit/pc-class arm is never
@@ -474,10 +491,23 @@ def _dispatch():
             # rather than append -- the existing, still-pending copy
             # will fire once confirmations are flowing again.
             print(f"arm {arm_id} already pending (one-shot arm, not re-queuing a duplicate)")
+            # Diagnostic breadcrumb for ONE_SHOT_ARM_IDS specifically: a
+            # real incident (companion_canderous, 2026-09-25) showed two
+            # --queue-add= calls for the same arm_id 3s apart, during the
+            # single riskiest window in a session (seconds after the
+            # game's first post-launch dispatcher burst), and the arm's
+            # own AP|APPLIED| never fired for either call -- with no way
+            # after the fact to tell whether this dedup skip ever ran, or
+            # whether the arm was still mid-regenerate when the second
+            # call arrived. Unlike the print() above (silently dropped
+            # unless this call exits non-zero -- see _append_ap_diag_
+            # line's docstring), this always reaches kse.log.
+            _append_ap_diag_line(f"AP|ORCHESTRATOR|DUPLICATE_ONE_SHOT|arm={arm_id}|area={current}")
         else:
             queue.append(arm_id)
             save_queue(queue)
-        current = load_json(CURRENT_AREA_PATH, {}).get("area")
+            if arm_id in ONE_SHOT_ARM_IDS:
+                _append_ap_diag_line(f"AP|ORCHESTRATOR|QUEUE_ADD|arm={arm_id}|area={current}")
         apply_armed_set(current, graph)
         return
 

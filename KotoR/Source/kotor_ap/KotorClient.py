@@ -65,6 +65,17 @@ COMPANION_IDX_TO_ARM = [
 
 _ID_TO_LOCATION_DATA = {data.id: data for data in location_table.values()}
 
+# Anchors DELIVERY_LOG_PATH/GALACTIC_SHOP_PENDING_PATH below to the folder
+# KotorClient.py actually lives in, NOT the process's current working
+# directory. A bare relative filename silently resolves against whatever
+# CWD happened to be active at launch (a shortcut, a different terminal
+# tab, a wrapper script) -- if that ever differs from run to run, each of
+# those state files gets "lost" (read back empty) and recreated from
+# scratch, which for DELIVERY_LOG_PATH specifically means the reconnect-
+# safety gate at _delivered_keys sees no history and replays every
+# already-delivered item as if it were brand new.
+_CLIENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # TrapLink (see Options.py's TrapLink): an incoming linked trigger is
 # resolved into one of our own trap types, rolled locally -- the sender's
 # trap_name is only used for the log line. Same 12 arms a real Traps item
@@ -100,8 +111,8 @@ GALACTIC_SHOP_MAX_ATTEMPTS = 5
 # (the extender runs regardless of server state) -- persisted so a
 # client restart can't lose an item a player already physically gave
 # up. Flushed on every Connected. Same directory convention as
-# DELIVERY_LOG_PATH below (CWD-relative, next to the client).
-GALACTIC_SHOP_PENDING_PATH = "kotor_galactic_shop_pending.json"
+# DELIVERY_LOG_PATH below (anchored to _CLIENT_DIR, next to the client).
+GALACTIC_SHOP_PENDING_PATH = os.path.join(_CLIENT_DIR, "kotor_galactic_shop_pending.json")
 # Emitted by extender/scripts_src/ap_galtradebox.nss's OnInvDisturbed
 # handler (KSE_Diag 142) -- relayed here like every other AP| line.
 _VOIDTRADE_DEPOSIT_RE = re.compile(r"AP\|VOIDTRADE\|DEPOSIT\|([^|\s]+)\|(\d+)")
@@ -127,66 +138,6 @@ ADDITIONAL_FEATS_POOL = [
     8, 31, 60, 104,    # Critical Strike / Sniper Shot / Sneak Attack I / Scoundrel's Luck
     101, 88, 98,       # Force Jump / Force Focus / Force Immunity: Fear (Jedi signature)
 ]
-
-# Traps (see Options.py's Traps): classes.2da's own hitdie column, row
-# order matching real CLASS_TYPE_* constant values 0-8 (Soldier/Scout/
-# Scoundrel/JediGuardian/JediConsular/JediSentinel/CombatDroid/
-# ExpertDroid/Minion). Needed for the Cut Max Health in Half trap's Max-HP
-# formula below -- KOTOR has no direct Max HP field at all (see
-# DEVELOPMENT_HISTORY.md §5, "Engine limitations discovered"), so this is
-# computed client-side from already-tracked state (current_classes/
-# current_abilities) instead.
-CLASS_HITDIE = {0: 10, 1: 8, 2: 6, 3: 10, 4: 6, 5: 8, 6: 12, 7: 8, 8: 10}
-
-
-def _compute_max_hp(current_classes: dict, con: int) -> int:
-    """MaxHP = sum(class_level * hitdie) + floor((CON-10)/2) * total_level.
-    Only the PC's own base class + Jedi class (if any) matter here (traps
-    are PC-only)."""
-    base_class = current_classes.get("baseclass", -1)
-    base_level = current_classes.get("baselevel", 0)
-    guardian = current_classes.get("guardian", 0)
-    consular = current_classes.get("consular", 0)
-    sentinel = current_classes.get("sentinel", 0)
-    hitdie_sum = base_level * CLASS_HITDIE.get(base_class, 8)
-    if guardian:
-        hitdie_sum += guardian * CLASS_HITDIE[3]
-    elif consular:
-        hitdie_sum += consular * CLASS_HITDIE[4]
-    elif sentinel:
-        hitdie_sum += sentinel * CLASS_HITDIE[5]
-    total_level = base_level + guardian + consular + sentinel
-    con_bonus = (con - 10) // 2  # Python's // floors correctly even for negative CON-10
-    return hitdie_sum + con_bonus * total_level
-
-
-def _con_decrease_for_half_max_hp(current_classes: dict, current_abilities: dict) -> int:
-    """Best-effort search for the Cut Max Health in Half trap -- the
-    hitdie_sum term in _compute_max_hp is fixed (CON can't touch it), so
-    for some high-level/high-hitdie characters exactly half Max HP may be
-    unreachable through Constitution alone (see Options.py's Traps
-    docstring, confirmed with the user this is an accepted limitation of
-    the engine's own data model, not a bug to chase further). Tries every
-    real CON value from current down to 1 (D20's actual floor) and
-    returns whichever decrease amount lands CLOSEST to half, preferring
-    the LARGER decrease (more punishing, not less) on an exact tie.
-    Returns 0 if state isn't known yet (no CLASSREPORT/ABILITYREPORT
-    heard from yet) or CON is already at the floor -- caller treats that
-    as a safe no-op."""
-    con = current_abilities.get("con", 0)
-    if con <= 1 or current_classes.get("baselevel", 0) <= 0:
-        return 0
-    target = _compute_max_hp(current_classes, con) // 2
-    best_decrease = 0
-    best_diff = None
-    for new_con in range(con - 1, 0, -1):
-        decrease = con - new_con
-        diff = abs(_compute_max_hp(current_classes, new_con) - target)
-        if best_diff is None or diff < best_diff or (diff == best_diff and decrease > best_decrease):
-            best_diff = diff
-            best_decrease = decrease
-    return best_decrease
-
 
 _GOAL_MALAK_RE = re.compile(r"AP\|CHECK\|GOAL\|MALAK_DEAD")
 # reach_leviathan Goal option -- reuses the same raw journal event the
@@ -276,15 +227,6 @@ KNOWN_ARM_NAMES = [
     # AP_ARM_NAMES in ap_extender.c and APPLIES in
     # generate_trampoline_batch.py rename rather than remove retired
     # entries, to preserve arm-ID stability.
-    "test_grant_active_feat",  # TEMPORARY: grants Critical Strike (an
-                            # ACTIVE feat) to the PC to check whether it's
-                            # genuinely hotbar-usable, not just present.
-                            # Retire once confirmed.
-    "test_resolve_item",  # TEMPORARY: live loot-window memory research --
-                            # resolves a candidate object id (found via a
-                            # container's item-reference-list record) and
-                            # logs its type/quantity to kse.log. Retire
-                            # once this research concludes.
 ]
 
 # AP item display name -> extender arm name, derived directly from
@@ -304,7 +246,7 @@ ITEM_NAME_TO_ARM = {name: data.arm_name for name, data in item_table.items()}
 # stronger check on top (has_class(), real in-game state) since a lost
 # delivery there is worth actively detecting -- see the has_class() call
 # site in _deliver_item for why the log alone isn't enough for those.
-DELIVERY_LOG_PATH = "kotor_delivery_log.jsonl"
+DELIVERY_LOG_PATH = os.path.join(_CLIENT_DIR, "kotor_delivery_log.jsonl")
 
 # Same default every other setup script in this repo hardcodes
 # (patch_item_suppression.py, patch_door_randomizer.py, setup_game.py,
@@ -358,6 +300,7 @@ PATCH_DOOR_RANDOMIZER = os.path.join(REPO_ROOT, "scripts", "patch_door_randomize
 PATCH_ADDITIONAL_ENEMIES = os.path.join(REPO_ROOT, "scripts", "patch_additional_enemies.py")
 PATCH_GALACTIC_SHOP = os.path.join(REPO_ROOT, "scripts", "patch_galactic_shop.py")
 PATCH_NEW_COMPANION_ASSETS = os.path.join(REPO_ROOT, "scripts", "generate_new_companion_assets.py")
+PATCH_SHOP_ITEM_COSTS = os.path.join(REPO_ROOT, "scripts", "patch_shop_item_costs.py")
 ARM_ORCHESTRATOR = os.path.join(REPO_ROOT, "scripts", "arm_orchestrator.py")
 
 # Tracks the last seed_name each of the 3 heavier per-seed patch scripts
@@ -431,10 +374,10 @@ SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_
 
 
 def write_slot_data_for_patch_scripts(
-        loot_mode: int, door_mapping: dict | None, area_randomizer: bool, starting_class: int,
+        loot_mode: int, door_mapping: dict | None, area_randomizer: int, starting_class: int,
         additional_enemies_mode: int = 0, seed_name: str | None = None,
         progression_system: bool = False, galactic_shop: bool = False,
-        new_companion: bool = False) -> None:
+        new_companion: bool = False, door_mapping_repairs: list | None = None) -> None:
     """Called on every successful Connect -- see SLOT_DATA_PATH above for
     why this exists. A plain JSON write (not restricted_loads/pickle --
     this project controls both ends, unlike the raw .archipelago format),
@@ -463,6 +406,9 @@ def write_slot_data_for_patch_scripts(
                 # time to decide arm 20's (companion_hk47) template string
                 # -- see that file's NEW_COMPANION_TEMPLATE comment.
                 "new_companion": new_companion,
+                # Read by scripts/review_door_mapping.py to label a
+                # repaired entry separately from a cleanly-coupled one.
+                "door_mapping_repairs": door_mapping_repairs or [],
             }, f)
     except Exception as e:
         logger.warning(f"Could not write {SLOT_DATA_PATH} for the patch scripts: {e}")
@@ -774,6 +720,30 @@ def apply_galactic_shop() -> tuple[bool, str]:
         return False, f"apply_galactic_shop raised: {e}"
 
 
+def apply_shop_item_costs() -> tuple[bool, str]:
+    """Same shape again, for patch_shop_item_costs.py -- fixes the 142
+    real shop_randomize items with a genuine in-game UTI Cost of 0 (a
+    0-cost purchase never drops credits, so patch_item_suppression.py's
+    purchase-detection check can't tell a "just bought this" acquisition
+    from a fresh pickup, wrongly suppressing/bonus-ifying/replacing it).
+    Universal, not gated by any option -- unlike galactic_shop/
+    new_companion above, there's no "restore vanilla when off" case, just
+    always-apply. Purely additive (writes Override/<resref>.uti copies,
+    never touches the read-only base game files) and idempotent (re-run
+    finds 0 remaining zero-cost items), so safe to run on every Connect
+    the same way."""
+    try:
+        result = subprocess.run(
+            [sys.executable, PATCH_SHOP_ITEM_COSTS, f"--game-dir={GAME_DIR}"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            return False, f"patch_shop_item_costs.py failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"apply_shop_item_costs raised: {e}"
+
+
 def _load_galactic_pending() -> dict:
     """See GALACTIC_SHOP_PENDING_PATH. {"deposits": [record, ...],
     "claims": int} -- deposits are full pool records already built at
@@ -1079,6 +1049,14 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         p_meetra.utc/k_hmee_dialog.dlg."""
         self.output("Admin: re-applying the New Companion assets ...")
         ok, msg = apply_new_companion_assets()
+        self.output(("OK: " if ok else "FAILED: ") + msg)
+        return ok
+
+    def _cmd_ap_apply_shop_item_costs(self) -> bool:
+        """Same again, for patch_shop_item_costs.py (normally run on every
+        Connect -- see on_package)."""
+        self.output("Admin: re-applying the shop item cost fix ...")
+        ok, msg = apply_shop_item_costs()
         self.output(("OK: " if ok else "FAILED: ") + msg)
         return ok
 
@@ -1826,6 +1804,23 @@ class KotorContext(CommonContext):
         if not self._pending_additional_feats:
             return
         _JEDI_ONLY_FEATS = {101, 88, 98}  # Force Jump / Force Focus / Force Immunity: Fear
+        # Confirmed live, 2026-09-19 (Archipelago Vendor research, see
+        # FutureDesign.md's "Archipelago Vendor" section): KSE_GrantFeatArrayA
+        # granting one of these 7 ACTIVE/toggle combat feats to the PC
+        # specifically fails completely -- GetHasFeat reads false both
+        # immediately before AND immediately after the grant call (a real
+        # "0->0" in this feature's own before/after diagnostic, not just a
+        # save-persistence gap), confirmed via /ap_apply additional_feats:pc
+        # itself, not just the Vendor. The SAME native, on a COMPANION, is
+        # confirmed working correctly (Carth: real before=0/before=1 values,
+        # survived save+reload) -- this is specifically a PC-only gap, not a
+        # feat-eligibility one (all 7 are learnable by any class per feat.2da's
+        # own allclassescanuse column, or legitimately Jedi-only and granted to
+        # an actual Jedi PC -- verified neither explains the failure). Excluded
+        # from the PC's own draw pool only, so a real "Additional Feats
+        # Character: PC" AP item never silently wastes its draw on a feat that
+        # does nothing for that player -- companions keep the full pool.
+        _PC_UNRELIABLE_ACTIVE_FEATS = {28, 29, 11, 30, 8, 31, 101}
         for key in list(self._pending_additional_feats.keys()):
             item_name, arm_name = self._pending_additional_feats[key]
             npc_key = arm_name.split(":", 1)[1]
@@ -1845,6 +1840,7 @@ class KotorContext(CommonContext):
             pool = [f for f in ADDITIONAL_FEATS_POOL if f not in _JEDI_ONLY_FEATS or is_jedi]
             if npc_key == "pc":
                 pool = [f for f in pool if f not in self.reconciler.current_feats]
+                pool = [f for f in pool if f not in _PC_UNRELIABLE_ACTIVE_FEATS]
             if not pool:
                 del self._pending_additional_feats[key]
                 self._trap_noop(key, item_name, arm_name, f"{npc_key} has no eligible feats left in the pool")
@@ -1931,15 +1927,22 @@ class KotorContext(CommonContext):
             # skill (>0) and halving it -- persuade's -1 "untrained cross-
             # class" sentinel is excluded, same reasoning as skipping a
             # feat/power pool of 0-1.
+            # WHICH skill is still picked here from the cached eligibility
+            # list (Python already has the full known-skill snapshot;
+            # NWScript would need to query all 8 live to replicate this
+            # selection, not worth it just for choosing a target). The
+            # decrease AMOUNT is no longer computed here -- see
+            # build_trap_block's own comment for the real bug this closes
+            # (reconciler.current_skills is only as fresh as the last
+            # SKILLREPORT poll and can be stale relative to the true live
+            # rank). params is now just the chosen skill_key; NWScript
+            # reads the live rank and computes/guards the decrease itself.
             eligible = [k for k, v in reconciler.current_skills.items() if v > 0]
             if not eligible:
                 self._trap_noop(key, item_name, arm_name, "no skill above 0 to reduce")
                 return
             skill_key = random.choice(eligible)
-            current = reconciler.current_skills[skill_key]
-            decrease = current - (current // 2)
-            params = f"{skill_key}:{decrease}"
-            sent = await self.extender.send_trap("reduce_skill", params)
+            sent = await self.extender.send_trap("reduce_skill", skill_key)
 
         elif trap_type == "remove_half_feats":
             held = list(reconciler.current_feats)
@@ -1960,11 +1963,14 @@ class KotorContext(CommonContext):
             sent = await self.extender.send_trap("remove_half_powers", params)
 
         elif trap_type == "cut_max_hp":
-            con_decrease = _con_decrease_for_half_max_hp(reconciler.current_classes, reconciler.current_abilities)
-            if con_decrease <= 0:
-                self._trap_noop(key, item_name, arm_name, "Max HP already minimal (or state not yet known)")
-                return
-            sent = await self.extender.send_trap("cut_max_hp", str(con_decrease))
+            # The CON-decrease search and the "already minimal" no-op check
+            # both happen natively at delivery time, reading true live CON
+            # and both class slots directly (see build_trap_block's own
+            # comment) -- NOT from reconciler.current_abilities/
+            # current_classes, which are only as fresh as the last
+            # ABILITYREPORT/CLASSREPORT poll. No meaningful params needed;
+            # "-" is a placeholder, same convention as reduce_str/etc. above.
+            sent = await self.extender.send_trap("cut_max_hp", "-")
 
         elif trap_type == "remove_companion":
             # Filtered to the CURRENT (seed_name, slot), not the whole
@@ -2011,13 +2017,15 @@ class KotorContext(CommonContext):
             sent = await self.extender.send_trap("remove_half_inventory", "-")
 
         elif trap_type in ("reduce_str", "reduce_dex", "reduce_int", "reduce_wis", "reduce_cha"):
-            ability_key = trap_type[len("reduce_"):]  # "str"/"dex"/"int"/"wis"/"cha"
-            current = reconciler.current_abilities.get(ability_key, 0)
-            if current <= 1:
-                self._trap_noop(key, item_name, arm_name, f"{ability_key} already minimal ({current})")
-                return
-            decrease = current - (current // 2)
-            sent = await self.extender.send_trap(trap_type, str(decrease))
+            # Decrease amount and the "already minimal" no-op check both
+            # happen natively at delivery time, reading the true live base
+            # score (see build_trap_block's own comment) -- NOT from
+            # reconciler.current_abilities, which is only as fresh as the
+            # last ABILITYREPORT poll and can be stale relative to the true
+            # live score. No meaningful params needed; "-" is a placeholder
+            # (ap_extender.c's APPLYVALUE: parser needs a non-empty token),
+            # same convention as remove_half_inventory above.
+            sent = await self.extender.send_trap(trap_type, "-")
 
         elif trap_type == "remove_credits":
             # A REAL item takes _deliver_item's direct shortcut and never
@@ -2615,11 +2623,18 @@ class KotorContext(CommonContext):
             slot_data = args.get("slot_data", {}) or {}
             write_slot_data_for_patch_scripts(
                 slot_data.get("loot_mode", 0), slot_data.get("door_mapping"),
-                bool(slot_data.get("area_randomizer", False)), slot_data.get("starting_class", 0),
+                # Raw mode value (0=off/1=coupled/2=decoupled), not forced to
+                # bool -- scripts/review_door_mapping.py needs to tell the
+                # two on-modes apart. Every OTHER consumer of area_randomizer
+                # in this file only ever needs on/off (self.area_randomizer
+                # below, regenerate_poll_shared's CheckPlanetAvailability
+                # gating) and stays a plain bool, cast where it's read.
+                slot_data.get("area_randomizer", 0), slot_data.get("starting_class", 0),
                 slot_data.get("additional_enemies_mode", 0), self.seed_name,
                 bool(slot_data.get("progression_system", False)),
                 bool(slot_data.get("galactic_shop", False)),
-                bool(slot_data.get("new_companion", False)))
+                bool(slot_data.get("new_companion", False)),
+                slot_data.get("door_mapping_repairs", []))
             self.companion_mode = slot_data.get("companion_mode", 0)
             self.companion_class_rolls = slot_data.get("companion_class_rolls", {})
             self.companion_class_mode = slot_data.get("companion_class_mode", 0)
@@ -2651,6 +2666,9 @@ class KotorContext(CommonContext):
             asyncio.create_task(self.update_trap_link(self.trap_link))
             self.galactic_shop = bool(slot_data.get("galactic_shop", False))
             asyncio.get_event_loop().run_in_executor(None, self._apply_galactic_shop_and_log)
+            # Universal, not gated by any option -- see apply_shop_item_costs()'s
+            # own docstring for why this always runs regardless of slot_data.
+            asyncio.get_event_loop().run_in_executor(None, self._apply_shop_item_costs_and_log)
             # Anything deposited/claimed while this client was offline (or
             # before this Connect) settles now.
             asyncio.create_task(self._galactic_flush_pending())
@@ -2866,6 +2884,29 @@ class KotorContext(CommonContext):
             # cycle) computes the real specifics from currently-tracked
             # state and resolves it, no gating needed (unlike
             # additional_feats' recruited/class-finalized wait).
+            #
+            # _pending_heavy_indices.add() here closes a real bug: without
+            # it, this "pending" outcome doesn't register in _delivered_keys
+            # (only a terminal outcome does) AND wasn't registered in any
+            # in-flight guard either, so a second _deliver_item() call for
+            # this same index (e.g. two overlapping ReceivedItems dispatches
+            # around connect/reconnect) would queue a SECOND, fully
+            # independent resolution before the first one ever reaches
+            # _log_delivery's "sent". Confirmed live: a fresh save, one
+            # real item, three full reduce_dex apply cycles at the same
+            # instant. Harmless no-op for additional_feats' own equivalent
+            # grants (already-has-this-feat is itself guarded), but
+            # ability/skill traps use EffectAbilityDecrease/
+            # EffectSkillDecrease, which stack unconditionally on every
+            # application -- there's no downstream idempotency to fall back
+            # on, so the race has to be closed here instead. The existing
+            # check at this function's top (`if (character, index) in
+            # self._pending_heavy_indices`) already covers every arm type
+            # generically; traps just never opted into setting it before.
+            # _log_delivery's own unconditional discard() releases this
+            # once a real terminal outcome (settled or noop-as-"sent")
+            # gets logged, same as HEAVY_ARMS/companion_class already do.
+            self._pending_heavy_indices.add((character, index))
             self._pending_traps[(self.seed_name, getattr(self, "username", None), index)] = (item_name, arm_name)
             self._log_delivery(character, index, item_name, arm_name, "pending")
             game_events_logger.info(f"[pending] {item_name} -> resolving next poll cycle")
@@ -3076,6 +3117,17 @@ class KotorContext(CommonContext):
         else:
             game_events_logger.warning(f"[galactic shop] PATCH FAILED -- {msg}\n"
                                        f"  (run /ap_apply_galactic_shop to retry once fixed)")
+
+    def _apply_shop_item_costs_and_log(self) -> None:
+        """apply_shop_item_costs() on every Connect -- universal, not
+        seed-gated (see that function's own docstring for why). Runs in
+        an executor like the other patch scripts."""
+        ok, msg = apply_shop_item_costs()
+        if ok:
+            game_events_logger.info(f"[shop item costs] {msg}")
+        else:
+            game_events_logger.warning(f"[shop item costs] PATCH FAILED -- {msg}\n"
+                                       f"  (run /ap_apply_shop_item_costs to retry once fixed)")
 
     def _queue_heavy(self, arm_name: str, label: str) -> None:
         """The ONE place any heavy send not already going through

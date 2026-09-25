@@ -346,14 +346,22 @@ KotOR:
   # --- Area randomizer -------------------------------------------------------
 
   # Whether doors and area-transition triggers are shuffled to lead
-  # somewhere other than their vanilla destination. Most doors (110 of
-  # 156) are genuinely coupled -- walk through a shuffled door and you can
-  # always walk straight back out the same way. 
+  # somewhere other than their vanilla destination.
+  #   off (default): vanilla, no shuffling.
+  #   coupled: doors are shuffled in genuine pairs -- walk through a
+  #     shuffled door and you can always walk straight back out the SAME
+  #     door. Most doors (110 of 118 eligible) get this treatment.
+  #   decoupled: the same doors are shuffled completely independently --
+  #     no guarantee walking back through whatever door you find leads
+  #     anywhere near where you came from. More traditional "you don't
+  #     know where anything leads" entrance-randomizer feel.
   # This is a real, game-file-level patch applied once by
   # scripts/patch_door_randomizer.py (see README) -- this option only
   # takes effect once that patch step has actually been run for your seed.
-  # Balance is not guranteed and is not compatible with progression system.
-  area_randomizer: false
+  # Balance is not guaranteed, and this is not compatible with progression
+  # system (either coupled or decoupled).
+  # Valid: off, coupled, decoupled
+  area_randomizer: off
 
 
   # --- Goal ------------------------------------------------------------------
@@ -402,4 +410,5 @@ KotOR:
   # next area transition, and the KOTOR Client must be connected to the
   # server when you use the box (offline uses are remembered and settled
   # on the next connect).
+  # Enabling this also adds the archipelago vendor to the ebon hawk
   galactic_shop: false

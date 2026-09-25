@@ -20,17 +20,12 @@ rather than grounds for exhaustive per-module testing). See
 technical history (feature decisions, confirmed capabilities, and every
 engine limitation found) that this doc summarizes, or the individual
 phase-by-phase logs archived at
-[docs/history/](docs/history/PHASE02.md) (`PHASE02.md`-`PHASE14.md`) for
-the full blow-by-blow. [docs/history/SESSION_STATUS.md](docs/history/SESSION_STATUS.md)
-predates that consolidation and may be stale — prefer
-`DEVELOPMENT_HISTORY.md`/`PHASE14.md` for current status.
 
 This document explains how the whole system fits together and what each
 Python file is for. It does not re-derive the engine-constraint discoveries
 that shaped this design — see
 [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)'s engine-limitations
-section, or [docs/history/PHASE09.md](docs/history/PHASE09.md)-
-[PHASE11.md](docs/history/PHASE11.md) for the original research.
+section
 
 ## 1. What this is
 
@@ -121,10 +116,6 @@ gradually, not all at once):
 - No dates, no "(YYYY-MM-DD)" stamps, no "found live," no session
   narrative. Git history already has the timeline; a comment isn't the
   place to re-derive it.
-- Never write "at the user's request," "per the user's explicit ask," or
-  any equivalent attribution. It tells a reader nothing about the code
-  and rots the moment anyone other than this project's own maintainer
-  reads it.
 - If a decision needs real justification (an engine limitation, a design
   tradeoff, a rejected alternative), that justification belongs in this
   document or `DEVELOPMENT_HISTORY.md` — the comment should be a short
@@ -228,26 +219,31 @@ gradually, not all at once):
   inside the apworld for this to work, despite an earlier research note
   assuming it would be.
 - **`EntranceRando.py`** — door/trigger randomization, built on
-  Archipelago's own `entrance_rando.py` engine, run in real AP
-  `coupled=True` mode. Builds a separate physical-module region graph
-  purely for this purpose (doesn't touch the thematic regions that govern
-  location access). 110 of the 118 randomization-eligible transitions
-  have a genuine, individually-identifiable reverse door (matched 1:1, or
-  via a shared destination-waypoint-tag suffix for the 4 Dantooine
-  module-pairs with two doors each way) and are wired as real coupled
-  Entrances; the remaining 8 (no reverse door anywhere in vanilla data)
-  are left fully fixed to their vanilla destination rather than shuffled.
+  Archipelago's own `entrance_rando.py` engine. `AreaRandomizer`
+  (Options.py) picks `off`/`coupled`/`decoupled`; both non-off modes
+  share the exact same pool/pairing/repair logic, differing only in the
+  entrance type (`TWO_WAY` vs `ONE_WAY`) and the `coupled` flag passed to
+  `randomize_entrances` (AP's own reciprocal-placement logic is gated on
+  `if self.coupled and ...`, so it's simply inert in decoupled mode).
+  Builds a separate physical-module region graph purely for this purpose
+  (doesn't touch the thematic regions that govern location access). 110 of
+  the 118 randomization-eligible transitions have a genuine,
+  individually-identifiable reverse door (matched 1:1, or via a shared
+  destination-waypoint-tag suffix for the 4 Dantooine module-pairs with two
+  doors each way) and are wired as real Entrance pairs in both modes; the
+  remaining 8 (no reverse door anywhere in vanilla data) are left fully
+  fixed to their vanilla destination in either mode -- decoupled mode
+  reuses the same 110-entry pool rather than also covering those 8, a
+  deliberate scope choice to keep the split a small, low-risk change.
   Coupled placement can still leave a rare residual orphan (a module with
   exactly one coupled entrance whose placement failed to get a
   replacement) -- `_repair_orphaned_modules` patches those after
   placement by stealing and repointing a well-connected edge, the same
   technique the old uncoupled-mode `_ensure_full_reachability` used, just
-  scoped to the handful of leftover entries rather than the whole graph.
-  See its own module docstring for the full reverse-door analysis and
-  reachability findings, [docs/history/PHASE12.md](docs/history/PHASE12.md)
-  for the exclusion-zone design and the module/dest_module mixup bug, and
-  [docs/history/PHASE13.md](docs/history/PHASE13.md) for the earlier
-  uncoupled-mode reciprocal-pairing feature this design replaced.
+  scoped to the handful of leftover entries rather than the whole graph;
+  the same repair pass runs for decoupled mode too, unchanged. See its own
+  module docstring for the full reverse-door analysis and reachability
+  findings.
 
 ### 4.2 The Python AP client (`Archipelago/` root)
 
@@ -337,7 +333,12 @@ gradually, not all at once):
   would let that command deploy something `/ap_restore_all` can't clean
   back up; tracked as a known, low-risk gap in `MODE_DEPENDENCIES.md`
   rather than fixed, since New Companion already re-syncs correctly on
-  every real Connect regardless of either admin command.
+  every real Connect regardless of either admin command. Same deliberate
+  exclusion applies to `apply_shop_item_costs()`
+  (`patch_shop_item_costs.py`, wired to run on every Connect the same
+  not-seed-gated way as Galactic Shop) -- purely additive, no meaningful
+  restore, always re-syncs correctly on Connect regardless of either admin
+  command.
   `apply_new_companion_assets()`/`_apply_new_companion_assets_and_log()`
   (2026-09-14) run `generate_new_companion_assets.py` the same
   not-seed-gated way as Galactic Shop, every `Connected` — see 4.3.

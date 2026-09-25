@@ -409,21 +409,24 @@ static const char *AP_ARM_NAMES[] = {
      * behavior relevant to real features is now confirmed. Archived at
      * extender/research_archive/test_hp_fp_alignment_arms_2026-09-06.py.txt. */
     "_retired_test_lower_hp",
-    "test_grant_active_feat", /* TEMPORARY: live verification
-                        * of whether KSE_GrantFeatArrayA makes an ACTIVE
-                        * feat (Critical Strike, feat id 8) genuinely
-                        * usable (hotbar), not just present -- blocks the
-                        * planned Feats [Add/Remove] equipment-access
-                        * feature's ability pool. Retire once confirmed --
-                        * see generate_trampoline_batch.py's APPLIES[51]. */
-    "test_resolve_item", /* TEMPORARY: loot-window
-                        * memory-hunting research -- verifies whether a
-                        * candidate integer found in a container's
-                        * item-reference-list-shaped record is a genuine,
-                        * resolvable script object id. Calls
-                        * KSE_ResolveItemId (host 638), logs result to
-                        * kse.log. Retire once this research concludes --
-                        * see generate_trampoline_batch.py's APPLIES[52]. */
+    /* Slot 51 RETIRED (was test_grant_active_feat) -- CONFIRMED NEGATIVE:
+     * an ACTIVE feat granted via KSE_GrantFeatArrayA logs as fired but is
+     * not genuinely hotbar-usable. See DEVELOPMENT_HISTORY.md's Vendor
+     * section for the full finding. Renamed, not removed, same
+     * gap-preserving convention as every other retired slot above. */
+    "_retired_test_grant_active_feat",
+    /* Slot 52 RETIRED (was test_resolve_item) -- its later repurposing
+     * (proving out the Archipelago Vendor's dialogue mechanism) is
+     * concluded: the real Vendor is fully built and shipped. */
+    "_retired_test_resolve_item",
+    /* Slot 53 RETIRED (was diag_scan_client_stats) -- the client-stats
+     * offset question it existed to answer is resolved and shipped (the
+     * real force-power client-mirror-sync fix). */
+    "_retired_diag_scan_client_stats",
+    /* Slot 54 RETIRED (was test_grant_juhani_power) -- confirmed the
+     * client-mirror-sync fix works end to end via a granted (not just
+     * naturally learned) power. */
+    "_retired_test_grant_juhani_power",
 };
 /* IDs must match AP_ARM_NAMES position (1-indexed). scripts/generate_trampoline_batch.py's
  * APPLIES table is the single source of truth this array is kept in sync

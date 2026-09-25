@@ -201,7 +201,18 @@ static const uintptr_t KSE_FEAT_ADD_RVA       = 0x005cb150u - 0x00400000u; // 0x
 // -----------------------------------------------------------------------------
 // Feat record-container addresses, retained but not currently used by the shipping
 // grant path. Kept for reference:
-//   KSE_CREATURE_GETHOLDER_RVA : engine creature->holder accessor, __thiscall(creature).
+//   KSE_CREATURE_GETHOLDER_RVA : years-old label, IDENTIFIED 2026-09-20 via
+//                                LaneDibello/Kotor-Patch-Manager's AddressDatabases/
+//                                kotor1_0_3.db as the real CSWSObject::GetClientObject()
+//                                -- __thiscall(CSWSObject* this) -> CSWCObject*, no other
+//                                params. This is the real, confirmed way to get from a
+//                                resolved SERVER object to its CLIENT-side mirror (see
+//                                KSE_FIELD_DIAG_SCAN_CLIENT_STATS below) -- prefer this
+//                                function call over reading CSWSObject.client_object
+//                                (offset 548) directly, which came back NULL live for
+//                                the PC, meaning the field isn't simply what this
+//                                function returns (or isn't populated the same way for
+//                                the locally-controlled player).
 //   KSE_LIST_FEAT_ADD_RVA      : __thiscall(listHead, WORD nFeat), RET 4; dedups,
 //                                grows when full, appends. Takes the LIST HEAD.
 //   KSE_CONTAINER_FEATHAS_RVA  : container-side membership test, __thiscall(container,
@@ -405,6 +416,199 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
                           // stay consistent (this project's own XP->level table
                           // is kotor_reconciliation.py's _EXPTABLE).
 
+// Absolute base-ability-score setters (STR/DEX/INT/WIS/CHA -- CON deliberately
+// excluded, see below). nValue = the new base score, 0-255 (engine takes a
+// BYTE). Real engine member functions, NOT a raw offset poke -- same
+// AddFeat-precedent reasoning KSE_ARRAYA_ADD_RVA already established (call the
+// engine's own setter over guessing a byte layout). These 5 addresses were
+// never independently reverse-engineered by this project: they come from
+// LaneDibello/Kotor-Patch-Manager's AddressDatabases/kotor1_0_3.db (queried
+// directly, 2026-09-19), the SAME build/version this project targets --
+// confirmed trustworthy because that same database's AddFeat entry is
+// byte-identical to KSE_ARRAYA_ADD_RVA above, which THIS project already
+// independently confirmed live. All 5 sit in the same tight address range as
+// AddFeat (0x5a9fe0-0x5aa170, AddFeat itself at 0x5aa810) alongside dozens of
+// other real CSWSCreatureStats members in that DB, consistent with genuine
+// adjacent member functions, not a fabricated/guessed cluster.
+//
+// WHY THIS EXISTS: the previous mechanism for ability traps/grants
+// (ApplyEffectToObject + EffectAbilityIncrease/EffectAbilityDecrease) stacks
+// a NEW, separate effect object on the creature every single call rather
+// than rewriting one value -- confirmed live, 2026-09-19, a real character's
+// Dexterity got permanently stuck unable to rise past 11 after accumulating
+// ~20 stacked increase/decrease effects from repeated trap/admin activity,
+// while Strength (far fewer stacked effects on the same character) kept
+// working normally. These setters replace the stacking entirely: one call
+// writes the real base score, full stop, so there's nothing left to
+// accumulate and no ceiling to hit.
+//
+// CON's real engine setter, unlike the 5 above, takes an explicit HP-
+// recalculate flag (Patch Manager's own SetCONBase(BYTE value, int setHP),
+// same AddressDatabases/kotor1_0_3.db source, same tight address cluster
+// as the other 5). Calling it with setHP=TRUE lets the engine recompute
+// Max HP itself rather than this project inventing its own formula. Not
+// reused by the "Cut Max Health in Half" trap or Train Ability's own CON
+// purchase -- both keep their own separate, existing mechanisms
+// (KotorClient.py's _con_decrease_for_half_max_hp; Train Ability's CON
+// stays on the EffectAbilityIncrease path) untouched.
+static const uintptr_t KSE_SET_STR_BASE_RVA = 0x005a9fe0u - 0x00400000u; // 0x001a9fe0
+static const uintptr_t KSE_SET_DEX_BASE_RVA = 0x005aa020u - 0x00400000u; // 0x001aa020
+static const uintptr_t KSE_SET_CON_BASE_RVA = 0x005aa060u - 0x00400000u; // 0x001aa060
+static const uintptr_t KSE_SET_INT_BASE_RVA = 0x005aa0f0u - 0x00400000u; // 0x001aa0f0
+static const uintptr_t KSE_SET_WIS_BASE_RVA = 0x005aa130u - 0x00400000u; // 0x001aa130
+static const uintptr_t KSE_SET_CHA_BASE_RVA = 0x005aa170u - 0x00400000u; // 0x001aa170
+
+// True base-ability-score BYTE offsets within CSWSCreatureStats, 2 bytes
+// apart (NOT the same spacing as the client-side CSWCCreatureStats fields
+// documented elsewhere in this project -- don't assume the two structs
+// mirror each other here). Lets a native ability-base increment read the
+// real base value directly: NWScript's GetAbilityScore(oCreature,
+// nAbility) has no "base only" form in this engine (only the 2-arg
+// signature exists in K1's own nwscript.nss), so it returns the EFFECTIVE
+// score (base + any equipped item bonus) -- computing "new base =
+// GetAbilityScore(...) + 1" in NWScript would silently bake a temporary
+// item bonus in as a permanent base stat increase. Reading the true base
+// here avoids that.
+static const uintptr_t KSE_STATS_STR_BASE_OFF = 233;
+static const uintptr_t KSE_STATS_DEX_BASE_OFF = 235;
+static const uintptr_t KSE_STATS_CON_BASE_OFF = 237;
+static const uintptr_t KSE_STATS_INT_BASE_OFF = 239;
+static const uintptr_t KSE_STATS_WIS_BASE_OFF = 241;
+static const uintptr_t KSE_STATS_CHA_BASE_OFF = 243;
+
+// Real engine function for granting a known Force Power, replacing the
+// hand-rolled raw known-powers-array poke KseForcePowerOp currently uses for
+// the ADD side (KSE_FIELD_ADD_FORCE_POWER). Same LaneDibello/Kotor-Patch-
+// Manager AddressDatabases/kotor1_0_3.db source as the ability-base setters
+// above (queried 2026-09-19), sitting in the same confirmed-trustworthy
+// address cluster. Signature per that DB/their CSWSCreatureStats.h:
+// AddKnownSpell(CSWSCreatureStats* this, BYTE classId, DWORD spellId) --
+// classId is WHICH class slot's known-spell list to add to, not part of
+// KSE_SetCreatureField's existing (object, nFieldType, nValue) shape, so
+// this hardcodes classId=0: this project's own class-slot convention
+// already treats slot 0 as the Jedi/Force-using slot for both the PC
+// (class_guardian/class_sentinel/etc. overwrite CLASS0_TYPE directly, never
+// add a second slot) and every Jedi companion (Bastila/Jolee/Juhani start
+// with Jedi in slot 0). UNPROVEN for this specific call: whether that
+// assumption holds is exactly what this swap is meant to test, alongside
+// whether using the real function fixes the PC-specific persistence gap
+// documented for feats (KotorClient.py's additional_feats research) --
+// unconfirmed either way for force powers specifically, not assumed to
+// fail the same way just because feats did.
+static const uintptr_t KSE_ADD_KNOWN_SPELL_RVA = 0x005aa9b0u - 0x00400000u; // 0x001aa9b0
+
+#define KSE_FIELD_SET_STR_BASE 9    // nValue = new base Strength
+#define KSE_FIELD_SET_DEX_BASE 10   // nValue = new base Dexterity
+#define KSE_FIELD_SET_INT_BASE 11   // nValue = new base Intelligence
+#define KSE_FIELD_SET_WIS_BASE 12   // nValue = new base Wisdom
+#define KSE_FIELD_SET_CHA_BASE 13   // nValue = new base Charisma
+
+#define KSE_FIELD_SET_CON_BASE 16   // nValue = new base Constitution (0-255); always recalculates Max HP (setHP=TRUE)
+
+// nValue = signed delta added to the TRUE base score (read natively,
+// never via NWScript's GetAbilityScore -- see KSE_STATS_STR_BASE_OFF's
+// comment for why), then written via the same real engine setter the
+// absolute KSE_FIELD_SET_*_BASE fields above use.
+#define KSE_FIELD_INCREMENT_STR_BASE 17
+#define KSE_FIELD_INCREMENT_DEX_BASE 18
+#define KSE_FIELD_INCREMENT_INT_BASE 19
+#define KSE_FIELD_INCREMENT_WIS_BASE 20
+#define KSE_FIELD_INCREMENT_CHA_BASE 21
+
+// Same shape as the 5 above, routed through the CON-specific setter
+// (setHP=TRUE) since CON's real engine setter takes the extra HP-recalc
+// parameter the others don't.
+#define KSE_FIELD_INCREMENT_CON_BASE 22
+
+// Self-contained "reduce to half" operation: reads the TRUE base score,
+// computes base - (base/2), and writes it via the same real setter --
+// entirely in native code, since the caller has no way to read the true
+// base to compute this itself. No-ops (same as a NWScript-side "already
+// minimal" check) when the base is already <= 1. nValue is unused. CON
+// isn't included -- its own trap needs a specific decrease amount, not a
+// flat halving, so it uses KSE_FIELD_INCREMENT_CON_BASE with a negative
+// delta instead.
+#define KSE_FIELD_HALVE_STR_BASE 23
+#define KSE_FIELD_HALVE_DEX_BASE 24
+#define KSE_FIELD_HALVE_INT_BASE 25
+#define KSE_FIELD_HALVE_WIS_BASE 26
+#define KSE_FIELD_HALVE_CHA_BASE 27
+
+// Self-contained "Cut Max Health in Half" operation: computes the CON
+// decrease that lands Max HP closest to half (the hit-die term is fixed
+// and can't be touched via CON alone, so exact half isn't always
+// reachable) entirely from the true base CON and both class-slot type/
+// level bytes already read natively elsewhere in this file (see
+// KSE_STATS_CLASS0_TYPE_OFF/KSE_STATS_CON_BASE_OFF above), then applies it
+// via KSE_FIELD_INCREMENT_CON_BASE's own setter. Replaces a Python-side
+// search over a cached ability/class snapshot that could go stale between
+// the poll and the trap actually firing -- every input here is read live
+// from the stat block at the moment of the call. nValue is unused.
+#define KSE_FIELD_HALVE_MAX_HP_VIA_CON 28
+
+// TEMPORARY RESEARCH DIAGNOSTIC (2026-09-20) -- retire once the offset
+// below is confirmed and wired into a real fix. Investigating why a
+// force power/feat correctly granted and PERSISTED on the server side
+// (CSWSCreatureStats, everything this file's KSE_FIELD_* family already
+// writes to) still doesn't show up on the live hotbar/combat menu.
+// LaneDibello/Kotor-Patch-Manager's AddressDatabases/kotor1_0_3.db
+// confirms KOTOR keeps a CLIENT-side mirror of creature stats
+// (CSWCCreatureStats, distinct from CSWSCreatureStats) with its own
+// AddKnownSpell -- the UI almost certainly reads from this mirror, which
+// our server-side writes never touch. CSWSObject.client_object (confirmed
+// offset 548/0x224 in the same DB) gets from a resolved server object to
+// its CSWCObject*, but the DB doesn't have the further offset from there
+// to the CSWCCreatureStats* the UI actually needs -- this project's own
+// old KSE_HOLDER_CONTAINER_OFF (0x2f8) guess from years ago looks WRONG
+// (0x2f8 = 760 decimal coincidentally matches CSWCCreature's real
+// lvl_up_stats field instead, a level-up-screen-only structure, not the
+// general stats object). CSWCCreatureStats's own vtable address IS known
+// (0x751c60) -- this diagnostic scans the client object's own memory for
+// a pointer whose target starts with that exact vtable address, to find
+// the real offset empirically instead of guessing further.
+#define KSE_FIELD_DIAG_SCAN_CLIENT_STATS 14   // nValue unused/reserved
+#define KSE_OBJ_CLIENT_OBJECT_OFF 548          // CSWSObject.client_object (0x224)
+#define KSE_CLIENT_STATS_VTABLE_VA 0x751c60u   // CSWCCreatureStats's own vtable
+
+// PIVOT, 2026-09-20 -- a full read-only vtable dump of the resolved client
+// object (all 80 slots cross-referenced against Patch Manager's DB) came
+// back entirely animation/visual-effect/portrait/sync methods, no
+// GetStats-shaped getter anywhere. CSWCCreature::GetSelfForcePowers /
+// GetHostileForcePowers are real, NAMED, NON-virtual functions (not in the
+// vtable at all -- called directly by address, same as every other real
+// engine function this project already calls), and are much closer to the
+// actual problem: they're plausibly the exact functions the UI calls to
+// build its self/ally and hostile action lists. GetSelfForcePowers takes
+// an output CExoArrayList* (this project's own {ptr,count,capacity}
+// 12-byte shape, already used for the force-power category record) --
+// calling it directly with a fresh empty list and reading back what it
+// populates tests whether the UNDERLYING DATA is actually already correct
+// (in which case the real bug is a UI-refresh/cache issue, not a missing
+// client-side sync) without needing to fully solve the CSWCCreatureStats
+// client-mirror question at all.
+static const uintptr_t KSE_GET_SELF_FORCE_POWERS_RVA = 0x00616230u - 0x00400000u; // 0x00216230
+#define KSE_FIELD_DIAG_CALL_GET_SELF_FORCE_POWERS 15   // nValue unused/reserved
+
+// RESOLVED, 2026-09-20 -- CONFIRMED LIVE via a real memory-snapshot diff
+// around a real level-up (Juhani learning Force Valor, spell id 22):
+// KSE_HOLDER_CONTAINER_OFF (0x2f8, defined near KSE_CREATURE_GETHOLDER_RVA
+// above) genuinely IS the offset from a resolved client CSWCCreature* to
+// its own CSWCCreatureStats* -- the years-old offset was right all along.
+// An automated pointer-scan for this exact offset earlier today came back
+// with zero matches only because it compared against KSE_CLIENT_STATS_
+// VTABLE_VA=0x751c60 exactly, but the REAL vtable value read live at this
+// exact offset is 0x751c64 -- off by 4, so the scan silently skipped past
+// the right answer. KSE_CONTAINER_FEATLIST_OFF (0xb0 = 176 decimal) also
+// lines up exactly with CSWCCreatureStats.feats' real offset per Patch
+// Manager's own DB -- both old offsets were correct the whole time, just
+// never live-verified until now. Confirmed structure, read from a
+// resolved clientObj: clientObj+0x2f8 -> CSWCCreatureStats*; that +212 ->
+// classes[0] (a Jedi-only-from-start companion's class, matching Bastila/
+// Jolee/Juhani); classes[0]+0 -> known_spells CExoArrayList
+// {ptr,count,capacity}, contents matched Juhani's real known powers
+// including the freshly-learned 22 exactly.
+static const uintptr_t KSE_CLIENT_ADD_KNOWN_SPELL_RVA = 0x00649f90u - 0x00400000u; // 0x00249f90 -- CSWCCreatureStats::AddKnownSpell(classId, spellId), same signature as the server-side one
+
 #define KSE_STATS_CLASS0_TYPE_OFF  0xa7
 #define KSE_STATS_CLASS0_LEVEL_OFF 0xa8
 #define KSE_STATS_CLASS1_TYPE_OFF  0xcf
@@ -437,13 +641,27 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 #define KSE_OBJ_CURRENT_HP_OFF     0xDC
 
 // Force Powers (known-list) category record -- CONFIRMED at a
-// fixed offset from KseField_StatBlock()'s object,
-// same base every other field above uses. Category 1 is confirmed to be
-// the Force Powers list; category 0 exists (2 total categories on every
-// creature tested) but is unidentified -- not needed for this feature.
+// fixed offset from KseField_StatBlock()'s object, same base every other
+// field above uses. This "category table" IS the real CSWSCreatureStats::
+// classes[] array (confirmed 2026-09-20 against LaneDibello/Kotor-Patch-
+// Manager's AddressDatabases/kotor1_0_3.db: KSE_STATS_CATEGORY_TABLE_OFF/
+// STRIDE are byte-identical to classes[]'s own offset/stride, and
+// known_spells sits at offset 0 of each 40-byte ClassInfo entry, matching
+// this record's ptr/count/cap layout) -- "category" is really just which
+// CLASS SLOT (0 or 1) a creature's known-spells list belongs to.
 #define KSE_STATS_CATEGORY_TABLE_OFF   0x8C  // + (category * KSE_STATS_CATEGORY_STRIDE)
 #define KSE_STATS_CATEGORY_STRIDE      40
-#define KSE_FORCE_POWER_CATEGORY       1
+// RETIRED 2026-09-20 -- was a hardcoded "category 1" assumption, only ever
+// confirmed correct for a naturally-leveled character (Jedi taken as a
+// genuine second class via the Dantooine trials, base class staying in
+// slot 0). Wrong for a character whose Jedi class lives in slot 0 instead
+// (Bastila/Jolee/Juhani starting Jedi-only, or anyone converted through
+// this project's own class_guardian/class_sentinel admin arms, which
+// overwrite slot 0 directly). KseForcePowerOp (kse_hook.cpp) now resolves
+// the correct slot live on every call instead -- see its own
+// KseResolveJediClassSlot. Left here, unused, as a comment of what NOT to
+// go back to, not renumbered/removed.
+#define KSE_FORCE_POWER_CATEGORY_RETIRED_DO_NOT_USE 1
 // Record layout, relative to the category's own base (STATS_CATEGORY_TABLE_OFF
 // + category*STRIDE): {ptr, count, capacity}, the same 12-byte header shape
 // every other array in this stat block already uses.

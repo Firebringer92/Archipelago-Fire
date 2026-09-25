@@ -391,6 +391,62 @@ int KSE_FIELD_ADD_FORCE_POWER()    { return 6; }  // nValue = spells.2da row id.
                                                    // No-ops if already known.
 int KSE_FIELD_REMOVE_FORCE_POWER() { return 7; }  // nValue = spells.2da row id.
                                                    // No-ops if not known.
+// KSE_FIELD_XP() intentionally not exposed here as a routine-level constant --
+// see offsets.h's KSE_FIELD_XP comment; not currently called from NWScript.
+
+// Absolute base-ability-score setters -- writes the real base score via the
+// engine's own SetSTRBase/SetDEXBase/SetINTBase/SetWISBase/SetCHABase member
+// functions, NOT a relative Effect (EffectAbilityIncrease/Decrease stacks a
+// new effect object on every call and has no ceiling on how many can
+// accumulate -- confirmed live to permanently cap a character's Dexterity
+// after enough stacked calls). nValue = the new base score, 0-255.
+int KSE_FIELD_SET_STR_BASE() { return 9; }
+int KSE_FIELD_SET_DEX_BASE() { return 10; }
+int KSE_FIELD_SET_INT_BASE() { return 11; }
+int KSE_FIELD_SET_WIS_BASE() { return 12; }
+int KSE_FIELD_SET_CHA_BASE() { return 13; }
+// Absolute base Constitution setter -- see offsets.h's KSE_SET_CON_BASE_RVA
+// comment. Always recalculates Max HP via the real engine setter's own
+// setHP flag, unlike the 5 setters above. nValue = the new base score, 0-255.
+int KSE_FIELD_SET_CON_BASE() { return 16; }
+// Relative ability-base increment: nValue = signed delta added to the TRUE
+// base score (read natively, not via GetAbilityScore -- see offsets.h's
+// KSE_STATS_STR_BASE_OFF comment for why that distinction matters), then
+// written through the same real engine setter the fields above use.
+int KSE_FIELD_INCREMENT_STR_BASE() { return 17; }
+int KSE_FIELD_INCREMENT_DEX_BASE() { return 18; }
+int KSE_FIELD_INCREMENT_INT_BASE() { return 19; }
+int KSE_FIELD_INCREMENT_WIS_BASE() { return 20; }
+int KSE_FIELD_INCREMENT_CHA_BASE() { return 21; }
+// Same shape as the 5 above, routed through the CON-specific setter
+// (setHP=TRUE) since CON's real engine setter needs the extra HP-recalc
+// parameter the others don't.
+int KSE_FIELD_INCREMENT_CON_BASE() { return 22; }
+
+// Self-contained "reduce to half" operation: reads the true base score,
+// computes base - (base/2), and writes it -- entirely native, since the
+// caller has no way to read the true base to compute this itself. No-ops
+// when the base is already <= 1. nValue is unused. CON isn't included --
+// its own use case needs a specific decrease amount, not a flat halving,
+// so it uses KSE_FIELD_INCREMENT_CON_BASE with a negative delta instead.
+int KSE_FIELD_HALVE_STR_BASE() { return 23; }
+int KSE_FIELD_HALVE_DEX_BASE() { return 24; }
+int KSE_FIELD_HALVE_INT_BASE() { return 25; }
+int KSE_FIELD_HALVE_WIS_BASE() { return 26; }
+int KSE_FIELD_HALVE_CHA_BASE() { return 27; }
+
+// Self-contained "Cut Max Health in Half" operation -- computes the CON
+// decrease that lands Max HP closest to half entirely natively (reads
+// true base CON and both class slots live, no cached state involved) and
+// applies it. Takes no parameters -- oCreature is enough.
+int KSE_FIELD_HALVE_MAX_HP_VIA_CON() { return 28; }
+
+// TEMPORARY RESEARCH DIAGNOSTIC -- see offsets.h's own comment. Retire
+// once the client-stats offset is confirmed and wired into a real fix.
+int KSE_FIELD_DIAG_SCAN_CLIENT_STATS() { return 14; }
+// TEMPORARY RESEARCH DIAGNOSTIC -- see offsets.h's own comment. Retire
+// once the hotbar-display fix is confirmed and wired in for real.
+int KSE_FIELD_DIAG_CALL_GET_SELF_FORCE_POWERS() { return 15; }
 
 void KSE_SetCreatureField(object oCreature, int nFieldType, int nValue)
 {

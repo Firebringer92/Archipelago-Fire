@@ -89,6 +89,19 @@ ARM_EFFECT: typing.Dict[str, tuple] = {
     "treat_injury": ("skill", "treatinjury", 2),
     "companion_bastila": ("companion", 0),
     "companion_canderous": ("companion", 1),
+    "companion_carth": ("companion", 2),
+    # companion_hk47 (3) and companion_zaalbar (8) deliberately excluded --
+    # HK-47's recruit is a multi-step purchase sequence rather than the
+    # plain AddPartyMember grant the others use, and Zaalbar has a real
+    # external prerequisite (Mission must already be in the party), so a
+    # naive "expected but not seen -> resend" wouldn't be wrong exactly,
+    # but hasn't been checked against either shape yet. Add them once
+    # that's confirmed safe -- see COMPANION_IDX_TO_ARM in KotorClient.py
+    # for the npc_idx each companion name maps to.
+    "companion_jolee": ("companion", 4),
+    "companion_juhani": ("companion", 5),
+    "companion_mission": ("companion", 6),
+    "companion_t3m4": ("companion", 7),
 }
 
 _SKILLREPORT_RE = re.compile(
@@ -193,6 +206,7 @@ class ReconciliationTracker:
         send_apply_value: typing.Callable[[str, int], typing.Awaitable[bool]],
         send_delevel: typing.Optional[typing.Callable[[int, int, int], typing.Awaitable[bool]]] = None,
         on_death: typing.Optional[typing.Callable[[], None]] = None,
+        is_awaiting_confirmation: typing.Optional[typing.Callable[[str], bool]] = None,
     ):
         self._send_apply = send_apply
         self._send_apply_value = send_apply_value
@@ -203,6 +217,14 @@ class ReconciliationTracker:
         # False.
         self._send_delevel = send_delevel
         self._on_death = on_death
+        # Optional, same reasoning as send_delevel/on_death above -- a
+        # missing callable just means "nothing else knows about in-flight
+        # sends," so the deficit check below falls back to its old
+        # behavior (fire immediately) rather than crashing. See the
+        # missing-companion deficit check's own comment for the real race
+        # this closes when it IS wired up (see KotorClient.py's
+        # _is_arm_awaiting_confirmation).
+        self._is_awaiting_confirmation = is_awaiting_confirmation or (lambda arm_name: False)
         self.reset_for_new_connection()
 
     def reset_for_new_connection(self) -> None:
@@ -753,6 +775,22 @@ class ReconciliationTracker:
             if npc_idx in self._inflight_companions:
                 continue
             arm_name = next(name for name, v in ARM_EFFECT.items() if v[0] == "companion" and v[1] == npc_idx)
+            # expected_companions gains this npc_idx the moment the normal
+            # delivery pipeline STAGES the send (note_item_received, called
+            # right after send_apply/wait_staged succeed) -- well before
+            # the game confirms it, which can take up to one area
+            # transition. Without this check, a reconciler poll landing in
+            # that gap sees "expected but not yet seen" and fires this
+            # SAME arm again through self._send_apply, completely
+            # unsynchronized with the normal pipeline's own _heavy_queue
+            # serialization -- two independent sends of a one-shot
+            # companion-recruit script racing each other. Deliberately NOT
+            # added to _inflight_companions here (unlike the real send
+            # below): once is_awaiting_confirmation's own timeout elapses
+            # with the companion still missing, this loop needs to try
+            # again on its own next cycle, not stay suppressed forever.
+            if self._is_awaiting_confirmation(arm_name):
+                continue
             corrections.append(arm_name)
             self._inflight_companions.add(npc_idx)
 

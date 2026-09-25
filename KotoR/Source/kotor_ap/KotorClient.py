@@ -184,6 +184,15 @@ def _load_gear_items() -> dict:
 
 GEAR_ITEMS = _load_gear_items()
 
+# How long _process_heavy_queue() waits for a heavy send's AP|APPLIED|
+# confirmation before giving up and moving to the next queued item -- see
+# that function's own comment. Also used by ReconciliationTracker (passed
+# in as is_awaiting_confirmation) to know how long the normal delivery
+# pipeline should get exclusive custody of a companion arm before the
+# reconciler's own missing-companion deficit check is allowed to retry it
+# -- see that constructor argument's docstring for the race this closes.
+HEAVY_SEND_CONFIRM_TIMEOUT_SECONDS = 600  # ~10 minutes at 1s/poll
+
 # Arms that do AddMultiClass / ShowLevelUpGUI / AddPartyMember / CreateObject
 # -- batching several of these together (even all first-time
 # applications, no repeats involved) crashes the game. These get
@@ -1493,6 +1502,7 @@ class KotorContext(CommonContext):
             send_apply_value=self._guarded_send_apply_value,
             send_delevel=self._guarded_send_delevel,
             on_death=self._on_local_death,
+            is_awaiting_confirmation=self._is_arm_awaiting_confirmation,
         )
         self.location_tracker = LocationTracker()
         self._delivered_count = 0
@@ -3167,6 +3177,40 @@ class KotorContext(CommonContext):
         asyncio.create_task(self._heavy_queue.put(
             (label, arm_name, self._admin_heavy_counter, character)))
 
+    def _is_arm_awaiting_confirmation(self, arm_name: str) -> bool:
+        """True while the normal delivery pipeline (_do_deliver, whether
+        reached via _heavy_queue or sent immediately) has already staged
+        this exact arm_name and is still waiting on its AP|APPLIED|
+        confirmation. Passed into ReconciliationTracker as
+        is_awaiting_confirmation so its own missing-companion deficit
+        check (see _reconcile()'s companion branch) can defer to that
+        in-flight send instead of firing a second, unsynchronized
+        self._send_apply for the same companion.
+
+        Real incident this fixes: companion_canderous, 2026-09-25 --
+        note_item_received() adds a companion to expected_companions the
+        moment the normal send is staged, well before the game confirms
+        it (that only happens once the recruit arm's trampoline actually
+        fires, which can take up to one area transition). The reconciler
+        runs on every extender event, so if one lands in that gap it sees
+        "expected but not yet seen" and treats it as a genuine deficit --
+        during a calm session this window is usually too narrow for a
+        poll to land inside it, but a burst of events (e.g. the module
+        load-in flood right after a fresh launch) gives it many more
+        chances to. Two independent, uncoordinated sends of the same
+        one-shot companion-recruit script 3 seconds apart, during the
+        single most overloaded moment of the session, is the likely
+        reason neither one's KSE_Diag confirmation ever arrived.
+
+        Bounded by the same HEAVY_SEND_CONFIRM_TIMEOUT_SECONDS the heavy
+        queue itself gives up after -- once the normal pipeline has
+        stopped waiting on this send too, the reconciler is the right
+        thing to retry it, not blocked from ever doing so."""
+        record = self.extender.deliveries.get(arm_name)
+        if record is None or record.staged_at is None or record.applied_at is not None:
+            return False
+        return (time.time() - record.staged_at) < HEAVY_SEND_CONFIRM_TIMEOUT_SECONDS
+
     async def _guarded_send_apply(self, arm_name: str) -> bool:
         """Wraps ExtenderBridge.send_apply for ReconciliationTracker's own
         corrective sends (skills/credits/etc.) -- see
@@ -3399,7 +3443,7 @@ class KotorContext(CommonContext):
             # send (guards against reading a stale confirmation from an
             # EARLIER delivery of the same arm_name). Bounded so a lost
             # confirmation can't stall every later heavy item forever.
-            for _ in range(600):  # ~10 minutes max at 1s/poll
+            for _ in range(HEAVY_SEND_CONFIRM_TIMEOUT_SECONDS):  # 1s/poll
                 record = self.extender.deliveries.get(poll_key)
                 if record is not None and record.applied_at is not None and record.applied_at != already_applied_at:
                     break

@@ -125,13 +125,6 @@ class ExtenderBridge:
                     self._on_connect()
                 logger.info(f"Connected to extender at {EXTENDER_HOST}:{EXTENDER_PORT}")
                 client_logger.info("Extender: connected.")
-                # Best-effort: dropped silently if no area is known yet
-                # (e.g. the game hasn't loaded a save into the world yet at
-                # the moment this socket connects) -- same "cosmetic, fine
-                # to lose" design as every other send_notify call. Only
-                # shows once the player's next area transition plays it,
-                # same one-transition lag as every other notify/grant.
-                await self.send_notify("Connected to KotorClient")
                 await self._read_loop(reader)
             except (ConnectionRefusedError, OSError) as e:
                 if self.connected:

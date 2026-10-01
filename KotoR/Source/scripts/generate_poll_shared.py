@@ -321,6 +321,136 @@ lines.append('    sReport = sReport + "|baseclass=" + IntToString(nBaseClass) + 
 lines.append("    KSE_Diag(65, sReport);")
 lines.append("}")
 lines.append("")
+lines.append("// Reports current base-class (position 1) for each of the 7 non-droid")
+lines.append("// companions, so the reconciler can self-heal a companion's class the same")
+lines.append("// way CheckClasses() does for the PC -- companion class previously had NO")
+lines.append("// live polling at all, only a one-shot recruit-time send with no way to")
+lines.append("// detect drift afterward (e.g. a crash/reload landing on a save from before")
+lines.append("// a companion_class grant actually took). -1 means not currently recruited")
+lines.append("// (IsNPCPartyMember false) -- distinct from a real CLASS_TYPE_* value,")
+lines.append("// including CLASS_TYPE_SOLDIER's own 0. HK-47/T3-M4 (droids) are excluded --")
+lines.append("// Randomize_class never targets them, same scope as _COMPANION_NPC_CONST in")
+lines.append("// generate_trampoline_batch.py.")
+lines.append("void CheckCompanionClasses()")
+lines.append("{")
+lines.append('    string sReport = "AP|COMPANIONCLASSREPORT";')
+_COMPANION_CLASS_POLL = [
+    ("bastila", "Bastila", "NPC_BASTILA"),
+    ("canderous", "Cand", "NPC_CANDEROUS"),
+    ("carth", "Carth", "NPC_CARTH"),
+    ("jolee", "Jolee", "NPC_JOLEE"),
+    ("juhani", "Juhani", "NPC_JUHANI"),
+    ("mission", "Mission", "NPC_MISSION"),
+    ("zaalbar", "Zaalbar", "NPC_ZAALBAR"),
+]
+for key, tag, npc_const in _COMPANION_CLASS_POLL:
+    var = key[0].upper() + key[1:]
+    lines.append(f'    object o{var} = GetObjectByTag("{tag}");')
+    lines.append(f'    int n{var} = -1;')
+    lines.append(f'    if (IsNPCPartyMember({npc_const}) && GetIsObjectValid(o{var}))')
+    lines.append("    {")
+    lines.append(f'        n{var} = GetClassByPosition(1, o{var});')
+    lines.append("    }")
+    lines.append(f'    sReport = sReport + "|{key}=" + IntToString(n{var});')
+lines.append('    KSE_Diag(138, sReport);')
+lines.append("}")
+lines.append("")
+
+# Feats self-healing (see FutureDesign.md's "Entitlement/dispatch redesign"
+# entry) -- same per-companion GetObjectByTag+IsNPCPartyMember guard as
+# CheckCompanionClasses() above, but restricted to a small explicit id set
+# rather than the full 122-feat CheckFeats() scan below -- expected_feats
+# (kotor_reconciliation.py) can only ever contain ids from these two
+# sources anyway, so scanning the other ~100 feat.2da ids per companion
+# every poll would be pure waste. Keep both lists in sync by hand:
+# - KotorClient.py's ADDITIONAL_FEATS_POOL (17 ids, random Additional
+#   Feats draws)
+# - entitlement.py's JEDI_CLASS_FEATS (the Jedi class-conversion bundle --
+#   55/107/116 aren't in the pool above; 43/101/88/98 already are, listed
+#   here too for clarity rather than de-duplicated across two constants).
+_ADDITIONAL_FEATS_POOL = [
+    40, 42, 43, 4, 5, 6, 14, 28, 29, 11, 30, 8, 31, 60, 104, 101, 88, 98,
+]
+_JEDI_CLASS_FEATS_EXTRA = [55, 107, 116]  # Jedi Defense, Jedi Sense, Force Sensitivity -- not in the pool above
+_COMPANION_FEAT_SCAN_IDS = sorted(set(_ADDITIONAL_FEATS_POOL) | set(_JEDI_CLASS_FEATS_EXTRA))
+lines.append("// Reports which of the tracked feat ids (Additional Feats pool +")
+lines.append("// Jedi class-conversion bundle) each of the 7 non-droid companions")
+lines.append("// currently holds, so the reconciler can self-heal a companion's feats the")
+lines.append("// same way CheckCompanionClasses() does for class -- companion feats")
+lines.append("// previously had NO live polling at all. \"NONE\" means not currently")
+lines.append("// recruited (IsNPCPartyMember false) -- distinct from a real but empty held")
+lines.append("// list (recruited, holds none of the tracked ids).")
+lines.append("void CheckCompanionFeats()")
+lines.append("{")
+lines.append('    string sReport = "AP|COMPANIONFEATSREPORT";')
+for key, tag, npc_const in _COMPANION_CLASS_POLL:
+    var = key[0].upper() + key[1:]
+    lines.append(f'    object oF{var} = GetObjectByTag("{tag}");')
+    lines.append(f'    int bF{var}Recruited = IsNPCPartyMember({npc_const}) && GetIsObjectValid(oF{var});')
+    # No ternary operator -- NWScript's compiler doesn't support ?: (see
+    # this project's own accumulated NWScript-syntax findings). Plain
+    # if/else building the string instead.
+    lines.append(f'    string sF{var} = "NONE";')
+    lines.append(f"    if (bF{var}Recruited)")
+    lines.append("    {")
+    lines.append(f'        sF{var} = "";')
+    for feat_id in _COMPANION_FEAT_SCAN_IDS:
+        lines.append(f'        if (KSE_GetFeatAcquired({feat_id}, oF{var})) sF{var} += "{feat_id},";')
+    lines.append("    }")
+    lines.append(f'    sReport = sReport + "|{key}=" + sF{var};')
+lines.append('    KSE_Diag(139, sReport);')
+lines.append("}")
+lines.append("")
+
+# The 8 ItemClassification.progression give_item: entries confirmed
+# softlock-capable if silently lost (all 4 Star Maps are required to reach
+# the Star Forge) -- see FutureDesign.md's "Entitlement/dispatch redesign"
+# entry. A narrow, targeted GetItemPossessedBy() check per resref (~8
+# native calls), not full reconciliation -- these are simple possession
+# facts (has it or doesn't), not a repeatable/additive amount the way
+# skills are. Keep this list in sync by hand with entitlement.py's own
+# PROGRESSION_ITEM_RESREFS and worlds/kotor/Items.py's
+# PROGRESSION_ITEM_RESREFS (same reasoning as _ADDITIONAL_FEATS_POOL
+# above -- these three don't share an import boundary).
+_PROGRESSION_ITEM_RESREFS = [
+    ("sith_armor", "ptar_sitharmor"),
+    ("sith_papers", "ptar_sithpapers"),
+    ("shield_codes", "ptar_shieldcodes"),
+    ("enviro_suit", "man28_envirosuit"),
+    ("starmap_tatooine", "tat_starpad"),
+    ("starmap_kashyyyk", "kas_starpad"),
+    ("starmap_manaan", "man_starpad"),
+    ("starmap_korriban", "kor_starpad"),
+]
+lines.append("// Reports whether the PC currently possesses each of the 8 tracked")
+lines.append("// progression items, so the reconciler can re-grant any that go missing")
+lines.append("// (lost/sold/dropped) without waiting on a full inventory reconciliation --")
+lines.append("// see PROGRESSION_ITEM_RESREFS's own comment (entitlement.py) for why these")
+lines.append("// 8 specifically need this and the general gear pool doesn't.")
+lines.append("void CheckProgressionItems()")
+lines.append("{")
+lines.append("    object oPC = GetFirstPC();")
+lines.append('    string sReport = "AP|PROGRESSIONITEMSREPORT";')
+for key, resref in _PROGRESSION_ITEM_RESREFS:
+    lines.append(f'    int b{key.title().replace("_", "")} = GetIsObjectValid(GetItemPossessedBy(oPC, "{resref}"));')
+    lines.append(f'    sReport = sReport + "|{key}=" + IntToString(b{key.title().replace("_", "")});')
+lines.append("    KSE_Diag(140, sReport);")
+lines.append("}")
+lines.append("")
+
+# "Archipelago Tracker" journal quest (build_ap_tracker_quest.py) -- reports
+# the player's CURRENT stage every poll, so kotor_reconciliation.py's
+# check-percentage branch knows whether it still needs to send the next
+# journal_tracker_<N> arm (generate_trampoline_batch.py) without relying
+# purely on client-side in-flight tracking. 0 legitimately means "not
+# added yet" -- see nwscript.nss's own GetJournalEntry doc and
+# build_ap_tracker_quest.py's STAGES comment for why stage 0 was dropped
+# from the real stage list (1/20/40/60/80/100 instead).
+lines.append('void CheckAPTrackerStage()')
+lines.append("{")
+lines.append('    KSE_Diag(167, "AP|APTRACKERREPORT|stage=" + IntToString(GetJournalEntry("ap_tracker")));')
+lines.append("}")
+lines.append("")
 
 # Traps (see Options.py's Traps): the Remove Half Known
 # Feats / Remove Half Known Force Powers traps need to know WHICH ids the
@@ -596,6 +726,10 @@ lines.append("    CheckXP();")
 lines.append("    CheckCredits();")
 lines.append("    CheckAbilityScores();")
 lines.append("    CheckClasses();")
+lines.append("    CheckCompanionClasses();")
+lines.append("    CheckCompanionFeats();")
+lines.append("    CheckProgressionItems();")
+lines.append("    CheckAPTrackerStage();")
 lines.append("    CheckFeats();")
 lines.append("    CheckForcePowers();")
 lines.append("    CheckCharacterName();")
@@ -654,8 +788,24 @@ if cli_args.no_deploy:
     sys.exit(0)
 
 ncs_path = os.path.join(SRC_DIR, "ap_poll_shared.ncs")
-result = subprocess.run([NWNNSSCOMP, "-c", out_path, "-o", ncs_path], capture_output=True, text=True, cwd=SRC_DIR)
-if not os.path.exists(ncs_path):
+# Same os.path.exists()-only bug generate_trampoline_batch.py already hit and
+# fixed: extender/scripts_src/ ships a precompiled fallback .ncs for machines
+# without nwnnsscomp, so a silently-failed compile would leave that stale
+# file sitting there and this check would report success anyway -- and this
+# script runs on EVERY Connect, regenerating area_randomizer/additional_
+# enemies_mode polling for the seed, so a masked failure here means stale
+# poll data forever, not just once. mtime_before + a compile-error stdout
+# scan catches that.
+mtime_before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
+result = subprocess.run(
+    [NWNNSSCOMP, "-c", out_path, "-o", ncs_path],
+    capture_output=True, text=True, cwd=SRC_DIR, timeout=30,
+)
+compiled_fresh = os.path.exists(ncs_path) and (
+    mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
+)
+compile_error = "Compilation aborted" in result.stdout or "Error:" in result.stdout
+if not compiled_fresh or compile_error:
     print(f"COMPILE FAILED:\n{result.stdout}\n{result.stderr}")
     sys.exit(1)
 print(f"Compiled -> {ncs_path}")

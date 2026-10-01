@@ -50,6 +50,7 @@ from CommonClient import (
 
 from kotor_extender_bridge import ExtenderBridge, delivery_state
 from kotor_reconciliation import ReconciliationTracker, CLASS_ARM_TO_KEY
+from entitlement import HEAVY_ARMS, is_heavy_arm
 from kotor_location_tracker import LocationTracker
 from worlds.kotor.Items import item_table, TRAP_ITEMS
 from worlds.kotor.Locations import location_table
@@ -193,24 +194,11 @@ GEAR_ITEMS = _load_gear_items()
 # -- see that constructor argument's docstring for the race this closes.
 HEAVY_SEND_CONFIRM_TIMEOUT_SECONDS = 600  # ~10 minutes at 1s/poll
 
-# Arms that do AddMultiClass / ShowLevelUpGUI / AddPartyMember / CreateObject
-# -- batching several of these together (even all first-time
-# applications, no repeats involved) crashes the game. These get
-# serialized client-side, one in flight at a time, instead of
-# firing immediately like everything else -- see _process_heavy_queue().
-# Deliberately NOT everything: skills/abilities/force_death don't touch
-# multiclassing, the level-up GUI, or party membership, and have shown no
-# crash risk even in much larger batches. see Items.py.)
-HEAVY_ARMS = {
-    "class_guardian", "class_consular", "class_sentinel",
-    "companion_bastila", "companion_canderous", "companion_carth",
-    "companion_hk47", "companion_jolee", "companion_juhani",
-    "companion_mission", "companion_t3m4", "companion_zaalbar",
-    # StartingClass=random_class's base-class roll -- a KSE_SetCreatureField
-    # write on the PC, same heavy classification as companion_class's
-    # write, same reasoning (see _queue_heavy).
-    "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel",
-}
+# HEAVY_ARMS/is_heavy_arm moved to entitlement.py -- the single canonical
+# classification, imported here and by kotor_reconciliation.py (which
+# can't import from this file, since the dependency runs the other way).
+# See entitlement.py's own comment on HEAVY_ARMS for why this used to be
+# two parallel definitions.
 
 # Every arm name the extender's heartbeat/trampoline batch logic knows how
 # to apply -- must stay in sync with AP_ARM_NAMES in extender/src/dllmain.c
@@ -229,6 +217,17 @@ KNOWN_ARM_NAMES = [
     "ability_intelligence", "ability_wisdom",
     "force_death",
     "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel",
+    # One-shot research pair -- see generate_trampoline_batch.py's APPLIES
+    # table (arms 58/59) for what these test and why. Supersedes the
+    # retired diag_journal_persist_write/_read (arms 55/56) -- an
+    # undeclared plot ID couldn't even be written, so this pair targets a
+    # properly-declared quest tag ("ap_tracker") instead.
+    "diag_ap_tracker_write", "diag_ap_tracker_read",
+    # The real "Archipelago Tracker" journal stages (arms 60-64) -- sent
+    # by kotor_reconciliation.py's own check-percentage branch. Listed
+    # here too so /ap_apply can trigger one directly for testing.
+    "journal_tracker_20", "journal_tracker_40", "journal_tracker_60",
+    "journal_tracker_80", "journal_tracker_100", "journal_tracker_1",
     # Retired research arms are removed outright from this list (it's
     # just an /ap_apply validation list, no positional-ID constraint) --
     # see DEVELOPMENT_HISTORY.md for the research they concluded and
@@ -310,6 +309,7 @@ PATCH_ADDITIONAL_ENEMIES = os.path.join(REPO_ROOT, "scripts", "patch_additional_
 PATCH_GALACTIC_SHOP = os.path.join(REPO_ROOT, "scripts", "patch_galactic_shop.py")
 PATCH_NEW_COMPANION_ASSETS = os.path.join(REPO_ROOT, "scripts", "generate_new_companion_assets.py")
 PATCH_SHOP_ITEM_COSTS = os.path.join(REPO_ROOT, "scripts", "patch_shop_item_costs.py")
+BUILD_AP_TRACKER_QUEST = os.path.join(REPO_ROOT, "scripts", "build_ap_tracker_quest.py")
 ARM_ORCHESTRATOR = os.path.join(REPO_ROOT, "scripts", "arm_orchestrator.py")
 
 # Tracks the last seed_name each of the 3 heavier per-seed patch scripts
@@ -386,7 +386,7 @@ def write_slot_data_for_patch_scripts(
         loot_mode: int, door_mapping: dict | None, area_randomizer: int, starting_class: int,
         additional_enemies_mode: int = 0, seed_name: str | None = None,
         progression_system: bool = False, galactic_shop: bool = False,
-        new_companion: bool = False, door_mapping_repairs: list | None = None) -> None:
+        new_companion: int = 0, door_mapping_repairs: list | None = None) -> None:
     """Called on every successful Connect -- see SLOT_DATA_PATH above for
     why this exists. A plain JSON write (not restricted_loads/pickle --
     this project controls both ends, unlike the raw .archipelago format),
@@ -753,6 +753,30 @@ def apply_shop_item_costs() -> tuple[bool, str]:
         return False, f"apply_shop_item_costs raised: {e}"
 
 
+def apply_ap_tracker_quest() -> tuple[bool, str]:
+    """Same shape again, for build_ap_tracker_quest.py -- declares the
+    "Archipelago Tracker" journal quest and appends its 7 dialog.tlk
+    entries (quest name + 6 stage texts) if they aren't already present.
+    Universal, not gated by any option, same as apply_shop_item_costs()
+    above -- no "restore vanilla when off" case, the quest should just
+    always exist. Must run against THIS install's own dialog.tlk rather
+    than shipping a pre-baked global.jrl: _ensure_tlk_strings() picks up
+    wherever this machine's dialog.tlk currently ends, which won't
+    generally match the dev machine's own entry count. Idempotent
+    (checks the tail of dialog.tlk for an exact match before appending
+    again), so safe to run on every Connect the same way."""
+    try:
+        result = subprocess.run(
+            [sys.executable, BUILD_AP_TRACKER_QUEST, f"--game-dir={GAME_DIR}"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            return False, f"build_ap_tracker_quest.py failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"apply_ap_tracker_quest raised: {e}"
+
+
 def _load_galactic_pending() -> dict:
     """See GALACTIC_SHOP_PENDING_PATH. {"deposits": [record, ...],
     "claims": int} -- deposits are full pool records already built at
@@ -935,7 +959,7 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         if arm_name not in KNOWN_ARM_NAMES:
             self.output(f"Unknown arm name {arm_name!r}. Known names: {', '.join(KNOWN_ARM_NAMES)}")
             return False
-        if arm_name in HEAVY_ARMS:
+        if is_heavy_arm(arm_name):
             # Same reasoning as companion_class above -- the admin bypass
             # used to send straight through regardless of HEAVY_ARMS
             # membership, meaning even class_guardian/companion_carth/etc.
@@ -1066,6 +1090,16 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         Connect -- see on_package)."""
         self.output("Admin: re-applying the shop item cost fix ...")
         ok, msg = apply_shop_item_costs()
+        self.output(("OK: " if ok else "FAILED: ") + msg)
+        return ok
+
+    def _cmd_ap_apply_tracker_quest(self) -> bool:
+        """Same again, for build_ap_tracker_quest.py (normally run on
+        every Connect -- see on_package). Re-run is always safe: picks up
+        the existing dialog.tlk entries if already present instead of
+        appending duplicates."""
+        self.output("Admin: re-applying the Archipelago Tracker journal quest ...")
+        ok, msg = apply_ap_tracker_quest()
         self.output(("OK: " if ok else "FAILED: ") + msg)
         return ok
 
@@ -1319,6 +1353,55 @@ def _load_finalized_companion_classes() -> set:
     return keys
 
 
+def _load_granted_feats() -> dict:
+    """Rebuilds every character's expected_feats (ReconciliationTracker)
+    from the delivery log after a process restart -- see
+    _resolve_additional_feats' extended arm_name
+    ("additional_feats:<npc_key>:<f1>,<f2>,<f3>", vs. the short
+    "additional_feats:<npc_key>" form _pending_additional_feats/deliveries
+    bookkeeping uses) for where these ids actually get decided. Unlike
+    class/xp/credits, feats have no formula to recompute from slot_data --
+    the random choice made at resolve time IS the entitlement, so it has
+    to be read back from the log, not derived.
+
+    Returns {(seed_name, slot, npc_key): {feat_ids}}, same
+    (seed_name, slot, key) identity as _load_recruited_companions/
+    _load_finalized_companion_classes -- a past admin-triggered test from a
+    different seed/slot must not leak into another player's expected feats
+    either. Unlike those two (a settled-once boolean), a character can
+    have MULTIPLE Additional Feats resolutions over a playthrough, so
+    entries for the same key are UNIONED across the whole log, not
+    overwritten by the latest one."""
+    granted: typing.Dict[typing.Tuple[typing.Optional[str], typing.Optional[str], str], typing.Set[int]] = {}
+    try:
+        with open(DELIVERY_LOG_PATH, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("outcome") not in _SETTLED_OUTCOMES:
+                    continue
+                arm = entry.get("arm", "")
+                if not arm.startswith("additional_feats:"):
+                    continue
+                parts = arm.split(":", 2)
+                if len(parts) != 3 or not parts[2]:
+                    continue  # short form (pre-resolve "pending" log lines) -- no ids to read yet
+                npc_key = parts[1]
+                feat_ids = {int(f) for f in parts[2].split(",") if f}
+                key = (entry.get("seed_name"), entry.get("slot"), npc_key)
+                granted.setdefault(key, set()).update(feat_ids)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        game_events_logger.warning(f"[delivery log] failed to read granted feats ({e})")
+    return granted
+
+
 def _load_pc_class_settled() -> set:
     """(seed_name, slot) pairs for which a pc_class_soldier/scout/scoundrel
     arm (StartingClass=random_class's base-class write) has ever settled.
@@ -1501,6 +1584,8 @@ class KotorContext(CommonContext):
             send_apply=self._guarded_send_apply,
             send_apply_value=self._guarded_send_apply_value,
             send_delevel=self._guarded_send_delevel,
+            send_heavy=self._guarded_queue_heavy,
+            send_feats=self._guarded_send_additional_feats,
             on_death=self._on_local_death,
             is_awaiting_confirmation=self._is_arm_awaiting_confirmation,
         )
@@ -1617,6 +1702,15 @@ class KotorContext(CommonContext):
             _load_finalized_companion_classes()
         self._pc_class_settled: typing.Set[typing.Tuple[typing.Optional[str], typing.Optional[str]]] = \
             _load_pc_class_settled()
+        # {(seed_name, slot, npc_key): {feat_ids}} across every seed/slot
+        # ever logged -- see _load_granted_feats' own docstring. Filtered
+        # down to the CURRENT (seed_name, slot) and assigned onto
+        # self.reconciler.expected_feats at Connect (same "load broad at
+        # startup, filter to current identity at Connect" split
+        # companion_class_rolls uses), not here -- seed_name/slot aren't
+        # known yet at __init__ time.
+        self._granted_feats: typing.Dict[typing.Tuple[typing.Optional[str], typing.Optional[str], str], typing.Set[int]] = \
+            _load_granted_feats()
         # {(seed_name, slot, index): (item_name, arm_name)} for every
         # received additional_feats: item still waiting on its gates -- see
         # _load_pending_additional_feats and _check_pending_additional_feats.
@@ -1877,8 +1971,22 @@ class KotorContext(CommonContext):
             # real-vs-local-only confirmation gap closed the same way.
             sent = await self.extender.wait_staged(f"additional_feats:{npc_key}")
         if sent:
+            # Record WHICH ids were actually decided -- entitlement.py's
+            # feats tracking (self.reconciler.expected_feats) needs this
+            # for self-healing, since the choice was made randomly right
+            # here, not derivable from a formula the way class/xp/credits
+            # are. note_feats_granted only ever UNIONS into expected_feats,
+            # never replaces -- each resolve is a distinct, additive grant.
+            self.reconciler.note_feats_granted(npc_key, feat_ids)
             logger.info(f"[queued for game] {item_name} -> additional_feats:{npc_key}:{feat_ids}")
-            self._log_delivery(character, index, item_name, arm_name, "sent")
+            # arm_name gets the resolved ids appended (not the short
+            # "additional_feats:<npc_key>" form _pending_additional_feats/
+            # deliveries bookkeeping uses) so _load_granted_feats can
+            # rebuild expected_feats from the log after a process restart
+            # -- every existing arm_name.startswith("additional_feats:")
+            # check elsewhere still matches this longer string.
+            feats_csv = ",".join(str(f) for f in feat_ids)
+            self._log_delivery(character, index, item_name, f"additional_feats:{npc_key}:{feats_csv}", "sent")
         else:
             game_events_logger.warning(f"[NOT SENT -- extender offline] {item_name} -> additional_feats:{npc_key}. "
                             f"Will retry next poll cycle.")
@@ -2643,7 +2751,7 @@ class KotorContext(CommonContext):
                 slot_data.get("additional_enemies_mode", 0), self.seed_name,
                 bool(slot_data.get("progression_system", False)),
                 bool(slot_data.get("galactic_shop", False)),
-                bool(slot_data.get("new_companion", False)),
+                slot_data.get("new_companion", 0),
                 slot_data.get("door_mapping_repairs", []))
             self.companion_mode = slot_data.get("companion_mode", 0)
             self.companion_class_rolls = slot_data.get("companion_class_rolls", {})
@@ -2666,6 +2774,25 @@ class KotorContext(CommonContext):
             self.reconciler.credit_mode = slot_data.get("credit_mode", 0)
             self.reconciler.credit_limiter = slot_data.get("credit_limiter", 100)
             self.reconciler.credit_item = slot_data.get("credit_item", 5000)
+            # Own copy on the tracker, same seed-config data as
+            # self.companion_class_rolls above -- entitlement.py's
+            # compute_entitlement() reads it off the tracker it's passed,
+            # not off KotorContext, so it needs to live there too.
+            self.reconciler.companion_class_rolls = slot_data.get("companion_class_rolls", {})
+            # expected_feats has no slot_data formula to derive from (see
+            # _load_granted_feats' own docstring) -- filter the broad,
+            # every-seed-ever set loaded at __init__ down to the CURRENT
+            # (seed_name, slot) identity, same split companion_class_rolls
+            # above doesn't need (that one comes straight from slot_data)
+            # but _recruited_companions/_finalized_companion_classes
+            # already use for the same "don't leak another player's state
+            # in" reason.
+            current_slot = (self.seed_name, getattr(self, "username", None))
+            self.reconciler.expected_feats = {
+                npc_key: set(feat_ids)
+                for (sn, sl, npc_key), feat_ids in self._granted_feats.items()
+                if (sn, sl) == current_slot
+            }
             self.consumable_stack_count = slot_data.get("consumable_stack_count", 3)
             self.shop_item_count = slot_data.get("shop_item_count", 0)
             self.goal = slot_data.get("goal", 0)
@@ -2679,6 +2806,10 @@ class KotorContext(CommonContext):
             # Universal, not gated by any option -- see apply_shop_item_costs()'s
             # own docstring for why this always runs regardless of slot_data.
             asyncio.get_event_loop().run_in_executor(None, self._apply_shop_item_costs_and_log)
+            # Also universal -- see apply_ap_tracker_quest()'s own docstring
+            # for why this must run against THIS install's dialog.tlk on
+            # every Connect rather than shipping a pre-baked global.jrl.
+            asyncio.get_event_loop().run_in_executor(None, self._apply_ap_tracker_quest_and_log)
             # Anything deposited/claimed while this client was offline (or
             # before this Connect) settles now.
             asyncio.create_task(self._galactic_flush_pending())
@@ -2733,14 +2864,13 @@ class KotorContext(CommonContext):
             shop_stock = slot_data.get("shop_stock") or {}
             asyncio.create_task(self._send_shop_stock_when_ready(shop_stock))
 
-            # Best-effort in-game confirmation, independent of whether the
-            # extender is connected yet (send_notify no-ops silently if
-            # not) -- shows on the player's next area transition, same lag
-            # as every other notify/grant.
-            asyncio.create_task(self.extender.send_notify("Connected to AP Server"))
-
             lookup = self.location_names[self.game]
             n_locations = len([lid for lid in lookup if lid >= 0])
+            # Feeds the journal-tracker reconciliation branch's percentage
+            # calc (checked_location_count / total_location_count) -- the
+            # other half already lands every event, see handle_event()'s
+            # own checked_location_count assignment.
+            self.reconciler.total_location_count = n_locations
             game_events_logger.info("")
             game_events_logger.info(f"Connected. {n_locations} locations tracked (auto-detected from game state --")
             game_events_logger.info("see /ap_locations for the full list, or /ap_status for progress).")
@@ -2869,12 +2999,10 @@ class KotorContext(CommonContext):
             # already-existing action (set_credits) -- no new wire action,
             # no pending/resolution step needed, just fire it directly.
             # Zeroing credits is safe under credit_mode's reconciliation
-            # clamp too: the existing purchase-detection logic
-            # (kotor_reconciliation.py) treats ANY drop in credits between
-            # polls as legitimate spend and folds it into
-            # _cumulative_credit_spend, which both ap_limited and ap_gated
-            # already subtract from their expected total -- the clamp
-            # won't fight this.
+            # clamp too: kotor_reconciliation.py's baseline tracking
+            # (_credit_baseline) treats ANY drop in credits between polls
+            # as legitimate and applies it straight to the baseline -- the
+            # clamp won't try to "restore" this.
             sent = await self.extender.send_apply_value("set_credits", 0)
             if sent:
                 # See _resolve_trap's own comment on wait_staged -- same
@@ -2922,7 +3050,7 @@ class KotorContext(CommonContext):
             game_events_logger.info(f"[pending] {item_name} -> resolving next poll cycle")
             return
 
-        if arm_name in HEAVY_ARMS or arm_name.startswith("companion_class:"):
+        if is_heavy_arm(arm_name):
             # Multiclassing/level-up-GUI/party-member arms don't send
             # immediately: batching several of these together (even all
             # first-time applications, no repeats involved) crashes the
@@ -2936,11 +3064,13 @@ class KotorContext(CommonContext):
             # jedi_companion item's companion_class:carth:guardian can
             # land in a batch alongside unrelated grants) despite doing an
             # equally heavy SetCreatureField+4-feat-array write, but is
-            # never in HEAVY_ARMS itself -- a plain `in HEAVY_ARMS` check
-            # can never match a colon-parameterized string, so this needs
-            # its own explicit prefix check, not just a set entry.
+            # never a HEAVY_ARMS set entry itself -- a colon-parameterized
+            # string can't be. is_heavy_arm() covers it via its
+            # startswith("companion_") check instead (see entitlement.py).
             self._pending_heavy_indices.add((character, index))
-            await self._heavy_queue.put((item_name, arm_name, index, character))
+            # is_correction=False -- a real item is never a correction, see
+            # _queue_heavy's own docstring for what that flag gates.
+            await self._heavy_queue.put((item_name, arm_name, index, character, False))
             return
 
         await self._do_deliver(item_name, arm_name, index, character)
@@ -3139,28 +3269,54 @@ class KotorContext(CommonContext):
             game_events_logger.warning(f"[shop item costs] PATCH FAILED -- {msg}\n"
                                        f"  (run /ap_apply_shop_item_costs to retry once fixed)")
 
-    def _queue_heavy(self, arm_name: str, label: str) -> None:
+    def _apply_ap_tracker_quest_and_log(self) -> None:
+        """apply_ap_tracker_quest() on every Connect -- universal, not
+        seed-gated (see that function's own docstring for why: it must
+        run against THIS install's dialog.tlk, not a pre-baked copy).
+        Runs in an executor like the other patch scripts."""
+        ok, msg = apply_ap_tracker_quest()
+        if ok:
+            game_events_logger.info(f"[ap tracker quest] {msg}")
+        else:
+            game_events_logger.warning(f"[ap tracker quest] PATCH FAILED -- {msg}\n"
+                                       f"  (run /ap_apply_tracker_quest to retry once fixed)")
+
+    def _queue_heavy(self, arm_name: str, label: str, *, is_correction: bool = False) -> None:
         """The ONE place any heavy send not already going through
         _deliver_item's real-item path enters _heavy_queue -- used by the
-        automatic no_jedi/randomize_all companion_class follow-up below and
-        by /ap_apply's admin bypass. A companion_class send that skips
-        this queue can land in the same TRAMPOLINE_BATCH_FIRED batch as
-        unrelated grants and crash the game -- the exact same crash class
-        HEAVY_ARMS/_heavy_queue exists to prevent for
+        automatic no_jedi/randomize_all companion_class follow-up below,
+        /ap_apply's admin bypass, and (via _guarded_queue_heavy) the
+        reconciler's own self-heal corrections. A companion_class send
+        that skips this queue can land in the same TRAMPOLINE_BATCH_FIRED
+        batch as unrelated grants and crash the game -- the exact same
+        crash class HEAVY_ARMS/_heavy_queue exists to prevent for
         class_guardian/companion_carth/etc.; companion_class: needs its
         own routing here since it's a colon-parameterized string, not a
-        static HEAVY_ARMS entry. Rather than have three separate call
-        sites each remember to check HEAVY_ARMS/route correctly (and risk
-        a fourth future call site forgetting to), every non-real-item
-        heavy send funnels through here. item_name/character are cosmetic
-        (log/delivery-log labels only) for an admin-or-automatic send with
-        no real AP item behind it; index is a unique negative counter so
-        it can never collide with a real item's index or with another
-        admin send of the same arm in _delivered_keys.
+        static HEAVY_ARMS entry. Rather than have every call site
+        remember to check HEAVY_ARMS/route correctly (and risk a future
+        call site forgetting to), every non-real-item heavy send funnels
+        through here. item_name/character are cosmetic (log/delivery-log
+        labels only) for an admin-or-automatic send with no real AP item
+        behind it; index is a unique negative counter so it can never
+        collide with a real item's index or with another admin send of
+        the same arm in _delivered_keys.
 
-        Also gated on the new-character safeguard -- an admin/auto heavy
-        send is just as capable of mutating the wrong character's state
-        as a real item delivery is, so it gets the same
+        is_correction=True (the reconciler's only mode) marks this as a
+        RE-AFFIRMATION of state already accounted for, not a new arrival
+        -- passed through to _do_deliver via the queue tuple, which uses
+        it to skip note_item_received()/_maybe_queue_companion_class().
+        Real incident this prevents: the original Canderous crash was
+        caused by a reconciler-triggered companion resend re-triggering
+        _maybe_queue_companion_class's automatic follow-up, redundantly
+        re-queuing an already-applied companion_class grant. Admin/auto
+        callers below deliberately keep the default False -- both
+        legitimately want the full real-arrival treatment (admin is
+        explicitly testing the real end-to-end path; the auto follow-up
+        IS reacting to a genuinely new recruit).
+
+        Also gated on the new-character safeguard -- an admin/auto/
+        reconciler heavy send is just as capable of mutating the wrong
+        character's state as a real item delivery is, so it gets the same
         pause-until-confirmed treatment. See _evaluate_character_safety().
 
         Records the real current character (or None if genuinely not
@@ -3175,7 +3331,7 @@ class KotorContext(CommonContext):
         self._admin_heavy_counter -= 1
         character = self.reconciler.current_character_name
         asyncio.create_task(self._heavy_queue.put(
-            (label, arm_name, self._admin_heavy_counter, character)))
+            (label, arm_name, self._admin_heavy_counter, character, is_correction)))
 
     def _is_arm_awaiting_confirmation(self, arm_name: str) -> bool:
         """True while the normal delivery pipeline (_do_deliver, whether
@@ -3235,6 +3391,23 @@ class KotorContext(CommonContext):
             return False
         return await self.extender.send_apply_value(action, value)
 
+    async def _guarded_send_additional_feats(self, character_key: str, feat_ids: typing.List[int]) -> bool:
+        """Wired to ReconciliationTracker as send_feats -- the reconciler's
+        own feats self-heal (a character missing a feat_id already
+        recorded in expected_feats, see note_feats_granted). Light, not
+        heavy: KSE_GrantFeatArrayA never touches multiclass/party/level-up
+        GUI, and _resolve_additional_feats already sends this same call
+        directly (never through _queue_heavy), so there's no batching-
+        crash risk to serialize against. Always resends the EXACT missing
+        subset the caller computed (already-decided ids, never a fresh
+        random draw) -- same guard shape as _guarded_send_apply."""
+        if self._character_confirmed is False:
+            game_events_logger.warning(f"[SAFEGUARD] Skipping reconciliation send "
+                            f"(additional_feats:{character_key}:{feat_ids}) -- "
+                            f"unrecognized character, run /ap_confirm_character first if this is intentional.")
+            return False
+        return await self.extender.send_additional_feats(character_key, feat_ids)
+
     async def _guarded_send_delevel(self, new_level: int, new_xp: int, new_force: int) -> bool:
         """Same guard as _guarded_send_apply/_guarded_send_apply_value, for
         the delevel reconciler fix -- see ExtenderBridge.send_delevel's
@@ -3245,6 +3418,30 @@ class KotorContext(CommonContext):
                             f"unrecognized character, run /ap_confirm_character first if this is intentional.")
             return False
         return await self.extender.send_delevel(new_level, new_xp, new_force)
+
+    def _guarded_queue_heavy(self, arm_name: str) -> None:
+        """Wired to ReconciliationTracker as send_heavy -- the ONLY
+        dispatch path for a correction naming a HEAVY_ARMS member or a
+        companion_class: send (see entitlement.py's is_heavy_arm). Just
+        forwards to _queue_heavy, the same single serializing entry point
+        every other non-real-item heavy send (admin /ap_apply, the
+        automatic companion_class follow-up) already uses -- see that
+        method's own docstring. Before this was wired up, the reconciler
+        called self.extender.send_apply directly for companion recruit/
+        class corrections, completely bypassing _heavy_queue's
+        serialization -- the exact crash class HEAVY_ARMS exists to
+        prevent (two heavy sends landing in the same trampoline batch).
+
+        is_correction=True is the whole reason this wrapper exists rather
+        than every ReconciliationTracker construction site passing
+        _queue_heavy directly -- see _queue_heavy's own docstring and
+        _do_deliver's tail for what this actually prevents (a reconciler
+        resend re-triggering _maybe_queue_companion_class's automatic
+        follow-up, recreating the original Canderous incident's redundant-
+        reroll shape even after the batching-crash risk was closed). No
+        separate character-safety check needed here -- _queue_heavy
+        already has its own."""
+        self._queue_heavy(arm_name, f"(reconciler self-heal) {arm_name}", is_correction=True)
 
     def _evaluate_character_safety(self) -> None:
         """Safeguard: if the currently-connected character's name has
@@ -3320,9 +3517,18 @@ class KotorContext(CommonContext):
             self._queue_heavy(f"companion_class:{npc_key}:{class_name}",
                                f"(auto-follow-up) companion_class:{npc_key}:{class_name}")
 
-    async def _do_deliver(self, item_name: str, arm_name: str, index: int, character: typing.Optional[str]) -> None:
+    async def _do_deliver(self, item_name: str, arm_name: str, index: int, character: typing.Optional[str],
+                           *, is_correction: bool = False) -> None:
         """The actual send -- shared by the immediate (light-arm) path in
-        _deliver_item and the serialized consumer in _process_heavy_queue."""
+        _deliver_item and the serialized consumer in _process_heavy_queue.
+
+        is_correction=True (only ever set by the reconciler, via
+        _guarded_queue_heavy -> _queue_heavy's queue tuple) marks this as
+        a RE-AFFIRMATION of state already accounted for, not a new
+        arrival -- see the tail below and _queue_heavy's own docstring for
+        the real incident this distinction prevents (a reconciler resend
+        re-triggering _maybe_queue_companion_class's automatic follow-up
+        and redundantly re-queuing an already-applied grant)."""
         if arm_name.startswith("give_item:"):
             parts = arm_name.split(":")
             resref = parts[1] if len(parts) > 1 else ""
@@ -3345,6 +3551,12 @@ class KotorContext(CommonContext):
             if sent:
                 logger.info(f"[queued for game] {item_name} -> give_item:{resref} x{count}")
                 self._log_delivery(character, index, item_name, arm_name, "sent")
+                if not is_correction:
+                    # Only the 8 tracked progression resrefs actually get
+                    # recorded (see note_item_received's own give_item:
+                    # branch) -- the general gear pool is intentionally a
+                    # no-op here, same scope as PROGRESSION_ITEM_RESREFS.
+                    self.reconciler.note_item_received(arm_name)
             else:
                 game_events_logger.warning(f"[NOT SENT -- extender offline] {item_name} -> give_item:{resref}. "
                                 f"Will need /ap_apply manually once the game is up, "
@@ -3400,10 +3612,22 @@ class KotorContext(CommonContext):
             # real-vs-local-only confirmation gap closed the same way.
             sent = await self.extender.wait_staged(arm_name)
         if sent:
-            self.reconciler.note_item_received(arm_name)
+            # is_correction=True skips BOTH of these -- they represent
+            # "this is newly-decided AP progress," which a reconciler
+            # resend of already-accounted-for state is not.
+            # note_item_received re-recording an unchanged value is
+            # harmless, but _maybe_queue_companion_class is NOT: it
+            # unconditionally re-decides "does this companion need a class
+            # assignment" and would redundantly re-queue one regardless of
+            # whether they already have it -- the exact shape that crashed
+            # Canderous originally (a companion-recruit resend re-
+            # triggering this follow-up on top of an already-applied
+            # grant). See _queue_heavy's own docstring.
+            if not is_correction:
+                self.reconciler.note_item_received(arm_name)
+                self._maybe_queue_companion_class(arm_name)
             logger.info(f"[queued for game] {item_name} -> {arm_name}")
-            self._log_delivery(character, index, item_name, arm_name, "sent")
-            self._maybe_queue_companion_class(arm_name)
+            self._log_delivery(character, index, item_name, arm_name, "reconciled" if is_correction else "sent")
         else:
             game_events_logger.warning(f"[NOT SENT -- extender offline] {item_name} -> {arm_name}. "
                             f"Will need /ap_apply {arm_name} manually once the game is up, "
@@ -3416,7 +3640,7 @@ class KotorContext(CommonContext):
         before sending the next -- see HEAVY_ARMS and the queuing comment
         in _deliver_item for why."""
         while True:
-            item_name, arm_name, index, character = await self._heavy_queue.get()
+            item_name, arm_name, index, character, is_correction = await self._heavy_queue.get()
             # companion_class:<name>:<class> sends are tracked in the
             # extender's delivery table under just "companion_class:<name>"
             # (no class suffix) -- see kotor_extender_bridge.py's
@@ -3436,7 +3660,7 @@ class KotorContext(CommonContext):
             if record is not None:
                 already_applied_at = record.applied_at
 
-            await self._do_deliver(item_name, arm_name, index, character)
+            await self._do_deliver(item_name, arm_name, index, character, is_correction=is_correction)
 
             # Wait for confirmation this specific send actually landed --
             # i.e. applied_at advanced past whatever it was before this

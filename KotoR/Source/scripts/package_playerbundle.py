@@ -97,6 +97,12 @@ FILES = [
     (("Archipelago", "kotor_extender_bridge.py"), "kotor_extender_bridge.py"),
     (("Archipelago", "kotor_location_tracker.py"), "kotor_location_tracker.py"),
     (("Archipelago", "kotor_reconciliation.py"), "kotor_reconciliation.py"),
+    # Found missing entirely via a scratch-directory test install:
+    # KotorClient.py imports from entitlement.py directly (HEAVY_ARMS,
+    # PROGRESSION_ITEM_RESREFS, etc.) -- every real tester's install would
+    # hit an ImportError on the very first run without it. Same class of
+    # gap as the other files in this list, just never caught until now.
+    (("Archipelago", "entitlement.py"), "entitlement.py"),
     # Double-clickable installer -- testers don't run command
     # prompt commands. Ships at the Client folder root (sibling of
     # CommonClient.py, same level as scripts\) so `cd /d "%~dp0"` inside it
@@ -149,6 +155,13 @@ FILES = [
     # fix despite it being built and verified once on the dev's own
     # machine. Same class of gap as the ones documented above.
     (("scripts", "patch_shop_item_costs.py"), "scripts/patch_shop_item_costs.py"),
+    # Runs automatically from KotorClient.py's Connect handler
+    # (apply_ap_tracker_quest()), universal/not seed-gated, same class of
+    # gap as patch_shop_item_costs.py above if missed -- without this file
+    # present, every tester's Connect would hit FileNotFoundError trying
+    # to subprocess it. Must run per-install (see its own docstring), so
+    # it ships as a script here rather than a pre-baked global.jrl.
+    (("scripts", "build_ap_tracker_quest.py"), "scripts/build_ap_tracker_quest.py"),
     # Same gap as loot_disturb/galactic_shop above -- runs
     # automatically from KotorClient.py's Connect handler
     # (apply_new_companion_assets()), not something a tester runs by hand,
@@ -183,6 +196,15 @@ DIRS = [
     # test scripts alongside the ones actually needed) rather than hand-
     # picking exact filenames per loot_mode, which risks missing one.
     (("extender", "scripts_src"), "extender/scripts_src"),
+    # Found missing entirely: generate_new_companion_assets.py reads
+    # p_malakh.mdl/.mdx, n_darthmalak_ap.mdl/.mdx, and po_malak.tpc
+    # straight from this folder (RAW_OVERRIDE_DIR) at Connect time when
+    # new_companion=malak -- but nothing shipped it, so a real tester
+    # selecting that option would hit FileNotFoundError on Connect. Ship
+    # the whole folder rather than hand-picking filenames, same reasoning
+    # as scripts_src above -- it's the same checked-in-source-of-truth
+    # convention any future feature's static assets will also land in.
+    (("extender", "raw_override_files"), "extender/raw_override_files"),
 ]
 
 

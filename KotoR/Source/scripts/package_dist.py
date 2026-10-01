@@ -55,6 +55,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
+from add_saber_crystal_colors import list_deployed_filenames as _crystal_filenames
 from generate_companion_suppressors import COMPANIONS
 from generate_store_suppressors import STORES
 
@@ -82,7 +83,24 @@ ALWAYS_ON_EXTRA = ["ap_heartbeat", "ap_poll_shared"]
 EXTRA_RAW_FILES = [
     "cut00_convers.dlg", "k_player_dialog.dlg",
     "m12aa_c06.dlg", "tar02_carth022.dlg",
-]
+    # The 6 new lightsaber crystal colors (add_saber_crystal_colors.py) --
+    # static, seed-independent item/model/texture content, same category
+    # as the .dlg fixes above. upcrystals.2da is the row patch that makes
+    # the crystal templates resolvable at all; the model/uti/texture
+    # filenames are derived from that script's own PORTED_COLORS/PURPLE_*
+    # data (list_deployed_filenames()) instead of hand-listed here, so a
+    # future color addition can't silently ship without its assets.
+    #
+    # global.jrl is deliberately NOT included here -- see
+    # build_ap_tracker_quest.py: its stringrefs are baked against whatever
+    # install built it, which a real tester's own dialog.tlk entry count
+    # has no guarantee of matching. Shipping it as a static Override file
+    # would only be correct by coincidence. KotorClient.py's
+    # apply_ap_tracker_quest() runs this script per-install instead
+    # (every Connect), so each tester gets a global.jrl built against
+    # their own dialog.tlk.
+    "upcrystals.2da",
+] + _crystal_filenames()
 
 # Hand-written companion-recruit guards (not generator-produced, so
 # collect_expected_resrefs() can't discover them from COMPANIONS/STORES --

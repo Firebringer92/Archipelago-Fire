@@ -16,73 +16,7 @@ void Revive(object oCaster, object oTarget, int nHeal)
 void main()
 {
     int nSid = GetSpellId();
-    if (nSid == 133)
-    {
-        // K1 port of KOTOR 2's FORCE_POWER_REVITALIZE (k_inc_force.nss, DJS-OEI 1/2/2004;
-        // fixed heal amounts per RWT-OEI 09/27/04 FMP#4893). Same EffectResurrection+
-        // EffectHeal shape the K1FPP mod's Revitalise already proved works in K1.
-        object oCaster = OBJECT_SELF;
-        int nRevived = 0;
-        if (!IsObjectPartyMember(oCaster)) return;
-        object oBest = OBJECT_INVALID;
-        float fBest = 999999.0;
-        int i;
-        for (i = 0; i < 3; i++)
-        {
-            object oPM = GetPartyMemberByIndex(i);
-            if (GetIsObjectValid(oPM) && oPM != oCaster && GetRacialType(oPM) != RACIAL_TYPE_DROID
-                && GetCurrentHitPoints(oPM) < 1)
-            {
-                float fDist = GetDistanceBetween(oCaster, oPM);
-                if (fDist < fBest) { fBest = fDist; oBest = oPM; }
-            }
-        }
-        if (GetIsObjectValid(oBest)) { Revive(oCaster, oBest, 10); nRevived++; }
-        KSE_Diag(151, "AP|FORCEPOWER|revitalize|tier=1|revived=" + IntToString(nRevived));
-    }
-    else if (nSid == 134)
-    {
-        // K1 port of KOTOR 2's FORCE_POWER_IMPROVED_REVITALIZE (k_inc_force.nss, DJS-OEI 1/2/2004;
-        // fixed heal amounts per RWT-OEI 09/27/04 FMP#4893). Same EffectResurrection+
-        // EffectHeal shape the K1FPP mod's Revitalise already proved works in K1.
-        object oCaster = OBJECT_SELF;
-        int nRevived = 0;
-        if (!IsObjectPartyMember(oCaster)) return;
-        int i;
-        for (i = 0; i < 3; i++)
-        {
-            object oPM = GetPartyMemberByIndex(i);
-            if (GetIsObjectValid(oPM) && oPM != oCaster && GetRacialType(oPM) != RACIAL_TYPE_DROID
-                && GetCurrentHitPoints(oPM) < 1)
-            {
-                Revive(oCaster, oPM, 25);
-                nRevived++;
-            }
-        }
-        KSE_Diag(151, "AP|FORCEPOWER|revitalize|tier=2|revived=" + IntToString(nRevived));
-    }
-    else if (nSid == 135)
-    {
-        // K1 port of KOTOR 2's FORCE_POWER_MASTER_REVITALIZE (k_inc_force.nss, DJS-OEI 1/2/2004;
-        // fixed heal amounts per RWT-OEI 09/27/04 FMP#4893). Same EffectResurrection+
-        // EffectHeal shape the K1FPP mod's Revitalise already proved works in K1.
-        object oCaster = OBJECT_SELF;
-        int nRevived = 0;
-        if (!IsObjectPartyMember(oCaster)) return;
-        int i;
-        for (i = 0; i < 3; i++)
-        {
-            object oPM = GetPartyMemberByIndex(i);
-            if (GetIsObjectValid(oPM) && oPM != oCaster && GetRacialType(oPM) != RACIAL_TYPE_DROID
-                && GetCurrentHitPoints(oPM) < 1)
-            {
-                Revive(oCaster, oPM, 50);
-                nRevived++;
-            }
-        }
-        KSE_Diag(151, "AP|FORCEPOWER|revitalize|tier=3|revived=" + IntToString(nRevived));
-    }
-    else if (nSid == 136)
+    if (nSid == 136)
     {
         // K1 port of KOTOR 2's FORCE_POWER_FORCE_SCREAM (k_inc_force.nss, DJS-OEI 12/30/2003).
         // K2's dedicated scream VFX (9005-9007) don't exist in K1's visualeffects.2da;
@@ -220,64 +154,73 @@ effect eOld = GetFirstEffect(oTarget);
         }
         KSE_Diag(151, "AP|FORCEPOWER|scream|tier=3|targets=" + IntToString(nHit));
     }
-    else if (nSid == 139)
+    else if (nSid == 142)
     {
-        // K1 port of KOTOR 2's FORCE_POWER_FORCE_BARRIER (k_inc_force.nss, DJS-OEI 12/11/2003).
+        // K1 port of KOTOR 2's FORCE_POWER_MASTER_ENERGY_RESISTANCE
+        // (k_inc_force.nss, DJS-OEI 12/9-10/2003). Self-only, unlike K2's
+        // real script (which also buffs the whole party for a PC caster)
+        // -- kept consistent with K1's own Resist Energy 1/2, which are
+        // both self-only, rather than introducing new party-wide scope
+        // for what's meant to be a small, single-tier addition.
         object oCaster = OBJECT_SELF;
 effect eOld = GetFirstEffect(oCaster);
         while (GetIsEffectValid(eOld))
         {
             int nOldSid = GetEffectSpellId(eOld);
-            if (nOldSid == 139 || nOldSid == 140 || nOldSid == 141) RemoveEffect(oCaster, eOld);
+            if (nOldSid == 142) RemoveEffect(oCaster, eOld);
             eOld = GetNextEffect(oCaster);
         }
-        effect eLink = EffectDamageResistance(DAMAGE_TYPE_BLUDGEONING, 4);
-        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_PIERCING, 4));
-        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_SLASHING, 4));
-        effect eVis = EffectVisualEffect(VFX_PRO_FORCE_ARMOR);
-        eVis = EffectLinkEffects(eVis, EffectVisualEffect(VFX_PRO_FORCE_SHIELD));
-        ApplyEffectToObject(DURATION_TYPE_TEMPORARY, eLink, oCaster, 30.0);
-        ApplyEffectToObject(DURATION_TYPE_TEMPORARY, eVis, oCaster, 3.0);
-        KSE_Diag(151, "AP|FORCEPOWER|barrier|tier=1|dr=4|dur=30");
+        effect eLink = EffectDamageResistance(DAMAGE_TYPE_COLD, 20);
+        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_FIRE, 20));
+        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_SONIC, 20));
+        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_BLASTER, 20));
+        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_ELECTRICAL, 20));
+        effect eVis = EffectVisualEffect(VFX_PRO_RESIST_ELEMENTS);
+        ApplyEffectToObject(DURATION_TYPE_TEMPORARY, eLink, oCaster, 120.0);
+        ApplyEffectToObject(DURATION_TYPE_TEMPORARY, eVis, oCaster, 1.0);
+        KSE_Diag(151, "AP|FORCEPOWER|energy_resistance|dr=20|dur=120");
     }
-    else if (nSid == 140)
+    else if (nSid == 143)
     {
-        // K1 port of KOTOR 2's FORCE_POWER_IMPROVED_FORCE_BARRIER (k_inc_force.nss, DJS-OEI 12/11/2003).
+        // K1 port of KOTOR 2's FORCE_POWER_MASTER_HEAL (k_inc_force.nss,
+        // "Same as Improved Heal with addition 5 VP and Stun removal").
+        // Party-wide like Revitalize -- heals the caster plus every valid
+        // party member. Formula is K2's own active code path verbatim
+        // (its Form/Stance multiplier branch is commented out in K2's
+        // own shipped source too, so nMultiplier is always 1 there).
         object oCaster = OBJECT_SELF;
 effect eOld = GetFirstEffect(oCaster);
         while (GetIsEffectValid(eOld))
         {
             int nOldSid = GetEffectSpellId(eOld);
-            if (nOldSid == 139 || nOldSid == 140 || nOldSid == 141) RemoveEffect(oCaster, eOld);
+            if (nOldSid == 143) RemoveEffect(oCaster, eOld);
             eOld = GetNextEffect(oCaster);
         }
-        effect eLink = EffectDamageResistance(DAMAGE_TYPE_BLUDGEONING, 8);
-        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_PIERCING, 8));
-        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_SLASHING, 8));
-        effect eVis = EffectVisualEffect(VFX_PRO_FORCE_ARMOR);
-        eVis = EffectLinkEffects(eVis, EffectVisualEffect(VFX_PRO_FORCE_SHIELD));
-        ApplyEffectToObject(DURATION_TYPE_TEMPORARY, eLink, oCaster, 45.0);
-        ApplyEffectToObject(DURATION_TYPE_TEMPORARY, eVis, oCaster, 3.0);
-        KSE_Diag(151, "AP|FORCEPOWER|barrier|tier=2|dr=8|dur=45");
-    }
-    else if (nSid == 141)
-    {
-        // K1 port of KOTOR 2's FORCE_POWER_MASTER_FORCE_BARRIER (k_inc_force.nss, DJS-OEI 12/11/2003).
-        object oCaster = OBJECT_SELF;
-effect eOld = GetFirstEffect(oCaster);
+        int nHeal = GetAbilityModifier(ABILITY_WISDOM, oCaster) + GetAbilityModifier(ABILITY_CHARISMA, oCaster)
+                  + 15 + 2 * GetHitDice(oCaster);
+        int i;
+        for (i = 0; i < 3; i++)
+        {
+            object oPM = GetPartyMemberByIndex(i);
+            if (GetIsObjectValid(oPM))
+            {
+effect eOld = GetFirstEffect(oPM);
         while (GetIsEffectValid(eOld))
         {
             int nOldSid = GetEffectSpellId(eOld);
-            if (nOldSid == 139 || nOldSid == 140 || nOldSid == 141) RemoveEffect(oCaster, eOld);
-            eOld = GetNextEffect(oCaster);
+            if (nOldSid == 143) RemoveEffect(oPM, eOld);
+            eOld = GetNextEffect(oPM);
         }
-        effect eLink = EffectDamageResistance(DAMAGE_TYPE_BLUDGEONING, 15);
-        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_PIERCING, 15));
-        eLink = EffectLinkEffects(eLink, EffectDamageResistance(DAMAGE_TYPE_SLASHING, 15));
-        effect eVis = EffectVisualEffect(VFX_PRO_FORCE_ARMOR);
-        eVis = EffectLinkEffects(eVis, EffectVisualEffect(VFX_PRO_FORCE_SHIELD));
-        ApplyEffectToObject(DURATION_TYPE_TEMPORARY, eLink, oCaster, 60.0);
-        ApplyEffectToObject(DURATION_TYPE_TEMPORARY, eVis, oCaster, 3.0);
-        KSE_Diag(151, "AP|FORCEPOWER|barrier|tier=3|dr=15|dur=60");
+                ApplyEffectToObject(DURATION_TYPE_INSTANT, EffectHeal(nHeal), oPM);
+                effect eStun = GetFirstEffect(oPM);
+                while (GetIsEffectValid(eStun))
+                {
+                    if (GetEffectType(eStun) == EFFECT_TYPE_STUNNED) RemoveEffect(oPM, eStun);
+                    eStun = GetNextEffect(oPM);
+                }
+                ApplyEffectToObject(DURATION_TYPE_INSTANT, EffectVisualEffect(VFX_IMP_HEAL), oPM);
+            }
+        }
+        KSE_Diag(151, "AP|FORCEPOWER|master_heal|amount=" + IntToString(nHeal));
     }
 }

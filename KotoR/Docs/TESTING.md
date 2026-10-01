@@ -102,7 +102,20 @@ further.
   restoring/editing the game install and wanting a clean re-apply.
 - `/received` — item receipt history (standard Archipelago client command).
 
-**Use `/`, not `!`, for the commands above** 
+**Use `/`, not `!`, for the commands above** — `/` is the ONLY real command
+marker: `CommandProcessor`'s base class (`Archipelago/MultiServer.py`'s
+`CommandProcessor.marker = "/"`) hardcodes it, and every command (built-ins
+like `/connect` AND this client's own custom `ap_*` commands, registered
+into the exact same `commands` dict) is only ever recognized through it.
+There is no separate `!`-prefix mechanism anywhere in the code. Typing
+`!ap_status` doesn't error locally -- it silently falls through to
+`default()`, which for a connected client means it gets sent to the AP
+**server** as a raw message, which then correctly reports "Could not find
+command ap_status" (a real `MultiServer.py` command list, nothing to do
+with this client at all). If you're running the client from a bash-family
+shell, `!` also triggers bash's own history expansion (`event not found`
+errors) as a second, unrelated reason to avoid it -- use `cmd.exe`/
+PowerShell, or `set +H` in bash to disable it if you must.
 
 
 ## New-character safeguard
@@ -126,6 +139,13 @@ If you see the warning and this really is the character/save you meant
 to connect with, run `/ap_confirm_character` to proceed — everything
 paused resumes immediately. Otherwise, close the client, load the
 correct save, and reconnect.
+
+**This also shows on the Status tab**, not just as a log line — a real
+incident found this the hard way: a forgotten mid-session "New Game" left
+deliveries silently paused for 20+ minutes, with the only sign being a
+`[SAFEGUARD]` line buried in the Heartbeat log. The Status tab now shows
+an impossible-to-miss warning with the unrecognized character's name
+whenever this is active, right next to the extender connection status.
 
 
 ## Reporting a bug — what to send
@@ -172,6 +192,44 @@ crash bug — send these along with it:
 - If an armed delivery shows "STAGED" in the log but never actually lands
   in-game, check `extender.log` for an `ap_run_orchestrator: FAILED`
   block first
+- **Taris Undercity (`tar_m04aa`) crashes -- confirmed graphics driver
+  issue, not the mod.** Two crashes here landed on the identical fault
+  offset inside `igxelpicd32.dll` (Intel's graphics driver), one with the
+  gear store UI open and one without -- same driver instruction both
+  times, unrelated to any store/UI action, and structurally unrelated to
+  this mod's memory writes (those touch creature stat fields only, never
+  anything render-related). If you crash in the Undercity, try lowering
+  or disabling dynamic lighting/particle effects, disabling anti-
+  aliasing, or running in windowed mode before assuming it's a mod bug --
+  this looks like a real compatibility gap between this area's rendering
+  and Intel integrated graphics on this era of driver, not something a
+  code fix here can address.
+- **Crash during a dialogue, faulting module `mss32.dll` -- confirmed
+  vanilla audio-engine issue, not the mod.** `mss32.dll` is the Miles
+  Sound System audio middleware bundled with the original 2003 release; a
+  crash there (exception `0xc0000095`, array bounds exceeded) happens
+  inside the game's own audio engine while it's streaming VO, nothing in
+  this project's NWScript/Python/extender stack touches it. A well-known
+  category of crash for Miles Sound System-era games on modern multi-core
+  CPUs. Community workarounds (untested/unverified against this specific
+  install -- try in this order): restrict `swkotor.exe` to a single CPU
+  core (Steam launch option `-affinity 0`, or Task Manager -> Details ->
+  Set affinity), run in Windows XP SP2/3 compatibility mode, or update/
+  roll back audio drivers and disable hardware audio acceleration/EAX if
+  your sound card control panel exposes it.
+- **Stuck at a "CutStart" object mid-dialogue -- already fixed in this
+  build if you're on a current install.** This is a real, independently-
+  documented KOTOR 1 engine bug: several vanilla cutscenes hang if the
+  PC's base class was never one of the 3 original classes (Soldier/Scout/
+  Scoundrel) -- historically only reachable via a save editor, but this
+  project's `jedi_start=granted` option triggers the identical condition
+  by writing a Jedi class directly as the PC's starting class. Fixed by 4
+  replacement `.dlg` files (community "KotOR 1 Fixed Cutscene Files for
+  KSE," tk102) that ship automatically as part of the always-on Override
+  package. **If you hit this on an install predating the fix, or after
+  manually editing Override, a full game restart (not just reloading the
+  save) is required** -- the `.dlg` files are only read once at process
+  start.
 - Ive had in game crashes that seem completely as normal kotor graphics/sound crashes rather than anything
   my mod does, if you experience crashes and nothing was staged to be delivered to you,
   it is unlikely related to the mod - unless it was a specific cutscene/script requiring a companion there that I missed

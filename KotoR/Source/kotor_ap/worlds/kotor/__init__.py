@@ -740,7 +740,7 @@ class KotorWorld(World):
         pool alone."""
         return {
             "companion_mode": self.options.companion_mode.value,
-            "new_companion": bool(self.options.new_companion),
+            "new_companion": self.options.new_companion.value,
             "starting_class": self.options.starting_class.value,
             "experience_mode": self.options.experience_mode.value,
             "experience_limiter": self.options.experience_limiter.value,
@@ -763,8 +763,18 @@ class KotorWorld(World):
             "consumable_stack_count": self.options.consumable_stack_count.value,
             "shop_item_count": self.options.shop_item_count.value,
             "loot_mode": self.options.loot_mode.value,
-            "area_randomizer": bool(self.options.area_randomizer),
+            # Raw value (0=off/1=coupled/2=decoupled), not just a bool --
+            # patch_door_randomizer.py only ever needs "is there a
+            # door_mapping to apply" (any nonzero value already implies
+            # that), but scripts/review_door_mapping.py's report needs the
+            # actual mode to describe the seed accurately.
+            "area_randomizer": self.options.area_randomizer.value,
             "door_mapping": getattr(self, "kotor_door_mapping", None),
+            # door_graph keys _repair_orphaned_modules repointed for this
+            # seed -- lets a review tool label a repaired entry separately
+            # from a cleanly-coupled one instead of presenting one
+            # undifferentiated list (see EntranceRando.py's connect_entrances).
+            "door_mapping_repairs": getattr(self, "kotor_door_repairs", []),
             "goal": self.options.goal.value,
             "shop_stock": self._shop_stock(),
             # CompanionClass=no_jedi/randomize_all only -- jedi_companion's

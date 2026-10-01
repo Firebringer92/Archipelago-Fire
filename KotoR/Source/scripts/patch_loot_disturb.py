@@ -134,10 +134,182 @@ MODULE_MANIFEST_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "
 # this backs up end_m01aa's _s.rim companion specifically.
 LOCKER_BACKUP_DIR = os.path.join(REPO_ROOT, "extender", "backup", "modules")
 
-# Same two-location fallback as patch_item_suppression.py's own GEAR_JSON.
+# Duplicated from patch_item_suppression.py's own constants (not imported
+# -- these are independent, standalone CLI scripts; kept in sync by hand,
+# same convention already used elsewhere in this project). See that
+# file's own definitions for the full research/reasoning behind these
+# exact values.
+_OLD_SHARED_WRAPPER_RESREF = "ap_item_suppress"
+_OLD_WRAPPED_SCRIPT_NAMES = {
+    "k_pdan_itemacq", "k_pdan_14b_itmaq", "k_pebn_acquire",
+    "k_pkas24aa_acqui", "k_pkas25aa_acqui", "k_ptar_acquire",
+    "k_ptar_acquire04", "k_ptar_acquire05", "tar09_acquire",
+    "k_ptat18aa_acqui", "k_ptat20aa_acqui",
+}
+
+
+def _fix_stale_onacquireitem_field(rim_path):
+    """Reads rim_path, and if its module IFO's Mod_OnAcquirItem field
+    equals the old shared wrapper resref, resets it to a blank ResRef
+    (true vanilla for every module that used this shared-wrapper shape --
+    see revert_stale_onacquireitem_wrappers' own docstring for why blank,
+    not the 11-module case's own different true-vanilla shape). Returns
+    True if a real write happened, False otherwise (missing file, no
+    IFO, field already correct). Used on BOTH the live file and its
+    backup (if one exists) -- see the caller's own docstring for why
+    fixing only the live copy isn't enough."""
+    if not os.path.exists(rim_path):
+        return False
+    try:
+        r = read_rim(rim_path)
+    except Exception:
+        return False
+    ifo_res = None
+    for res in r:
+        if res.restype == ResourceType.IFO:
+            ifo_res = res
+            break
+    if ifo_res is None:
+        return False
+    gff = read_gff(ifo_res.data)
+    if not gff.root.exists("Mod_OnAcquirItem"):
+        return False
+    current = gff.root.get_resref("Mod_OnAcquirItem").get()
+    if current is None or current.lower() != _OLD_SHARED_WRAPPER_RESREF:
+        return False
+    gff.root.set_resref("Mod_OnAcquirItem", ResRef.from_blank())
+    new_data = bytearray()
+    write_gff(gff, new_data)
+    r.set_data(ifo_res.resref, ResourceType.IFO, bytes(new_data))
+    write_rim(r, rim_path)
+    return True
+
+
+def revert_stale_onacquireitem_wrappers(game_dir):
+    """Self-heal migration, unconditional every run, regardless of the
+    current loot_mode: patch_item_suppression.py's OLD Mod_OnAcquirItem-
+    based destroy/bonus/replace mechanism was retired in favor of this
+    file's pure static template edits (see this file's own module
+    docstring), but retiring the GENERATOR doesn't retroactively revert
+    an EXISTING install that already had the old wrapper deployed before
+    the migration existed -- confirmed live, 2026-09-19, via a real
+    player report (repeated "new item" popups, traced to a stale
+    Mod_OnAcquirItem field still pointing at the old wrapper, long after
+    that player's client was updated to a version using this file
+    instead).
+
+    Two distinct cases, matching patch_item_suppression.py's own two
+    deploy shapes:
+      1. Most modules had NO real vanilla Mod_OnAcquirItem script, so the
+         old mechanism pointed their IFO field directly at the shared
+         wrapper resref ("ap_item_suppress"). True vanilla for these is
+         a BLANK field.
+      2. The 11 modules in _OLD_WRAPPED_SCRIPT_NAMES DID have a real
+         vanilla script already, so the old mechanism left the IFO
+         field's NAME unchanged and instead replaced the OVERRIDE .ncs
+         file behind that name with a wrapper, preserving the true
+         original alongside it as "apo_<name>_orig.ncs". The IFO field
+         itself was never wrong for these -- only the Override file's
+         CONTENT needs restoring, read fresh from chitin (never from the
+         preserved apo_*_orig.ncs, which is just a copy of whatever was
+         there when the OLD mechanism first ran, not guaranteed pristine
+         if this ever ran more than once historically -- matches this
+         project's own established chitin-vs-Override anti-corruption
+         pattern).
+
+    CRITICAL for case 1: fixes BOTH the live module RIM AND its existing
+    backup in LOCKER_BACKUP_DIR, not just the live file. apply_module_rim_
+    contents() (this same file, called later in main()) reads FROM that
+    backup on every run once one exists, to reconstruct the live file
+    without compounding its own prior edits -- fixing only the live copy
+    here would get silently undone the very next time that function runs,
+    since it would rebuild the module RIM from the still-stale backup.
+    Fixing the backup too makes it a genuinely correct baseline for every
+    future run, not just this one."""
+    fixed_modules = 0
+    fixed_scripts = 0
+
+    for fname in sorted(os.listdir(MOD_DIR)):
+        if not fname.lower().endswith(".rim"):
+            continue
+        live_path = os.path.join(MOD_DIR, fname)
+        live_fixed = _fix_stale_onacquireitem_field(live_path)
+        backup_path = os.path.join(LOCKER_BACKUP_DIR, fname)
+        backup_fixed = _fix_stale_onacquireitem_field(backup_path)
+        if live_fixed or backup_fixed:
+            fixed_modules += 1
+            print(f"  {fname}: reverted stale Mod_OnAcquirItem "
+                  f"('{_OLD_SHARED_WRAPPER_RESREF}' -> vanilla blank)"
+                  f"{' [+backup]' if backup_fixed else ''}")
+
+        # Case 2: this module's IFO field NAME never changed (still one
+        # of the 11 real vanilla script names) -- only the Override
+        # file's CONTENT did, and only if this specific install ever
+        # actually had the old mechanism deployed (a leftover
+        # apo_<name>_orig.ncs marker is the proof either way). Confirmed
+        # live, 2026-09-19 (a real sandbox test caught this): the true
+        # original does NOT live in global chitin for these 11 -- per
+        # patch_item_suppression.py's own comment, "the compiled .ncs
+        # itself lives in the _s.rim instance overlay, not the base
+        # .rim" -- so it must be read from THIS module's own _s.rim
+        # companion, the same read_module_ncs() pattern already proven
+        # by generate_council_gate_trampolines.py for the identical
+        # reason. Base name (strip .rim) needed to find the module's
+        # OWN Mod_OnAcquirItem value below.
+        try:
+            r = read_rim(live_path)
+        except Exception:
+            continue
+        ifo_res = next((res for res in r if res.restype == ResourceType.IFO), None)
+        if ifo_res is None:
+            continue
+        gff = read_gff(ifo_res.data)
+        if not gff.root.exists("Mod_OnAcquirItem"):
+            continue
+        current_name = gff.root.get_resref("Mod_OnAcquirItem").get()
+        if not current_name or current_name.lower() not in _OLD_WRAPPED_SCRIPT_NAMES:
+            continue
+        marker_path = os.path.join(OVERRIDE, f"apo_{current_name}_orig.ncs")
+        if not os.path.exists(marker_path):
+            continue
+
+        s_rim_path = os.path.join(MOD_DIR, fname[:-4] + "_s.rim")  # strip ".rim"
+        true_original = None
+        if os.path.exists(s_rim_path):
+            try:
+                r_s = read_rim(s_rim_path)
+                for res in r_s:
+                    if res.restype == ResourceType.NCS and res.resref.get().lower() == current_name.lower():
+                        true_original = bytes(res.data)
+                        break
+            except Exception:
+                pass
+        if true_original is None:
+            print(f"  WARNING: {current_name}: found a leftover apo_{current_name}_orig.ncs marker "
+                  f"but couldn't find the real vanilla script in {fname[:-4]}_s.rim -- skipping, not guessing")
+            continue
+        dest_path = os.path.join(OVERRIDE, f"{current_name}.ncs")
+        with open(dest_path, "wb") as f:
+            f.write(true_original)
+        os.remove(marker_path)
+        fixed_scripts += 1
+        print(f"  {current_name}.ncs: restored true vanilla from {fname[:-4]}_s.rim, "
+              f"removed leftover apo_{current_name}_orig.ncs marker")
+
+    if fixed_modules or fixed_scripts:
+        print(f"Reverted {fixed_modules} stale module IFO field(s) and {fixed_scripts} stale "
+              f"Override script(s) from the old, retired Mod_OnAcquirItem mechanism.")
+    return fixed_modules, fixed_scripts
+
+# Same three-location fallback as patch_item_suppression.py's own GEAR_JSON.
+# Order: old bundled location (pre-existing installs), dev checkout's real
+# source tree, then the current PlayerBundle location (worlds/kotor/ at
+# the bundle root -- see package_playerbundle.py's manifest).
 GEAR_JSON = os.path.join(REPO_ROOT, "scripts", "gear_items.json")
 if not os.path.isfile(GEAR_JSON):
     GEAR_JSON = os.path.join(REPO_ROOT, "Archipelago", "worlds", "kotor", "gear_items.json")
+if not os.path.isfile(GEAR_JSON):
+    GEAR_JSON = os.path.join(REPO_ROOT, "worlds", "kotor", "gear_items.json")
 
 # Never touch this template's item list anywhere in the game, even
 # though it qualifies as "has inventory": this project's OWN Galactic
@@ -585,6 +757,11 @@ def main():
     if "--restore" in sys.argv:
         restore()
         return
+
+    # Unconditional, regardless of the current loot_mode/skip branch below
+    # -- this is cleanup for a DIFFERENT, already-retired mechanism, not
+    # something the current mode should gate. See its own docstring.
+    revert_stale_onacquireitem_wrappers(GAME_DIR)
 
     force_mode = _arg_value("--mode", None) if "--force" in sys.argv else None
     force_progression = "--progression-system" in sys.argv if "--force" in sys.argv else None

@@ -108,8 +108,7 @@ KotOR:
   # Companion" instead of "HK-47", and the new character is folded into
   # companion_class/additional_feats like the other 7 non-droid companions.
   #   off (default): vanilla HK-47, unchanged.
-  #   mystery: Meetra Surik, an original Jedi Sentinel character (a KOTOR2
-  #            reference/easter egg).
+  #   mystery: Jedi Sentinel character. 
   #   malak:   Darth Malak, a Jedi Guardian, using his real unique in-game
   #            appearance/model.
   # Valid: off, mystery, malak

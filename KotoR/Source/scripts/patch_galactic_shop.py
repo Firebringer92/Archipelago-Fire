@@ -169,9 +169,21 @@ def deploy_handler(override_dir: str) -> None:
     nss_path = os.path.join(SRC_DIR, f"{HANDLER_RESREF}.nss")
     ncs_path = os.path.join(SRC_DIR, f"{HANDLER_RESREF}.ncs")
     if os.path.exists(NWNNSSCOMP) and os.path.exists(nss_path):
+        # nss_path here is a static, checked-in source file (never rewritten
+        # per-run), so comparing it against ncs_path's mtime can't detect a
+        # silently-failed compile -- an already-newer stale .ncs from a
+        # prior successful build would always pass that comparison. Same
+        # mtime_before + compile-error-stdout-scan fix as generate_
+        # trampoline_batch.py/generate_makejedi_suppressor.py/generate_poll_
+        # shared.py.
+        mtime_before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
         result = subprocess.run([NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-                                capture_output=True, text=True, cwd=SRC_DIR)
-        if not os.path.exists(ncs_path):
+                                capture_output=True, text=True, cwd=SRC_DIR, timeout=30)
+        compiled_fresh = os.path.exists(ncs_path) and (
+            mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
+        )
+        compile_error = "Compilation aborted" in result.stdout or "Error:" in result.stdout
+        if not compiled_fresh or compile_error:
             sys.exit(f"COMPILE FAILED for {HANDLER_RESREF}:\n{result.stdout}\n{result.stderr}")
         print(f"  compiled {HANDLER_RESREF}.nss")
     elif not os.path.exists(ncs_path):

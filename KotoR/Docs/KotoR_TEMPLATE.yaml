@@ -99,16 +99,21 @@ KotOR:
   #             removed from the pool entirely.
   companion_mode: ap_gated
 
-  # Replaces HK-47 with a new human companion, in his exact party slot -- a swap, not an addition. His
-  # recruitment mechanism (the Tatooine droid-purchase trigger) is
-  # unchanged; only who you get is different. His personal Ebon Hawk
-  # subplot is removed and replaced with a single placeholder greeting.
-  # When on, the AP-facing item/location names for his companion check
-  # (relevant under companion_mode=ap_gated) read "New Companion" instead
-  # of "HK-47". She's also folded into companion_class/additional_feats
-  # like the other 7 non-droid companions.
-  # false (default): vanilla HK-47, unchanged.
-  new_companion: false
+  # Replaces HK-47 with a new companion, in his exact party slot -- a swap,
+  # not an addition. His recruitment mechanism (the Tatooine droid-purchase
+  # trigger) is unchanged; only who you get is different. His personal
+  # Ebon Hawk subplot is removed and replaced with a single placeholder
+  # greeting. When not off, the AP-facing item/location names for his
+  # companion check (relevant under companion_mode=ap_gated) read "New
+  # Companion" instead of "HK-47", and the new character is folded into
+  # companion_class/additional_feats like the other 7 non-droid companions.
+  #   off (default): vanilla HK-47, unchanged.
+  #   mystery: Meetra Surik, an original Jedi Sentinel character (a KOTOR2
+  #            reference/easter egg).
+  #   malak:   Darth Malak, a Jedi Guardian, using his real unique in-game
+  #            appearance/model.
+  # Valid: off, mystery, malak
+  new_companion: off
 
   # --- Extra features (quest-item gating, traps, enemies) -------------------
 

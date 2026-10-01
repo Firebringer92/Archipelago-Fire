@@ -80,18 +80,21 @@ SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_
 # find on disk there at all, since the apworld's contents are never
 # extracted. This whitelist is a fixed classification tied to the
 # apworld's own version, not per-seed data, so package_playerbundle.py
-# ships a static copy of it directly alongside this script -- no
+# ships a static copy of it directly in the PlayerBundle -- no
 # cross-checkout dependency needed for a PlayerBundle-style install.
 #
 # BUT a dev checkout (this repo, running scripts/ directly against the
 # real Archipelago/worlds/kotor/ folder) never has scripts/gear_items.json
-# at all -- package_playerbundle.py only creates it as a packaging step,
-# not something that exists by default, so this falls back to the real
-# source location when the packaged copy isn't present, letting this
-# script work in both layouts.
+# at all -- so this falls back to the real source location when the
+# packaged copy isn't present, letting this script work in both layouts.
+# Three candidates in order: old bundled location (pre-existing installs),
+# dev checkout's real source tree, then the current PlayerBundle location
+# (worlds/kotor/ at the bundle root -- see package_playerbundle.py).
 GEAR_JSON = os.path.join(REPO_ROOT, "scripts", "gear_items.json")
 if not os.path.isfile(GEAR_JSON):
     GEAR_JSON = os.path.join(REPO_ROOT, "Archipelago", "worlds", "kotor", "gear_items.json")
+if not os.path.isfile(GEAR_JSON):
+    GEAR_JSON = os.path.join(REPO_ROOT, "worlds", "kotor", "gear_items.json")
 
 # Fixed deploy name every empty-slot module's Mod_OnAcquirItem field points
 # at -- never changes across modes, so the RIM edit only ever needs to

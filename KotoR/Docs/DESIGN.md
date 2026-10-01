@@ -20,12 +20,17 @@ rather than grounds for exhaustive per-module testing). See
 technical history (feature decisions, confirmed capabilities, and every
 engine limitation found) that this doc summarizes, or the individual
 phase-by-phase logs archived at
+[docs/history/](docs/history/PHASE02.md) (`PHASE02.md`-`PHASE14.md`) for
+the full blow-by-blow. [docs/history/SESSION_STATUS.md](docs/history/SESSION_STATUS.md)
+predates that consolidation and may be stale — prefer
+`DEVELOPMENT_HISTORY.md`/`PHASE14.md` for current status.
 
 This document explains how the whole system fits together and what each
 Python file is for. It does not re-derive the engine-constraint discoveries
 that shaped this design — see
 [DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)'s engine-limitations
-section
+section, or [docs/history/PHASE09.md](docs/history/PHASE09.md)-
+[PHASE11.md](docs/history/PHASE11.md) for the original research.
 
 ## 1. What this is
 
@@ -107,6 +112,27 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   compiled scripts/RIMs/2DAs via `pykotor`, not guessed or hand-typed.
   Several early research scripts exist specifically because a
   hand-transcribed version turned out to be wrong.
+- **Every resref this project invents must be 16 characters or fewer.**
+  KOTOR's engine hard-caps resref length at 16 -- a longer name (e.g. a
+  first attempt at a test dialogue resref, `ap_testvendor_dlg`, 18 chars)
+  silently truncates on write with no error anywhere, so every later
+  reference to it (script string literals, a `.utc`'s `Conversation`
+  field) points at a name that never matches the real deployed file.
+  Confirmed live: this was the actual root cause of an entire dialogue
+  mechanism appearing completely broken, while the real bug had nothing
+  to do with the scripting logic being debugged at the time. Always
+  check new resref lengths before debugging anything else about
+  content that "does nothing" with no error.
+- **A freshly-authored `.dlg` node defaults to being a plot/XP node.**
+  `pykotor`'s `DLGEntry`/`DLGReply` default `plot_index` to `0` (a real
+  quest-progression node, grants `plot_xp_percentage` worth of XP just
+  for being reached) rather than `-1` (not a plot node, the value every
+  real non-quest vanilla conversation node actually uses). Confirmed
+  live: an otherwise-correct test dialogue was silently handing out free
+  XP on every node, including a plain "Never mind" exit option, until
+  `plot_index` was explicitly set to `-1` on every node. Any dialogue
+  built from scratch via `pykotor` needs this set explicitly -- never
+  rely on the library default.
 
 **Code comment conventions** (standard set 2026-09-16, applies going
 forward — most of the codebase predates this and is being brought in line
@@ -116,6 +142,10 @@ gradually, not all at once):
 - No dates, no "(YYYY-MM-DD)" stamps, no "found live," no session
   narrative. Git history already has the timeline; a comment isn't the
   place to re-derive it.
+- Never write "at the user's request," "per the user's explicit ask," or
+  any equivalent attribution. It tells a reader nothing about the code
+  and rots the moment anyone other than this project's own maintainer
+  reads it.
 - If a decision needs real justification (an engine limitation, a design
   tradeoff, a rejected alternative), that justification belongs in this
   document or `DEVELOPMENT_HISTORY.md` — the comment should be a short
@@ -155,11 +185,17 @@ gradually, not all at once):
   2026-09-08 after real per-item disassembly, see `Rules.py` below),
   `EnableTraps` (new 2026-09-08 — 12 one-time punishment items, see
   `Items.py`/`KotorClient.py` below), and `NewCompanion` (new 2026-09-14
-  — the HK-47/Meetra Surik swap, see 4.3's `generate_new_companion_
-  assets.py` entry) are the newest option classes; all default off.
-  `_companion_class_keys()` (in `__init__.py`, not this file) is a
-  runtime-conditional list, not a static edit to `COMPANION_CLASS_KEYS` —
-  `new_companion` only makes her eligible for `companion_class`/
+  — the HK-47 slot swap, see 4.3's `generate_new_companion_assets.py`
+  entry) are the newest option classes; all default off. `NewCompanion`
+  is now a 3-way `Choice` (2026-09-29): `off` (vanilla HK-47),
+  `mystery` (Meetra Surik, the original surprise-reveal build), and
+  `malak` (Darth Malak, a named/explicit choice for players who want that
+  character specifically -- his own real vanilla appearance via
+  `EffectDisguise`, not a custom model; see `generate_new_companion_
+  assets.py`'s `build_malak_companion_utc()`). `_companion_class_keys()`
+  (in `__init__.py`, not this file) is a runtime-conditional list, not a
+  static edit to `COMPANION_CLASS_KEYS` — `new_companion` (either
+  non-off value) only makes that slot eligible for `companion_class`/
   `additional_feats` when it's actually on, so a vanilla-HK47 seed never
   picks up class-randomization/feat items meant for a droid.
 - **`Items.py`** — `item_table`: every AP item (skills, companions,
@@ -219,8 +255,8 @@ gradually, not all at once):
   inside the apworld for this to work, despite an earlier research note
   assuming it would be.
 - **`EntranceRando.py`** — door/trigger randomization, built on
-  Archipelago's own `entrance_rando.py` engine. `AreaRandomizer`
-  (Options.py) picks `off`/`coupled`/`decoupled`; both non-off modes
+  Archipelago's own `entrance_rando.py` engine. Options.py's
+  `AreaRandomizer` picks `off`/`coupled`/`decoupled`; both non-off modes
   share the exact same pool/pairing/repair logic, differing only in the
   entrance type (`TWO_WAY` vs `ONE_WAY`) and the `coupled` flag passed to
   `randomize_entrances` (AP's own reciprocal-placement logic is gated on
@@ -234,16 +270,22 @@ gradually, not all at once):
   remaining 8 (no reverse door anywhere in vanilla data) are left fully
   fixed to their vanilla destination in either mode -- decoupled mode
   reuses the same 110-entry pool rather than also covering those 8, a
-  deliberate scope choice to keep the split a small, low-risk change.
-  Coupled placement can still leave a rare residual orphan (a module with
-  exactly one coupled entrance whose placement failed to get a
-  replacement) -- `_repair_orphaned_modules` patches those after
-  placement by stealing and repointing a well-connected edge, the same
-  technique the old uncoupled-mode `_ensure_full_reachability` used, just
-  scoped to the handful of leftover entries rather than the whole graph;
-  the same repair pass runs for decoupled mode too, unchanged. See its own
-  module docstring for the full reverse-door analysis and reachability
-  findings.
+  deliberate scope choice to keep the coupled/decoupled split a small,
+  low-risk change rather than a new design. Coupled mode's own placement
+  can still leave a rare residual orphan (a module with exactly one
+  coupled entrance whose placement failed to get a replacement) --
+  `_repair_orphaned_modules` patches those after placement by stealing and
+  repointing a well-connected edge, the same technique the old
+  uncoupled-mode `_ensure_full_reachability` used, just scoped to the
+  handful of leftover entries rather than the whole graph; the same repair
+  pass runs for decoupled mode too, unchanged. See its own module
+  docstring for the full reverse-door analysis and reachability findings,
+  [docs/history/PHASE12.md](docs/history/PHASE12.md) for the exclusion-zone
+  design and the module/dest_module mixup bug, and
+  [docs/history/PHASE13.md](docs/history/PHASE13.md) for the earlier,
+  now-superseded uncoupled-mode reciprocal-pairing feature this design
+  replaced (that file predates AP's own `coupled=True` engine being
+  adopted at all, and is outdated as a design reference).
 
 ### 4.2 The Python AP client (`Archipelago/` root)
 
@@ -333,12 +375,7 @@ gradually, not all at once):
   would let that command deploy something `/ap_restore_all` can't clean
   back up; tracked as a known, low-risk gap in `MODE_DEPENDENCIES.md`
   rather than fixed, since New Companion already re-syncs correctly on
-  every real Connect regardless of either admin command. Same deliberate
-  exclusion applies to `apply_shop_item_costs()`
-  (`patch_shop_item_costs.py`, wired to run on every Connect the same
-  not-seed-gated way as Galactic Shop) -- purely additive, no meaningful
-  restore, always re-syncs correctly on Connect regardless of either admin
-  command.
+  every real Connect regardless of either admin command.
   `apply_new_companion_assets()`/`_apply_new_companion_assets_and_log()`
   (2026-09-14) run `generate_new_companion_assets.py` the same
   not-seed-gated way as Galactic Shop, every `Connected` — see 4.3.
@@ -382,8 +419,26 @@ gradually, not all at once):
   (from received items, or for `ap_limited` XP, live from
   `checked_location_count`) against what the game *currently reports*,
   and sends corrective `APPLY`/`APPLYVALUE` calls to close any deficit.
-  Deliberately scoped to safely-repeatable additive grants only (skills,
-  credits, the two idempotent companion adds) plus the special XP clamp.
+  Scope (2026-09-29/30): skills, credits, all 9 companion recruit adds
+  (idempotent -- Zaalbar/HK-47 were previously excluded over an
+  unverified concern, re-added once their trampoline arms were confirmed
+  identical to every already-reconciled companion's own), PC+companion
+  class and feats, the 8 tracked progression items (Star Maps/Sith
+  Armor/Sith Papers/Shield Codes/Enviro Suit -- a narrow possession
+  check, not full reconciliation), the "Archipelago Tracker" journal
+  quest's check-percentage stage, and ability scores (str/dex/con/int/
+  wis -- a bootstrap-then-track-deltas design, deliberately different
+  from skills' pure AP-grant-count floor, since ability scores start at a
+  real natural value instead of near 0). Plus the special XP clamp.
+  Trap-awareness: `reduce_skill`/`reduce_str`/`reduce_dex`/`reduce_int`/
+  `reduce_wis`/`reduce_cha`/`remove_credits` are recognized as
+  legitimate decreases and lower the relevant expected/baseline value to
+  match, instead of being silently healed back. The AP Vendor's
+  Character Reset (respec) and "Steal from the Republic" alignment
+  option are also recognized directly (via their own diag lines) so a
+  respec actually clears AP-tracked feats/skills/abilities instead of
+  them regrowing, and a credit gain isn't clamped back down as an
+  unauthorized vanilla gain.
   **XP-clamp staleness fix (2026-09-17)**: the clamp used to run on every
   `AREA` event whenever `experience_mode != 0`, including before any real
   `XPREPORT` had ever been seen this connection — comparing a stale/
@@ -642,6 +697,30 @@ generated seed, gated on that seed's options):
   needed a `set_new_companion()` correction fired on `Connected` (see
   4.2) or it would report the wrong location name for whichever setting
   didn't win dict-iteration-order by default.
+  - **`malak` mode (2026-09-29, live-tested)**: the same HK-47 slot, same
+    tag, same not-seed-gated deploy shape as `mystery` above, but a
+    completely different appearance mechanism. `build_malak_companion_utc()`
+    does NOT build a custom model — his `on_spawn`
+    (`k_hmal_spawn01.nss`) self-applies a permanent
+    `EffectDisguise(DISGUISE_TYPE_N_DARTHMALAK)`, rendering his real,
+    unmodified vanilla appearance.2da row (21) straight from `models.bif`.
+    Superseded three earlier, all-failed custom-model/head-splice
+    attempts (visually broken or crash-associated). His basic melee
+    attack didn't animate at all once recruitable this way — root cause
+    was two-fold: the real `N_DarthMalak` model has `supermodel=NULL`
+    (zero animation fallback of any kind), and `baseitems.2da`'s
+    Lightsaber row is `weaponwield=2`, not 1, so his own partial
+    style-group-1 animation set was never even the right group. Fixed by
+    splicing real `g2a1`/`g2a2` swing animations from `S_Male02` into his
+    model via MDLOps (`scripts/fix_malak_basic_attack_animations.py`) —
+    `pykotor`'s own `write_mdl` reliably crashed the game on every attempt
+    at this exact edit (confirmed via decoding the actual Windows crash
+    dumps), MDLOps' independent, ~20-year-old writer did not. Known,
+    accepted limitation: he doesn't show the standard party-member
+    knockdown pose at 0 HP (`appearance.2da`'s `disableinjuredanim` is set
+    on his row specifically, a deliberate vanilla "boss never shows
+    weakness" flag, still active since his row is used unmodified) —
+    confirmed this doesn't affect the vanilla endgame Malak fight itself.
 
 **Distribution/packaging** (for getting a fresh install running without
 the full dev toolchain — see `README.md`):

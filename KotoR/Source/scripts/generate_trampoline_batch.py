@@ -87,24 +87,24 @@ def permanent_spawn_lines_for(base, indent):
     return [f"{indent}{stmt}" for stmt in AREA_PERMANENT_SPAWNS.get(base, [])]
 
 
-def _connected_new_companion() -> bool:
+def _connected_new_companion() -> int:
     if not os.path.isfile(_SLOT_DATA_PATH):
-        return False
+        return 0
     try:
         with open(_SLOT_DATA_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        return bool(data.get("new_companion", False))
+        return int(data.get("new_companion", 0))
     except Exception:
-        return False
+        return 0
 
 
-# Her real object Tag stays "HK47" and her NPC slot stays NPC_HK_47 either
+# Her/his real object Tag stays "HK47" and NPC slot stays NPC_HK_47 either
 # way (see _COMPANION_TAGS's own comment) -- only the template resref (what
-# .utc gets spawned) changes. p_meetra is the new companion's template,
-# built alongside the vanilla-trigger-replacement rebuild (Meetra Surik,
-# Jedi Sentinel) -- see DEVELOPMENT_HISTORY.md's "New Companion" section.
-NEW_COMPANION_TEMPLATE = "p_meetra"
-_USE_NEW_COMPANION = _connected_new_companion()
+# .utc gets spawned) changes. 1=mystery (Meetra Surik, Jedi Sentinel,
+# p_meetra), 2=malak (Darth Malak, Jedi Guardian, p_malak) -- see
+# DEVELOPMENT_HISTORY.md's "New Companion" section.
+NEW_COMPANION_TEMPLATES = {1: "p_meetra", 2: "p_malak"}
+_NEW_COMPANION_MODE = _connected_new_companion()
 
 # For build_trap_block's remove_half_inventory branch, which
 # needs to know quest_dependent tags at CODEGEN time to bake an exemption
@@ -167,11 +167,10 @@ def build_class_feat_delta_lines(new_class_const, target_var, old_class_var="nOl
     behavior entirely (see kse.nss's KSE_GrantFeatArrayA doc, no statement
     either way on duplicates).
 
-    delay_grants=True wraps each grant in DelayCommand(1.0, ...) -- required
-    when granting INTO a Jedi class via AddMultiClass, which has a
-    confirmed settling race that silently drops immediate grants (see
-    build_companion_class_block's own fix note below); base-class grants
-    have no such race and stay immediate.
+    delay_grants=True wraps each grant in DelayCommand(1.0, ...) -- used for
+    companion Jedi conversions (build_companion_class_block); base-class
+    grants stay immediate. Removals are always immediate either way, so
+    capacity freed by a strip is available before any delayed grant runs.
 
     Emits NO branch at all for an old class that would need zero removes
     and zero grants (nothing to do), and skips new_class_const itself
@@ -356,8 +355,23 @@ APPLIES = {
         'object oPC = GetFirstPC();',
         'int nOldClass = GetClassByPosition(1, oPC);',
         *build_class_feat_delta_lines("CLASS_TYPE_JEDIGUARDIAN", "oPC"),
-        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDIGUARDIAN);',
-        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);',
+        # GUARD against the same crash class already fixed for
+        # companion_class (see build_companion_class_block): a redundant
+        # re-fire of an already-applied class item (e.g. a reconciler
+        # self-heal racing the normal delivery pipeline, or a delivery
+        # retry after a dropped APPLIED confirmation) must not force
+        # CLASS0_LEVEL back to 1 -- that would de-level an already-leveled
+        # Guardian. AP|APPLIED below still fires either way so this is
+        # never retried forever.
+        'if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)',
+        '{',
+        '    // already this class -- no-op, see comment above.',
+        '}',
+        'else',
+        '{',
+        '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDIGUARDIAN);',
+        '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);',
+        '}',
         # Trailing "|ok=1" is load-bearing, not decorative: ap_extender.c's
         # confirmation parser finds the arm name by scanning for the NEXT
         # "|" after "AP|APPLIED|", falling back to the rest of the raw log
@@ -374,9 +388,16 @@ APPLIES = {
         'object oPC = GetFirstPC();',
         'int nOldClass = GetClassByPosition(1, oPC);',
         *build_class_feat_delta_lines("CLASS_TYPE_JEDICONSULAR", "oPC"),
-        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDICONSULAR);',
-        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);',
-        # See class_guardian's own comment above -- same fix, same reason.
+        # See class_guardian's own comment above -- same guard, same reason.
+        'if (nOldClass == CLASS_TYPE_JEDICONSULAR)',
+        '{',
+        '    // already this class -- no-op.',
+        '}',
+        'else',
+        '{',
+        '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDICONSULAR);',
+        '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);',
+        '}',
         'KSE_Diag(9, "AP|APPLIED|class_consular|ok=1");',
     ]),
     # 16 (companion_jedi_xp) stays RETIRED -- confirmed that
@@ -449,7 +470,7 @@ APPLIES = {
     ]),
     20: ("companion_hk47", [
         'int nNPC = NPC_HK_47;',
-        f'string sTemplate = "{NEW_COMPANION_TEMPLATE if _USE_NEW_COMPANION else "p_hk47"}";',
+        f'string sTemplate = "{NEW_COMPANION_TEMPLATES.get(_NEW_COMPANION_MODE, "p_hk47")}";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
         'int nAdded = FALSE;',
         'if (!nWasAvailable)',
@@ -539,8 +560,16 @@ APPLIES = {
         'object oPC = GetFirstPC();',
         'int nOldClass = GetClassByPosition(1, oPC);',
         *build_class_feat_delta_lines("CLASS_TYPE_JEDISENTINEL", "oPC"),
-        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDISENTINEL);',
-        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);',
+        # See class_guardian's own comment (arm 13) -- same guard, same reason.
+        'if (nOldClass == CLASS_TYPE_JEDISENTINEL)',
+        '{',
+        '    // already this class -- no-op.',
+        '}',
+        'else',
+        '{',
+        '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDISENTINEL);',
+        '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);',
+        '}',
         # See class_guardian's own comment (arm 13) -- same fix, same reason:
         # a bare "AP|APPLIED|class_sentinel" with no trailing "|" let the C
         # extender's confirmation parser swallow the closing '"' into the
@@ -646,22 +675,46 @@ APPLIES = {
         'object oPC = GetFirstPC();',
         'int nOldClass = GetClassByPosition(1, oPC);',
         *build_class_feat_delta_lines("CLASS_TYPE_SOLDIER", "oPC"),
-        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SOLDIER);',
-        'KSE_Diag(9, "AP|APPLIED|pc_class_soldier");',
+        # No CLASS0_LEVEL touch here (base-class swaps never did, unlike
+        # the Jedi arms above), so a redundant resend was already harmless
+        # -- this guard just skips the pointless no-op write. Real fix is
+        # the diag line below: this arm's confirmation had NO trailing "|",
+        # the exact same never-dequeues bug class_guardian's own comment
+        # (arm 13) describes -- "AP|APPLIED|pc_class_soldier" with nothing
+        # after it means ap_extender.c's confirmation parser falls back to
+        # the rest of the raw log line (including the closing '"'), so
+        # ap_arm_id_for_name() never matches and this arm never confirms
+        # delivered. Confirmed via direct read of ap_extender.c's
+        # strchr(name_start, '|') fallback, not assumed.
+        'if (nOldClass != CLASS_TYPE_SOLDIER)',
+        '{',
+        '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SOLDIER);',
+        '}',
+        'KSE_Diag(9, "AP|APPLIED|pc_class_soldier|ok=1");',
     ]),
     35: ("pc_class_scout", [
         'object oPC = GetFirstPC();',
         'int nOldClass = GetClassByPosition(1, oPC);',
         *build_class_feat_delta_lines("CLASS_TYPE_SCOUT", "oPC"),
-        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SCOUT);',
-        'KSE_Diag(9, "AP|APPLIED|pc_class_scout");',
+        # See pc_class_soldier's own comment above -- same guard, same
+        # confirmation fix, same reason.
+        'if (nOldClass != CLASS_TYPE_SCOUT)',
+        '{',
+        '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SCOUT);',
+        '}',
+        'KSE_Diag(9, "AP|APPLIED|pc_class_scout|ok=1");',
     ]),
     36: ("pc_class_scoundrel", [
         'object oPC = GetFirstPC();',
         'int nOldClass = GetClassByPosition(1, oPC);',
         *build_class_feat_delta_lines("CLASS_TYPE_SCOUNDREL", "oPC"),
-        'KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SCOUNDREL);',
-        'KSE_Diag(9, "AP|APPLIED|pc_class_scoundrel");',
+        # See pc_class_soldier's own comment above -- same guard, same
+        # confirmation fix, same reason.
+        'if (nOldClass != CLASS_TYPE_SCOUNDREL)',
+        '{',
+        '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SCOUNDREL);',
+        '}',
+        'KSE_Diag(9, "AP|APPLIED|pc_class_scoundrel|ok=1");',
     ]),
     # 37/38 (dump_statblock_carth/juhani), 39-41 (carth_addmulticlass_hybrid_test/
     # juhani_addmulticlass_scoundrel_test/juhani_grant_critical_strike_test),
@@ -727,7 +780,98 @@ APPLIES = {
     # 54 (test_grant_juhani_power) RETIRED -- confirmed the client-mirror-
     # sync fix works end to end via a granted (not just naturally learned)
     # power. See DEVELOPMENT_HISTORY.md's Vendor section.
+    #
+    # 55/56 (diag_journal_persist_write/_read) RETIRED -- question
+    # answered, but not the one this pair was written to answer. Confirmed
+    # live: writing a BRAND NEW plot ID never declared in global.jrl
+    # ("ap_journal_test") left GetJournalEntry reading -1 (unset) even
+    # same-tick -- AddJournalQuestEntry(tag, id) only sets state for a
+    # (tag, entry_id) pair that's already DECLARED in global.jrl (a real
+    # quest with a real tag/planet/priority/entry list), it does not
+    # spontaneously create a new quest from an unrecognized tag. So the
+    # persistence-across-reload question this pair existed to test was
+    # never actually reachable with an undeclared tag -- superseded by
+    # 58/59 below, which test a properly-declared one instead.
+    # 57 (diag_t3m4_jedi_test) RETIRED -- gag test, not a feature: does a
+    # real droid work as a Jedi. CONFIRMED: Force Powers screen showed
+    # usable powers for a droid-race (RACIAL_TYPE_DROID) character given a
+    # Jedi Class0Type -- no hard UI-level block found. Lightsaber-equip
+    # stayed inconclusive (feat grant never included in this test). See
+    # FutureDesign.md's droid-conversion research for the full writeup.
+    # No plan to use this -- not being carried forward as a feature.
+    #
+    # 58/59: same research shape as the retired 55/56, now against
+    # "ap_tracker" -- a real quest declared in global.jrl by
+    # build_ap_tracker_quest.py (6 stages: 0/20/40/60/80/100). 58 sets
+    # stage 0 (the tracker's own "run started" entry -- this doubles as
+    # actually turning the tracker on for the first time) and reads it
+    # back same-tick; 59 is READ-ONLY, for checking after a real save/
+    # reload whether the stage survived. Retire both once persistence is
+    # confirmed either way.
+    58: ("diag_ap_tracker_write", [
+        'string sPlot = "ap_tracker";',
+        'int nBefore = GetJournalEntry(sPlot);',
+        # RemoveJournalQuestEntry first -- confirmed live the quest
+        # appeared in the Journal list with a BLANK name even after the
+        # dialog.tlk stringref fix landed. Suspected cause: the engine
+        # snapshots quest display text into the save at the moment
+        # AddJournalQuestEntry first fires, rather than re-reading
+        # global.jrl live every render -- the first add happened while
+        # the name lookup was still broken (inline substring), so a
+        # blank snapshot may be stuck regardless of later global.jrl/
+        # dialog.tlk fixes. Remove+re-add forces a fresh pull.
+        'RemoveJournalQuestEntry(sPlot);',
+        # 1, not 0 -- see STAGES's own comment (build_ap_tracker_quest.py).
+        'AddJournalQuestEntry(sPlot, 1);',
+        'int nAfter = GetJournalEntry(sPlot);',
+        # 160/165, NOT 58/59 -- those are already ability_strength/
+        # ability_dexterity's own long-established codes (confirmed via a
+        # full KSE_Diag(<code> scan across every .py/.nss source before
+        # picking these -- 160/165 are genuinely unused gaps). This arm's
+        # own NAME (arm 58 in this table) coincidentally matches the
+        # NUMBER ability_strength logs under -- unrelated, harmless, and
+        # not worth renumbering the whole table over.
+        'KSE_Diag(160, "AP|APPLIED|diag_ap_tracker_write|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+    ]),
+    59: ("diag_ap_tracker_read", [
+        'string sPlot = "ap_tracker";',
+        'int nValue = GetJournalEntry(sPlot);',
+        'KSE_Diag(165, "AP|APPLIED|diag_ap_tracker_read|value=" + IntToString(nValue));',
+    ]),
+    # 60-64: the real "Archipelago Tracker" journal stages (see
+    # build_ap_tracker_quest.py) -- one arm per milestone, sent by
+    # kotor_reconciliation.py's own check-percentage branch, replacing the
+    # cosmetic "Connected to..." send_notify messages that were removed.
+    # No RemoveJournalQuestEntry needed here (unlike diag_ap_tracker_write
+    # above, which existed specifically to clear a stuck blank-name
+    # snapshot from the earlier broken attempts) -- AddJournalQuestEntry's
+    # own bAllowOverrideHigher=FALSE default (confirmed via nwscript.nss's
+    # own doc comment) already makes it safe to call repeatedly: it will
+    # never lower an already-higher stage, so the reconciler can just
+    # resend "the highest stage the player should be at" every cycle
+    # without any client-side dedup being load-bearing for correctness
+    # (dedup still happens client-side to avoid pointless traffic, same as
+    # every other correction).
 }
+for _i, _stage in enumerate((20, 40, 60, 80, 100)):
+    APPLIES[60 + _i] = (f"journal_tracker_{_stage}", [
+        f'AddJournalQuestEntry("ap_tracker", {_stage});',
+        f'KSE_Diag(166, "AP|APPLIED|journal_tracker_{_stage}|ok=1");',
+    ])
+# 65: stage 1 ("run has begun") -- a real bug found live (2026-09-30): the
+# reconciler's own percentage check never actually requested this stage at
+# all (it only ever checked the 20/40/60/80/100 thresholds, with a dead
+# "0" fallback that could never beat current_ap_tracker_stage's own
+# starting value of 0), so the tracker only ever appeared in-journal once
+# a player crossed 20% -- the "run has begun" stage this whole 6-stage
+# design existed for never fired automatically. Deliberately its own
+# plain arm, NOT a reuse of diag_ap_tracker_write (58) -- that one
+# RemoveJournalQuestEntry's first, which would incorrectly roll back an
+# already-further-along player's stage on every fresh Connect.
+APPLIES[65] = ("journal_tracker_1", [
+    'AddJournalQuestEntry("ap_tracker", 1);',
+    'KSE_Diag(166, "AP|APPLIED|journal_tracker_1|ok=1");',
+])
 
 
 def build_set_xp_block(value):
@@ -933,9 +1077,9 @@ _COMPANION_TAGS = {
     "juhani": "Juhani",
     "mission": "Mission",
     "zaalbar": "Zaalbar",
-    # new_companion=on only (Options.py) -- her real object Tag stays "HK47"
-    # regardless of the swap (see NEW_COMPANION_TEMPLATE's own comment
-    # below for why: ~450 of 498 game-wide "HK47" string hits are a
+    # new_companion=on only (Options.py) -- her/his real object Tag stays
+    # "HK47" regardless of the swap (see NEW_COMPANION_TEMPLATES' own
+    # comment below for why: ~450 of 498 game-wide "HK47" string hits are a
     # generic 9-companion tag-exclusion check shared by every companion,
     # safe only as long as this tag doesn't change). Added here so
     # build_companion_class_block()/the Additional Feats block generator
@@ -1075,97 +1219,83 @@ def build_companion_class_block(name, class_name):
     deliberately left alone -- non-Jedi classes have no equip restriction
     on it at all, nothing illegal to strip.
 
-    FIX (promoted from temporary arm 39's proof-of-concept):
-    granting a companion a JEDI class they didn't already have
-    used to go through the same raw KSE_SetCreatureField(CLASS0_TYPE)
-    overwrite as every other direction -- confirmed to leave newly-
-    granted Force Powers sheet-visible but never hotbar-usable, since a
-    direct field write skips the engine's own class-change housekeeping
-    entirely. Now branches at runtime on whether the companion is
-    CURRENTLY Jedi (checked via GetLevelByClass, not assumed from the
-    target class alone -- randomize_all can roll a class change for an
-    ALREADY-Jedi companion too): base-to-Jedi uses the real
-    AddMultiClass() native (always lands in Class1) + a
-    KSE_FIELD_CLASS1_LEVEL patch to 1 (AddMultiClass leaves it at 0, and
-    no companion-equivalent of ShowLevelUpGUI() exists to level it up
-    naturally) -- no separate Force-point write, since AddMultiClass's own
-    housekeeping is trusted to initialize that correctly, unlike the raw
-    field write. Every OTHER direction (already-Jedi or targeting a base
-    class) keeps the original CLASS0_TYPE/CLASS0_LEVEL/FORCE overwrite
-    unchanged -- confirmed NOT broken for Jedi-to-base (a clean re-test
-    without a contaminated arm queue) and never shown broken for the Jedi-to-
-    different-Jedi case either, so left on the proven path rather than
-    risking an untested AddMultiClass-onto-an-already-Jedi-Class0
-    interaction. Feat grants/removals and the lightsaber/robe equip-swap
-    run unconditionally either way -- redundant-but-harmless if
-    AddMultiClass's own housekeeping already granted them (K1SE's adder is
-    the same one real level-up uses, confirmed safe to re-fire).
+    Every direction -- targeting Jedi or a base
+    class, whether the companion currently holds either -- uses the SAME
+    raw KSE_SetCreatureField(CLASS0_TYPE) overwrite; there is deliberately
+    no second class slot and no AddMultiClass() call anywhere in this
+    function. Two earlier versions called AddMultiClass() to give a
+    base-to-Jedi conversion its own Class1 slot, on the theory that a raw
+    field write skipped some "class-change housekeeping" newly-granted
+    Force Powers needed to become hotbar-usable. That theory is wrong:
+    the real cause of that symptom was a separate, unrelated client-mirror
+    gap in the Force Power grant path itself (KseForcePowerOp), already
+    fixed unconditionally (see DEVELOPMENT_HISTORY.md's "client-side
+    hotbar-display gap" entry) -- hotbar usability no longer depends on
+    how the class field got set. Multiclassing a companion instead
+    introduced a real, confirmed bug: a branch that only checked "is this
+    companion Jedi at ALL" (GetLevelByClass across the 3 Jedi types) had
+    no way to tell a companion's real preserved base class (Class0) apart
+    from their earlier-granted Jedi class (Class1), so a redundant re-roll
+    of an already-applied assignment (e.g. this companion's recruit arm
+    resending after a save/reload) could overwrite Class0 with the SAME
+    Jedi class already sitting in Class1 -- a duplicated-class creature
+    that crashed the game on the next area transition. Class1
+    (nClass1, via GetClassByPosition(2, ...), 1-based -- see
+    old_class_read_lines) is read purely for diagnostic visibility (folded
+    into the AP|APPLIED line below), never branched on, in case a
+    companion from an older save is still multiclassed from before this
+    fix.
 
-    FIX: the base-class-target branch used to ONLY strip the 4
-    universal Jedi feats, unconditionally, regardless of what the
-    companion's class actually was -- confirmed a real gap via
-    CLASS_BASE_FEATS' base-feat-per-class data: a base-to-base switch
-    (e.g. Soldier -> Scout) never granted/stripped anything at all (keeps
-    Power Attack/Heavy Weapons forever, never gains Flurry/Rapid Shot), and
-    a Jedi-to-base switch never stripped that Jedi's own unique power feat
-    (Force Jump/Focus/Immunity Fear). Now reads the companion's real
-    CURRENT class live (GetClassByPosition, 1-based) before either branch
-    touches anything, and the base-class-target branch uses the same
-    build_class_feat_delta_lines() helper the PC's own pc_class_soldier/
-    scout/scoundrel arms use -- strips exactly the old class's base feats
-    the new class doesn't share, grants exactly the new class's base feats
-    the old class didn't already have. Also added each Jedi
-    class's own unique power feat (Force Jump=101/Force Focus=88/Force
-    Immunity: Fear=98) to the Jedi-target grant list below, via the same
-    proven DelayCommand pattern -- previously only the 4 UNIVERSAL Jedi
-    feats were granted, never the class-specific one.
+    Guards against the SAME redundant-re-roll
+    scenario at the write itself now, rather than relying on it being
+    harmless: if the companion's CURRENT Class0 already equals the target
+    class, the whole write (and its feat grants/deltas) is skipped --
+    AP|APPLIED still fires, so the retry system sees this as landed.
+    Without this, a resend would reset CLASS0_LEVEL back to 1, de-leveling
+    an already-progressed companion. Applies uniformly to both the
+    Jedi-target and base-class-target directions; neither had this guard
+    before.
 
-    KNOWN REMAINING GAP, deliberately not closed this pass: granting a
-    Jedi class does NOT strip the companion's OLD non-shared feats (e.g. a
-    Soldier who becomes a Guardian keeps Armor Prof Heavy/Power Attack
-    forever), and an already-Jedi companion rolling a DIFFERENT Jedi class
-    keeps their old unique power feat alongside the new one (e.g. Force
-    Jump AND Force Focus both present) -- the base-class-target branch got
-    the full delta treatment, matching the PC's own arms; the
-    Jedi-target branch only got the missing grant added, not a symmetric
-    strip. Revisit if this asymmetry turns out to matter in practice."""
+    FIX: both directions now use the SAME build_class_feat_delta_lines()
+    helper the PC's own pc_class_soldier/scout/scoundrel arms use --
+    strips exactly the old class's base feats the new class doesn't share,
+    grants exactly the new class's base feats the old class didn't already
+    have. Previously the Jedi-target branch was a bespoke, unconditional
+    grant-only list (the 4 universal Jedi feats + this class's unique
+    power feat, CLASS_BASE_FEATS' Jedi entries carry the identical ids) --
+    it never stripped the OLD class's now-irrelevant feats at all. Real
+    incident this caused, live (2026-09-29): Canderous converted to
+    Sentinel kept his old Scout feats (Armor Prof Light/Medium, Flurry,
+    etc.) alongside the new Jedi ones, filling his feat array's fixed
+    engine capacity -- KSE_GrantFeatArrayA silently refuses a grant once
+    that array is full (confirmed via kse_hook.cpp: "REALLOC WOULD FIRE...
+    REFUSING", a deliberate safety boundary, not a bug), so the LAST 3 of
+    5 queued Jedi feat grants (Force Sensitivity/Jedi Sense/Force
+    Immunity: Fear) silently never landed while the first 2 (already
+    fitting in the remaining headroom) did. Stripping the old class's
+    unshared feats FIRST -- immediate, synchronous, same as the base-
+    class-target branch already did -- frees that headroom before the
+    DelayCommand'd grants fire 1s later, so this closes the capacity issue
+    without touching the native extension's own realloc refusal at all.
+    Also fixes the sibling gap this same change closes for free: an
+    already-Jedi companion rolling a DIFFERENT Jedi class now correctly
+    loses their old unique power feat (e.g. Force Jump) when gaining the
+    new one (e.g. Force Focus), instead of accumulating both forever."""
     tag = _COMPANION_TAGS[name]
     npc_const = _COMPANION_NPC_CONST[name]
     class_const = _CLASS_NAME_TO_CONST[class_name]
     is_jedi = class_name in ("guardian", "consular", "sentinel")
-    _JEDI_FEATS = (55, 43, 116, 107)  # Jedi Defense, Lightsaber Proficiency, Force Sensitivity, Jedi Sense
-    _JEDI_UNIQUE_POWER_FEAT = {"guardian": 101, "consular": 88, "sentinel": 98}  # Force Jump/Focus/Immunity:Fear
-    old_class_read_lines = ["    int nOldClass = GetClassByPosition(1, oCompanion);"]
-    if is_jedi:
-        # FIX, found testing Canderous: granting these
-        # immediately after AddMultiClass() in the same script pass lost
-        # 2 of 4 feats (Jedi Sense/Force Sensitivity gone; Lightsaber
-        # Proficiency/Jedi Defense survived) -- confirmed, reproduced.
-        # Read: AddMultiClass()'s own real class-init (the whole reason
-        # it's used over a raw field write) evidently does its own feat
-        # settling that isn't fully synchronous within the same tick, and
-        # it happens to include Lightsaber Prof/Jedi Defense as real
-        # per-class level-1 entitlements but NOT Sense/Force-Sensitive (no
-        # class grants those at level 1) -- so its later-settling rebuild
-        # silently overwrote our two "extra" grants that aren't part of
-        # any class's real entitlement table, while leaving the other two
-        # alone (either untouched or harmlessly re-granted). Delaying our
-        # grants lets them land AFTER that settling instead of racing it.
-        # CONFIRMED FIXED: Mission, a genuinely clean
-        # base-to-Jedi test subject (fresh save, never touched before this
-        # test), got all 4 feats via this delayed path -- Jedi Sense and
-        # Force Sensitivity both landed this time. The old
-        # (non-AddMultiClass) removal path below has no such race, so it
-        # stays immediate/unchanged. The class-specific unique power feat
-        # rides the same delayed grant, untested on its
-        # own but no reason to expect it behaves differently from the
-        # other 4 -- same host, same timing.
-        feat_lines = [
-            f"    DelayCommand(1.0, KSE_GrantFeatArrayA({feat}, oCompanion));"
-            for feat in (*_JEDI_FEATS, _JEDI_UNIQUE_POWER_FEAT[class_name])
-        ]
-    else:
-        feat_lines = build_class_feat_delta_lines(class_const, "oCompanion", old_class_var="nOldClass", delay_grants=False)
+    old_class_read_lines = [
+        "    int nOldClass = GetClassByPosition(1, oCompanion);",
+        "    int nClass1 = GetClassByPosition(2, oCompanion);",
+    ]
+    # indent="        " (2 levels): nested inside the no-op-guard if/else
+    # below. Removals are always immediate (never delayed), which is what
+    # makes this fix work: they free feat-array capacity synchronously,
+    # before the delayed grants (delay_grants=is_jedi) attempt to use it.
+    feat_lines = build_class_feat_delta_lines(
+        class_const, "oCompanion", old_class_var="nOldClass", delay_grants=is_jedi, indent="        "
+    )
     _LIGHTSABER_CHECK = (
         "nBase{n} == BASE_ITEM_LIGHTSABER || nBase{n} == BASE_ITEM_SHORT_LIGHTSABER"
         " || nBase{n} == BASE_ITEM_DOUBLE_BLADED_LIGHTSABER"
@@ -1199,65 +1329,41 @@ def build_companion_class_block(name, class_name):
             "        }",
             "    }",
         ]
-    _OLD_PATH = [
+    # Single write mechanism for every direction (Jedi or base-class
+    # target, whatever the companion currently holds) -- see this
+    # function's docstring for why AddMultiClass()/a second class slot
+    # was removed. Guarded by a no-op check on Class0 alone: a redundant
+    # re-roll of an already-applied assignment (e.g. this companion's
+    # recruit arm resending after a save/reload) would otherwise reset
+    # CLASS0_LEVEL back to 1, de-leveling an already-progressed companion.
+    # AP|APPLIED still fires either way, so the retry system sees this as
+    # landed; nClass1 rides along in that diagnostic purely for
+    # visibility (see docstring), never branched on.
+    class_lines = [
+        f"    if (nOldClass == {class_const})",
+        "    {",
+        "        // already this class -- a redundant re-roll of an",
+        "        // already-applied assignment. Do nothing (would",
+        "        // otherwise reset CLASS0_LEVEL and de-level this",
+        "        // companion); AP|APPLIED below still fires so this",
+        "        // isn't retried forever.",
+        "    }",
+        "    else",
+        "    {",
         f"        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_TYPE(), {class_const});",
         "        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_LEVEL(), 1);",
         "        KSE_SetCreatureField(oCompanion, KSE_FIELD_FORCE(), 10);",
+        *feat_lines,
+        "    }",
     ]
-    if is_jedi:
-        # Runtime branch: base-to-Jedi (the direction confirmed broken under
-        # the raw field write) uses AddMultiClass + a Class1 level patch --
-        # see this function's docstring's own entry on this fix above. An
-        # already-Jedi companion rolling a DIFFERENT Jedi class under
-        # randomize_all stays on the old, unmodified path (never shown
-        # broken, and AddMultiClass onto an already-Jedi Class0 is
-        # untested).
-        #
-        # ADDENDUM, found testing Mission: the original
-        # recipe only patched Class1's level to 1 and left Class0's
-        # EXISTING level untouched (confirmed: Scoundrel level 3 +
-        # Guardian level 1). KOTOR's own companion auto-level-sync compares
-        # TOTAL character level against the party's expected total to
-        # decide whether to add a level at all -- with Class0 already at 3,
-        # her total (4) may already read as "caught up," permanently
-        # starving Class1 of the level-ups that would grant more Force
-        # Powers. Reset Class0's level to 1 too, so both classes start
-        # even and have real room for the auto-sync to add levels to
-        # either side as the party progresses. Not yet confirmed this
-        # actually unblocks leveling -- a reasonable next step to try
-        # live, not a proven fix like the AddMultiClass call itself.
-        class_lines = [
-            "    int nWasJedi = GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oCompanion) > 0 ||",
-            "                   GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oCompanion) > 0 ||",
-            "                   GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oCompanion) > 0;",
-            "    if (!nWasJedi)",
-            "    {",
-            f"        AddMultiClass({class_const}, oCompanion);",
-            "        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS1_LEVEL(), 1);",
-            "        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_LEVEL(), 1);",
-            "    }",
-            "    else",
-            "    {",
-            *_OLD_PATH,
-            "    }",
-        ]
-    else:
-        # Target is a base class -- the WRITE mechanism itself is always
-        # this same raw field overwrite, unchanged regardless of the
-        # companion's current class (confirmed not broken for
-        # Jedi-to-base; see this function's docstring). What DOES depend
-        # on the current class now is feat_lines above, computed from
-        # nOldClass (read below, before this write happens).
-        class_lines = [line[4:] for line in _OLD_PATH]  # de-indent by one level, no runtime branch needed
     return [
         f'object oCompanion = GetObjectByTag("{tag}");',
         f"if (IsNPCPartyMember({npc_const}) && GetIsObjectValid(oCompanion))",
         "{",
         *old_class_read_lines,
         *class_lines,
-        *feat_lines,
         *unequip_lines,
-        f'    KSE_Diag(109, "AP|APPLIED|companion_class|name={name}|class={class_name}");',
+        f'    KSE_Diag(109, "AP|APPLIED|companion_class|name={name}|class={class_name}|class1=" + IntToString(nClass1));',
         "}",
     ]
 

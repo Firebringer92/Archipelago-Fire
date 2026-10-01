@@ -15,6 +15,17 @@ trees coexist independently under Menu; nothing about door shuffling
 changes what governs location access, since Rules.py has no real logic
 yet anyway (flat/ungated).
 
+Options.py's AreaRandomizer picks between `coupled` and `decoupled` mode
+(off skips this module entirely). Both modes share the exact same pool,
+pairing, and repair logic below -- the only difference is the entrance
+type and the `coupled` flag passed to AP's randomize_entrances
+(_create_exits_and_targets's own docstring has the detail): `coupled`
+guarantees a same-door round trip; `decoupled` places each side of a
+pair independently, with no guarantee walking back through whatever door
+you find leads anywhere near where you came from. The rest of this
+docstring describes the pool/pairing analysis, which applies identically
+to both modes.
+
 REAL AP coupled mode: a full analysis of door_graph.json found that of
 the 118 entries eligible for randomization (156 total minus the
 exclusions below), 110 have a genuine, individually-identifiable reverse
@@ -305,22 +316,39 @@ def _build_coupled_pairs(door_graph: dict) -> typing.Tuple[typing.List[typing.Tu
     return pairs, noreverse
 
 
-def _create_exits_and_targets(world) -> typing.Tuple[list, list, dict, dict]:
-    """Builds real AP TWO_WAY coupled Entrance pairs for every confirmed
-    physical door-pair. For a pair (kf: A->B, kb: B->A), region A gets an
-    exit AND an entrance sharing one name, and region B gets an exit AND
-    an entrance sharing a second name -- this exact same-name-on-both-
-    sides-of-one-region shape is what AP's own coupled placement code
-    looks for to find "the reverse" of whatever it just placed (confirmed
-    against entrance_rando.py's connect() and the real worlds/
-    stardew_valley/regions/entrance_rando.py precedent, the only other
-    coupled-mode user in this checkout, before writing this). Anything
-    NOT in a confirmed pair (see _build_coupled_pairs) contributes neither
-    an exit nor a target -- it's fully fixed, matching how the exclusion
-    sets above were already handled."""
+def _create_exits_and_targets(world, coupled: bool) -> typing.Tuple[list, list, dict, dict]:
+    """Builds real AP Entrance pairs for every confirmed physical
+    door-pair, for EITHER mode -- same pool (see _build_coupled_pairs),
+    same pairing, same repair logic downstream; only the entrance type and
+    the `coupled` flag passed to randomize_entrances differ.
+
+    coupled=True (Options.py's `coupled` mode): TWO_WAY entrances. For a
+    pair (kf: A->B, kb: B->A), region A gets an exit AND an entrance
+    sharing one name, and region B gets an exit AND an entrance sharing a
+    second name -- this exact same-name-on-both-sides-of-one-region shape
+    is what AP's own coupled placement code looks for to find "the
+    reverse" of whatever it just placed (confirmed against
+    entrance_rando.py's connect() and the real worlds/stardew_valley/
+    regions/entrance_rando.py precedent, the only other coupled-mode user
+    in this checkout, before writing this).
+
+    coupled=False (`decoupled` mode): ONE_WAY entrances instead -- AP's own
+    convention for uncoupled placement (entrance_rando.py's reciprocal-
+    placement logic is explicitly gated on `if self.coupled and ...`, so
+    it's inert here regardless of entrance type, but TWO_WAY's own
+    target-count expectations assume coupled semantics and aren't proven
+    safe under coupled=False, so ONE_WAY avoids relying on that untested
+    combination). Same names/pairs/regions as coupled mode -- only the
+    type differs -- which is what keeps this a small, low-risk change
+    rather than a new pool/design.
+
+    Anything NOT in a confirmed pair (see _build_coupled_pairs) contributes
+    neither an exit nor a target in EITHER mode -- it's fully fixed,
+    matching how the exclusion sets above were already handled."""
     door_graph = world.kotor_door_graph
     regions = world.kotor_door_regions
     pairs, _noreverse = _build_coupled_pairs(door_graph)
+    entrance_type = EntranceType.TWO_WAY if coupled else EntranceType.ONE_WAY
 
     exits = []
     targets = []
@@ -334,14 +362,14 @@ def _create_exits_and_targets(world) -> typing.Tuple[list, list, dict, dict]:
         name_b = f"{kb} door"
 
         exit_a = regions[a].create_exit(name_f)
-        exit_a.randomization_type = EntranceType.TWO_WAY
+        exit_a.randomization_type = entrance_type
         entrance_a = regions[a].create_er_target(name_f)
-        entrance_a.randomization_type = EntranceType.TWO_WAY
+        entrance_a.randomization_type = entrance_type
 
         exit_b = regions[b].create_exit(name_b)
-        exit_b.randomization_type = EntranceType.TWO_WAY
+        exit_b.randomization_type = entrance_type
         entrance_b = regions[b].create_er_target(name_b)
-        entrance_b.randomization_type = EntranceType.TWO_WAY
+        entrance_b.randomization_type = entrance_type
 
         exits.append(exit_a)
         exits.append(exit_b)
@@ -454,16 +482,19 @@ def connect_entrances(world) -> typing.Dict[str, dict]:
     shape as door_graph.json's original vanilla entries, so the file
     patcher can consume it identically either way.
 
-    Uses AP's real coupled=True engine -- see this module's own docstring
-    for the full reasoning. Retries
-    the whole build+placement up to MAX_COUPLED_ATTEMPTS times on
-    EntranceRandomizationError (cheap insurance, not a real fix -- see
-    that constant's own comment), then runs _repair_orphaned_modules on
-    whatever the best attempt produced -- THAT is what actually
+    Reads Options.py's AreaRandomizer value to pick coupled vs. decoupled
+    -- see _create_exits_and_targets's own docstring for what actually
+    differs between the two (same pool/pairs/repair logic, only the
+    entrance type and the `coupled` flag passed to randomize_entrances
+    change). Retries the whole build+placement up to MAX_COUPLED_ATTEMPTS
+    times on EntranceRandomizationError (cheap insurance, not a real fix
+    -- see that constant's own comment), then runs _repair_orphaned_modules
+    on whatever the best attempt produced -- THAT is what actually
     guarantees reachability now, scoped to just the rare residual instead
     of a whole-graph pass."""
     door_graph = world.kotor_door_graph
     regions = world.kotor_door_regions
+    coupled = world.options.area_randomizer.value != world.options.area_randomizer.option_decoupled
 
     best_pairings: typing.List[typing.Tuple[str, str]] = []
     exit_name_to_key: typing.Dict[str, str] = {}
@@ -473,7 +504,7 @@ def connect_entrances(world) -> typing.Dict[str, dict]:
 
     for attempt in range(1, MAX_COUPLED_ATTEMPTS + 1):
         _reset_door_regions(regions)
-        exits, targets, exit_name_to_key, target_name_to_real_key = _create_exits_and_targets(world)
+        exits, targets, exit_name_to_key, target_name_to_real_key = _create_exits_and_targets(world, coupled)
         total_entries = len(exits)
         pairings: typing.List[typing.Tuple[str, str]] = []
 
@@ -484,7 +515,7 @@ def connect_entrances(world) -> typing.Dict[str, dict]:
         try:
             randomize_entrances(
                 world,
-                coupled=True,
+                coupled=coupled,
                 target_group_lookup={0: [0]},
                 er_targets=targets,
                 exits=exits,
@@ -498,8 +529,9 @@ def connect_entrances(world) -> typing.Dict[str, dict]:
                 best_pairings = pairings
             last_error = e
 
+    mode_label = "coupled" if coupled else "decoupled"
     if not completed:
-        print(f"[kotor] Door randomization: {len(best_pairings)}/{total_entries} coupled door entries placed "
+        print(f"[kotor] Door randomization: {len(best_pairings)}/{total_entries} {mode_label} door entries placed "
               f"after {MAX_COUPLED_ATTEMPTS} attempts, remainder falling back to vanilla destinations "
               f"({last_error})")
 
@@ -530,4 +562,10 @@ def connect_entrances(world) -> typing.Dict[str, dict]:
               f"repointing an existing edge: {repairs}")
 
     world.kotor_door_mapping = result
+    # Which door_graph keys _repair_orphaned_modules repointed -- otherwise
+    # this only ever reached a print() above and was lost once generation
+    # finished, leaving no way to tell a repaired entry apart from a
+    # cleanly-coupled one after the fact (see scripts/review_door_mapping.py,
+    # which needs this to label entries accurately).
+    world.kotor_door_repairs = [key for key, _new_dest_module in repairs]
     return result

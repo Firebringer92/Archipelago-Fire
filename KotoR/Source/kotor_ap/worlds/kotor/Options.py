@@ -26,31 +26,43 @@ class CompanionMode(Choice):
     default = 1
 
 
-class NewCompanion(Toggle):
-    """Replaces HK-47 with a new human companion, Meetra Surik (a Jedi
-    Sentinel), occupying his exact party slot -- not an addition, a swap.
-    His recruitment mechanism (the Tatooine droid-purchase trigger) is
-    unchanged; only who you get is different. His personal Ebon Hawk
-    subplot is removed entirely and replaced with a single placeholder
-    greeting -- the "Ebon Hawk: HK-47" journal check is removed from the
-    pool rather than left permanently uncompletable.
+class NewCompanion(Choice):
+    """Replaces HK-47 with a new companion, occupying his exact party
+    slot -- not an addition, a swap. His recruitment mechanism (the
+    Tatooine droid-purchase trigger) is unchanged; only who you get is
+    different. His personal Ebon Hawk subplot is removed entirely and
+    replaced with a single placeholder greeting -- the "Ebon Hawk: HK-47"
+    journal check is removed from the pool rather than left permanently
+    uncompletable.
 
-    When on, every AP-facing name that would otherwise say "HK-47" for
-    his companion item/location (relevant under companion_mode=ap_gated,
-    where his companion item is a real placed check) instead reads "New
-    Companion" -- this uses a second, always-present item/location pair
-    rather than renaming the vanilla HK-47 entries, since AP's item/
-    location name-to-id mapping can't vary per player within the same
-    multiworld game.
+    When not off, every AP-facing name that would otherwise say "HK-47"
+    for his companion item/location (relevant under companion_mode=
+    ap_gated, where his companion item is a real placed check) instead
+    reads "New Companion" -- this uses a second, always-present item/
+    location pair rather than renaming the vanilla HK-47 entries, since
+    AP's item/location name-to-id mapping can't vary per player within
+    the same multiworld game. Both replacement characters share this
+    exact same item/location pair -- mystery and malak differ only in
+    which character/template is actually deployed underneath, never in
+    AP item/location identity.
 
-    She is also folded into companion_class and additional_feats exactly
-    like the other 7 non-droid companions (no_jedi/randomize_all can
-    reroll her; jedi_companion is unaffected -- she's not one of its 4
-    target companions).
+    Both are also folded into companion_class and additional_feats
+    exactly like the other 7 non-droid companions (no_jedi/randomize_all
+    can reroll them; jedi_companion is unaffected -- neither is one of
+    its 4 target companions).
 
-    Off (default): vanilla HK-47, unchanged."""
+    off (default): vanilla HK-47, unchanged.
+
+    mystery: Meetra Surik, an original Jedi Sentinel character (a KOTOR2
+    reference/easter egg).
+
+    malak: Darth Malak, a Jedi Guardian, using his real unique in-game
+    appearance/model."""
     display_name = "New Companion"
-    default = False
+    option_off = 0
+    option_mystery = 1
+    option_malak = 2
+    default = 0
 
 
 class StartingClass(Choice):
@@ -106,8 +118,9 @@ class JediClass(Choice):
 class CompanionClass(Choice):
     """Randomizes the class of the 7 non-droid companions (Bastila,
     Canderous, Carth, Jolee, Juhani, Mission, Zaalbar -- HK-47 and T3-M4
-    are droids and never affected; if new_companion is on, Meetra Surik
-    is folded in as an 8th eligible companion in his place). Independent
+    are droids and never affected; if new_companion is on, the
+    replacement character is folded in as an 8th eligible companion in
+    his place). Independent
     of starting_class/jedi_class, which only ever control the PC's own
     class.
 
@@ -143,7 +156,8 @@ class AdditionalFeats(Toggle):
     companion_mode is "none", otherwise the PC plus all 7 non-droid
     companions (Bastila, Canderous, Carth, Jolee, Juhani, Mission,
     Zaalbar -- HK-47 and T3-M4 are droids and never eligible; if
-    new_companion is on, Meetra Surik is eligible in his place).
+    new_companion is on, the replacement character is eligible in his
+    place).
 
     Receiving one doesn't grant anything immediately -- which 3 feats it
     grants is decided later, once that character is actually recruited
@@ -672,29 +686,49 @@ class ShopItemCount(Range):
     default = 30
 
 
-class AreaRandomizer(Toggle):
+class AreaRandomizer(Choice):
     """Whether doors and area-transition triggers are shuffled to lead
     somewhere other than their vanilla destination, using Archipelago's own
-    entrance randomization engine. Most doors (110 of 156, the ones with a
-    real, identifiable door leading back) are genuinely COUPLED: whatever
-    room a shuffled door leads you into, you can always walk straight back
-    out through the same physical door. A small number of doors (8, none
-    of which have any real return door in the vanilla game at all -- an
-    elevator, a dive suit sequence, or similar) always keep their normal
-    vanilla destination, as do a handful of story-critical zones (Endar
-    Spire, the Leviathan, the Star Forge, Unknown World) that are excluded
-    from shuffling entirely. On the rare seed where the shuffle can't fully
-    resolve on its own, a small repair step guarantees every area still has
-    a real way in, at the cost of that one connection not necessarily
-    leading back the way you came. The mapping is fixed once per seed:
-    every door leads to the same shuffled destination for the whole
-    playthrough. Off means every door/trigger keeps its normal vanilla
-    destination. Like item suppression, this is a real, game-file-level
-    patch applied once by a standalone script (not something the live AP
-    client toggles), so this option's actual effect depends on that patch
-    step having been run for the seed you're playing."""
+    entrance randomization engine, and whether that shuffle guarantees a
+    real way back.
+
+    off: every door/trigger keeps its normal vanilla destination.
+
+    coupled: doors are shuffled in genuinely COUPLED pairs -- whatever room
+    a shuffled door leads you into, you can always walk straight back out
+    through the SAME physical door/trigger object you just used. 110 of the
+    118 eligible entries (the ones with a real, identifiable reverse) are
+    wired this way; the remaining 8 (no real return path anywhere in
+    vanilla data) always keep their normal vanilla destination, as do a
+    handful of story-critical zones (Endar Spire, the Leviathan, the Star
+    Forge, Unknown World) excluded from shuffling entirely. On the rare
+    seed where the shuffle can't fully resolve on its own, a small repair
+    step guarantees every area still has a real way in, at the cost of that
+    one connection not necessarily leading back the way you came.
+
+    decoupled: every one of the 118 eligible entries (including the 8 with
+    no identifiable reverse -- decoupled mode doesn't need one) is shuffled
+    completely independently. Walking through a door tells you nothing
+    about what walking back through whatever door is physically on the
+    other side will do -- it may lead somewhere else entirely, or nowhere
+    near where you came from. A real, more traditional entrance-randomizer
+    "you don't know where anything leads, in either direction" experience,
+    at the cost of the coupled round-trip guarantee. Reachability is still
+    guaranteed (the same class of repair step coupled mode uses), just not
+    reversibility.
+
+    In both non-off modes, the same handful of story-critical zones stay
+    excluded, and the mapping is fixed once per seed: every door leads to
+    the same shuffled destination for the whole playthrough. Like item
+    suppression, this is a real, game-file-level patch applied once by a
+    standalone script (not something the live AP client toggles), so this
+    option's actual effect depends on that patch step having been run for
+    the seed you're playing."""
     display_name = "Area Randomizer"
-    default = False
+    option_off = 0
+    option_coupled = 1
+    option_decoupled = 2
+    default = 0
 
 
 class LootMode(Choice):

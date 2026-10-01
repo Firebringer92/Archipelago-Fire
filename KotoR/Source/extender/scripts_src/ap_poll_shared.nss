@@ -1375,6 +1375,11 @@ void CheckJournal()
     {
         KSE_Diag(30, "AP|CHECK|JOURNAL|Tat20aa_worthy|value=" + IntToString(nTat20aa_worthy));
     }
+    int nap_tracker = GetJournalEntry("ap_tracker");
+    if (nap_tracker > 0)
+    {
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_tracker|value=" + IntToString(nap_tracker));
+    }
 }
 
 
@@ -1439,6 +1444,320 @@ void CheckClasses()
     int nBaseLevel = GetLevelByPosition(1, oPC);
     sReport = sReport + "|baseclass=" + IntToString(nBaseClass) + "|baselevel=" + IntToString(nBaseLevel);
     KSE_Diag(65, sReport);
+}
+
+// Reports current base-class (position 1) for each of the 7 non-droid
+// companions, so the reconciler can self-heal a companion's class the same
+// way CheckClasses() does for the PC -- companion class previously had NO
+// live polling at all, only a one-shot recruit-time send with no way to
+// detect drift afterward (e.g. a crash/reload landing on a save from before
+// a companion_class grant actually took). -1 means not currently recruited
+// (IsNPCPartyMember false) -- distinct from a real CLASS_TYPE_* value,
+// including CLASS_TYPE_SOLDIER's own 0. HK-47/T3-M4 (droids) are excluded --
+// Randomize_class never targets them, same scope as _COMPANION_NPC_CONST in
+// generate_trampoline_batch.py.
+void CheckCompanionClasses()
+{
+    string sReport = "AP|COMPANIONCLASSREPORT";
+    object oBastila = GetObjectByTag("Bastila");
+    int nBastila = -1;
+    if (IsNPCPartyMember(NPC_BASTILA) && GetIsObjectValid(oBastila))
+    {
+        nBastila = GetClassByPosition(1, oBastila);
+    }
+    sReport = sReport + "|bastila=" + IntToString(nBastila);
+    object oCanderous = GetObjectByTag("Cand");
+    int nCanderous = -1;
+    if (IsNPCPartyMember(NPC_CANDEROUS) && GetIsObjectValid(oCanderous))
+    {
+        nCanderous = GetClassByPosition(1, oCanderous);
+    }
+    sReport = sReport + "|canderous=" + IntToString(nCanderous);
+    object oCarth = GetObjectByTag("Carth");
+    int nCarth = -1;
+    if (IsNPCPartyMember(NPC_CARTH) && GetIsObjectValid(oCarth))
+    {
+        nCarth = GetClassByPosition(1, oCarth);
+    }
+    sReport = sReport + "|carth=" + IntToString(nCarth);
+    object oJolee = GetObjectByTag("Jolee");
+    int nJolee = -1;
+    if (IsNPCPartyMember(NPC_JOLEE) && GetIsObjectValid(oJolee))
+    {
+        nJolee = GetClassByPosition(1, oJolee);
+    }
+    sReport = sReport + "|jolee=" + IntToString(nJolee);
+    object oJuhani = GetObjectByTag("Juhani");
+    int nJuhani = -1;
+    if (IsNPCPartyMember(NPC_JUHANI) && GetIsObjectValid(oJuhani))
+    {
+        nJuhani = GetClassByPosition(1, oJuhani);
+    }
+    sReport = sReport + "|juhani=" + IntToString(nJuhani);
+    object oMission = GetObjectByTag("Mission");
+    int nMission = -1;
+    if (IsNPCPartyMember(NPC_MISSION) && GetIsObjectValid(oMission))
+    {
+        nMission = GetClassByPosition(1, oMission);
+    }
+    sReport = sReport + "|mission=" + IntToString(nMission);
+    object oZaalbar = GetObjectByTag("Zaalbar");
+    int nZaalbar = -1;
+    if (IsNPCPartyMember(NPC_ZAALBAR) && GetIsObjectValid(oZaalbar))
+    {
+        nZaalbar = GetClassByPosition(1, oZaalbar);
+    }
+    sReport = sReport + "|zaalbar=" + IntToString(nZaalbar);
+    KSE_Diag(138, sReport);
+}
+
+// Reports which of the tracked feat ids (Additional Feats pool +
+// Jedi class-conversion bundle) each of the 7 non-droid companions
+// currently holds, so the reconciler can self-heal a companion's feats the
+// same way CheckCompanionClasses() does for class -- companion feats
+// previously had NO live polling at all. "NONE" means not currently
+// recruited (IsNPCPartyMember false) -- distinct from a real but empty held
+// list (recruited, holds none of the tracked ids).
+void CheckCompanionFeats()
+{
+    string sReport = "AP|COMPANIONFEATSREPORT";
+    object oFBastila = GetObjectByTag("Bastila");
+    int bFBastilaRecruited = IsNPCPartyMember(NPC_BASTILA) && GetIsObjectValid(oFBastila);
+    string sFBastila = "NONE";
+    if (bFBastilaRecruited)
+    {
+        sFBastila = "";
+        if (KSE_GetFeatAcquired(4, oFBastila)) sFBastila += "4,";
+        if (KSE_GetFeatAcquired(5, oFBastila)) sFBastila += "5,";
+        if (KSE_GetFeatAcquired(6, oFBastila)) sFBastila += "6,";
+        if (KSE_GetFeatAcquired(8, oFBastila)) sFBastila += "8,";
+        if (KSE_GetFeatAcquired(11, oFBastila)) sFBastila += "11,";
+        if (KSE_GetFeatAcquired(14, oFBastila)) sFBastila += "14,";
+        if (KSE_GetFeatAcquired(28, oFBastila)) sFBastila += "28,";
+        if (KSE_GetFeatAcquired(29, oFBastila)) sFBastila += "29,";
+        if (KSE_GetFeatAcquired(30, oFBastila)) sFBastila += "30,";
+        if (KSE_GetFeatAcquired(31, oFBastila)) sFBastila += "31,";
+        if (KSE_GetFeatAcquired(40, oFBastila)) sFBastila += "40,";
+        if (KSE_GetFeatAcquired(42, oFBastila)) sFBastila += "42,";
+        if (KSE_GetFeatAcquired(43, oFBastila)) sFBastila += "43,";
+        if (KSE_GetFeatAcquired(55, oFBastila)) sFBastila += "55,";
+        if (KSE_GetFeatAcquired(60, oFBastila)) sFBastila += "60,";
+        if (KSE_GetFeatAcquired(88, oFBastila)) sFBastila += "88,";
+        if (KSE_GetFeatAcquired(98, oFBastila)) sFBastila += "98,";
+        if (KSE_GetFeatAcquired(101, oFBastila)) sFBastila += "101,";
+        if (KSE_GetFeatAcquired(104, oFBastila)) sFBastila += "104,";
+        if (KSE_GetFeatAcquired(107, oFBastila)) sFBastila += "107,";
+        if (KSE_GetFeatAcquired(116, oFBastila)) sFBastila += "116,";
+    }
+    sReport = sReport + "|bastila=" + sFBastila;
+    object oFCanderous = GetObjectByTag("Cand");
+    int bFCanderousRecruited = IsNPCPartyMember(NPC_CANDEROUS) && GetIsObjectValid(oFCanderous);
+    string sFCanderous = "NONE";
+    if (bFCanderousRecruited)
+    {
+        sFCanderous = "";
+        if (KSE_GetFeatAcquired(4, oFCanderous)) sFCanderous += "4,";
+        if (KSE_GetFeatAcquired(5, oFCanderous)) sFCanderous += "5,";
+        if (KSE_GetFeatAcquired(6, oFCanderous)) sFCanderous += "6,";
+        if (KSE_GetFeatAcquired(8, oFCanderous)) sFCanderous += "8,";
+        if (KSE_GetFeatAcquired(11, oFCanderous)) sFCanderous += "11,";
+        if (KSE_GetFeatAcquired(14, oFCanderous)) sFCanderous += "14,";
+        if (KSE_GetFeatAcquired(28, oFCanderous)) sFCanderous += "28,";
+        if (KSE_GetFeatAcquired(29, oFCanderous)) sFCanderous += "29,";
+        if (KSE_GetFeatAcquired(30, oFCanderous)) sFCanderous += "30,";
+        if (KSE_GetFeatAcquired(31, oFCanderous)) sFCanderous += "31,";
+        if (KSE_GetFeatAcquired(40, oFCanderous)) sFCanderous += "40,";
+        if (KSE_GetFeatAcquired(42, oFCanderous)) sFCanderous += "42,";
+        if (KSE_GetFeatAcquired(43, oFCanderous)) sFCanderous += "43,";
+        if (KSE_GetFeatAcquired(55, oFCanderous)) sFCanderous += "55,";
+        if (KSE_GetFeatAcquired(60, oFCanderous)) sFCanderous += "60,";
+        if (KSE_GetFeatAcquired(88, oFCanderous)) sFCanderous += "88,";
+        if (KSE_GetFeatAcquired(98, oFCanderous)) sFCanderous += "98,";
+        if (KSE_GetFeatAcquired(101, oFCanderous)) sFCanderous += "101,";
+        if (KSE_GetFeatAcquired(104, oFCanderous)) sFCanderous += "104,";
+        if (KSE_GetFeatAcquired(107, oFCanderous)) sFCanderous += "107,";
+        if (KSE_GetFeatAcquired(116, oFCanderous)) sFCanderous += "116,";
+    }
+    sReport = sReport + "|canderous=" + sFCanderous;
+    object oFCarth = GetObjectByTag("Carth");
+    int bFCarthRecruited = IsNPCPartyMember(NPC_CARTH) && GetIsObjectValid(oFCarth);
+    string sFCarth = "NONE";
+    if (bFCarthRecruited)
+    {
+        sFCarth = "";
+        if (KSE_GetFeatAcquired(4, oFCarth)) sFCarth += "4,";
+        if (KSE_GetFeatAcquired(5, oFCarth)) sFCarth += "5,";
+        if (KSE_GetFeatAcquired(6, oFCarth)) sFCarth += "6,";
+        if (KSE_GetFeatAcquired(8, oFCarth)) sFCarth += "8,";
+        if (KSE_GetFeatAcquired(11, oFCarth)) sFCarth += "11,";
+        if (KSE_GetFeatAcquired(14, oFCarth)) sFCarth += "14,";
+        if (KSE_GetFeatAcquired(28, oFCarth)) sFCarth += "28,";
+        if (KSE_GetFeatAcquired(29, oFCarth)) sFCarth += "29,";
+        if (KSE_GetFeatAcquired(30, oFCarth)) sFCarth += "30,";
+        if (KSE_GetFeatAcquired(31, oFCarth)) sFCarth += "31,";
+        if (KSE_GetFeatAcquired(40, oFCarth)) sFCarth += "40,";
+        if (KSE_GetFeatAcquired(42, oFCarth)) sFCarth += "42,";
+        if (KSE_GetFeatAcquired(43, oFCarth)) sFCarth += "43,";
+        if (KSE_GetFeatAcquired(55, oFCarth)) sFCarth += "55,";
+        if (KSE_GetFeatAcquired(60, oFCarth)) sFCarth += "60,";
+        if (KSE_GetFeatAcquired(88, oFCarth)) sFCarth += "88,";
+        if (KSE_GetFeatAcquired(98, oFCarth)) sFCarth += "98,";
+        if (KSE_GetFeatAcquired(101, oFCarth)) sFCarth += "101,";
+        if (KSE_GetFeatAcquired(104, oFCarth)) sFCarth += "104,";
+        if (KSE_GetFeatAcquired(107, oFCarth)) sFCarth += "107,";
+        if (KSE_GetFeatAcquired(116, oFCarth)) sFCarth += "116,";
+    }
+    sReport = sReport + "|carth=" + sFCarth;
+    object oFJolee = GetObjectByTag("Jolee");
+    int bFJoleeRecruited = IsNPCPartyMember(NPC_JOLEE) && GetIsObjectValid(oFJolee);
+    string sFJolee = "NONE";
+    if (bFJoleeRecruited)
+    {
+        sFJolee = "";
+        if (KSE_GetFeatAcquired(4, oFJolee)) sFJolee += "4,";
+        if (KSE_GetFeatAcquired(5, oFJolee)) sFJolee += "5,";
+        if (KSE_GetFeatAcquired(6, oFJolee)) sFJolee += "6,";
+        if (KSE_GetFeatAcquired(8, oFJolee)) sFJolee += "8,";
+        if (KSE_GetFeatAcquired(11, oFJolee)) sFJolee += "11,";
+        if (KSE_GetFeatAcquired(14, oFJolee)) sFJolee += "14,";
+        if (KSE_GetFeatAcquired(28, oFJolee)) sFJolee += "28,";
+        if (KSE_GetFeatAcquired(29, oFJolee)) sFJolee += "29,";
+        if (KSE_GetFeatAcquired(30, oFJolee)) sFJolee += "30,";
+        if (KSE_GetFeatAcquired(31, oFJolee)) sFJolee += "31,";
+        if (KSE_GetFeatAcquired(40, oFJolee)) sFJolee += "40,";
+        if (KSE_GetFeatAcquired(42, oFJolee)) sFJolee += "42,";
+        if (KSE_GetFeatAcquired(43, oFJolee)) sFJolee += "43,";
+        if (KSE_GetFeatAcquired(55, oFJolee)) sFJolee += "55,";
+        if (KSE_GetFeatAcquired(60, oFJolee)) sFJolee += "60,";
+        if (KSE_GetFeatAcquired(88, oFJolee)) sFJolee += "88,";
+        if (KSE_GetFeatAcquired(98, oFJolee)) sFJolee += "98,";
+        if (KSE_GetFeatAcquired(101, oFJolee)) sFJolee += "101,";
+        if (KSE_GetFeatAcquired(104, oFJolee)) sFJolee += "104,";
+        if (KSE_GetFeatAcquired(107, oFJolee)) sFJolee += "107,";
+        if (KSE_GetFeatAcquired(116, oFJolee)) sFJolee += "116,";
+    }
+    sReport = sReport + "|jolee=" + sFJolee;
+    object oFJuhani = GetObjectByTag("Juhani");
+    int bFJuhaniRecruited = IsNPCPartyMember(NPC_JUHANI) && GetIsObjectValid(oFJuhani);
+    string sFJuhani = "NONE";
+    if (bFJuhaniRecruited)
+    {
+        sFJuhani = "";
+        if (KSE_GetFeatAcquired(4, oFJuhani)) sFJuhani += "4,";
+        if (KSE_GetFeatAcquired(5, oFJuhani)) sFJuhani += "5,";
+        if (KSE_GetFeatAcquired(6, oFJuhani)) sFJuhani += "6,";
+        if (KSE_GetFeatAcquired(8, oFJuhani)) sFJuhani += "8,";
+        if (KSE_GetFeatAcquired(11, oFJuhani)) sFJuhani += "11,";
+        if (KSE_GetFeatAcquired(14, oFJuhani)) sFJuhani += "14,";
+        if (KSE_GetFeatAcquired(28, oFJuhani)) sFJuhani += "28,";
+        if (KSE_GetFeatAcquired(29, oFJuhani)) sFJuhani += "29,";
+        if (KSE_GetFeatAcquired(30, oFJuhani)) sFJuhani += "30,";
+        if (KSE_GetFeatAcquired(31, oFJuhani)) sFJuhani += "31,";
+        if (KSE_GetFeatAcquired(40, oFJuhani)) sFJuhani += "40,";
+        if (KSE_GetFeatAcquired(42, oFJuhani)) sFJuhani += "42,";
+        if (KSE_GetFeatAcquired(43, oFJuhani)) sFJuhani += "43,";
+        if (KSE_GetFeatAcquired(55, oFJuhani)) sFJuhani += "55,";
+        if (KSE_GetFeatAcquired(60, oFJuhani)) sFJuhani += "60,";
+        if (KSE_GetFeatAcquired(88, oFJuhani)) sFJuhani += "88,";
+        if (KSE_GetFeatAcquired(98, oFJuhani)) sFJuhani += "98,";
+        if (KSE_GetFeatAcquired(101, oFJuhani)) sFJuhani += "101,";
+        if (KSE_GetFeatAcquired(104, oFJuhani)) sFJuhani += "104,";
+        if (KSE_GetFeatAcquired(107, oFJuhani)) sFJuhani += "107,";
+        if (KSE_GetFeatAcquired(116, oFJuhani)) sFJuhani += "116,";
+    }
+    sReport = sReport + "|juhani=" + sFJuhani;
+    object oFMission = GetObjectByTag("Mission");
+    int bFMissionRecruited = IsNPCPartyMember(NPC_MISSION) && GetIsObjectValid(oFMission);
+    string sFMission = "NONE";
+    if (bFMissionRecruited)
+    {
+        sFMission = "";
+        if (KSE_GetFeatAcquired(4, oFMission)) sFMission += "4,";
+        if (KSE_GetFeatAcquired(5, oFMission)) sFMission += "5,";
+        if (KSE_GetFeatAcquired(6, oFMission)) sFMission += "6,";
+        if (KSE_GetFeatAcquired(8, oFMission)) sFMission += "8,";
+        if (KSE_GetFeatAcquired(11, oFMission)) sFMission += "11,";
+        if (KSE_GetFeatAcquired(14, oFMission)) sFMission += "14,";
+        if (KSE_GetFeatAcquired(28, oFMission)) sFMission += "28,";
+        if (KSE_GetFeatAcquired(29, oFMission)) sFMission += "29,";
+        if (KSE_GetFeatAcquired(30, oFMission)) sFMission += "30,";
+        if (KSE_GetFeatAcquired(31, oFMission)) sFMission += "31,";
+        if (KSE_GetFeatAcquired(40, oFMission)) sFMission += "40,";
+        if (KSE_GetFeatAcquired(42, oFMission)) sFMission += "42,";
+        if (KSE_GetFeatAcquired(43, oFMission)) sFMission += "43,";
+        if (KSE_GetFeatAcquired(55, oFMission)) sFMission += "55,";
+        if (KSE_GetFeatAcquired(60, oFMission)) sFMission += "60,";
+        if (KSE_GetFeatAcquired(88, oFMission)) sFMission += "88,";
+        if (KSE_GetFeatAcquired(98, oFMission)) sFMission += "98,";
+        if (KSE_GetFeatAcquired(101, oFMission)) sFMission += "101,";
+        if (KSE_GetFeatAcquired(104, oFMission)) sFMission += "104,";
+        if (KSE_GetFeatAcquired(107, oFMission)) sFMission += "107,";
+        if (KSE_GetFeatAcquired(116, oFMission)) sFMission += "116,";
+    }
+    sReport = sReport + "|mission=" + sFMission;
+    object oFZaalbar = GetObjectByTag("Zaalbar");
+    int bFZaalbarRecruited = IsNPCPartyMember(NPC_ZAALBAR) && GetIsObjectValid(oFZaalbar);
+    string sFZaalbar = "NONE";
+    if (bFZaalbarRecruited)
+    {
+        sFZaalbar = "";
+        if (KSE_GetFeatAcquired(4, oFZaalbar)) sFZaalbar += "4,";
+        if (KSE_GetFeatAcquired(5, oFZaalbar)) sFZaalbar += "5,";
+        if (KSE_GetFeatAcquired(6, oFZaalbar)) sFZaalbar += "6,";
+        if (KSE_GetFeatAcquired(8, oFZaalbar)) sFZaalbar += "8,";
+        if (KSE_GetFeatAcquired(11, oFZaalbar)) sFZaalbar += "11,";
+        if (KSE_GetFeatAcquired(14, oFZaalbar)) sFZaalbar += "14,";
+        if (KSE_GetFeatAcquired(28, oFZaalbar)) sFZaalbar += "28,";
+        if (KSE_GetFeatAcquired(29, oFZaalbar)) sFZaalbar += "29,";
+        if (KSE_GetFeatAcquired(30, oFZaalbar)) sFZaalbar += "30,";
+        if (KSE_GetFeatAcquired(31, oFZaalbar)) sFZaalbar += "31,";
+        if (KSE_GetFeatAcquired(40, oFZaalbar)) sFZaalbar += "40,";
+        if (KSE_GetFeatAcquired(42, oFZaalbar)) sFZaalbar += "42,";
+        if (KSE_GetFeatAcquired(43, oFZaalbar)) sFZaalbar += "43,";
+        if (KSE_GetFeatAcquired(55, oFZaalbar)) sFZaalbar += "55,";
+        if (KSE_GetFeatAcquired(60, oFZaalbar)) sFZaalbar += "60,";
+        if (KSE_GetFeatAcquired(88, oFZaalbar)) sFZaalbar += "88,";
+        if (KSE_GetFeatAcquired(98, oFZaalbar)) sFZaalbar += "98,";
+        if (KSE_GetFeatAcquired(101, oFZaalbar)) sFZaalbar += "101,";
+        if (KSE_GetFeatAcquired(104, oFZaalbar)) sFZaalbar += "104,";
+        if (KSE_GetFeatAcquired(107, oFZaalbar)) sFZaalbar += "107,";
+        if (KSE_GetFeatAcquired(116, oFZaalbar)) sFZaalbar += "116,";
+    }
+    sReport = sReport + "|zaalbar=" + sFZaalbar;
+    KSE_Diag(139, sReport);
+}
+
+// Reports whether the PC currently possesses each of the 8 tracked
+// progression items, so the reconciler can re-grant any that go missing
+// (lost/sold/dropped) without waiting on a full inventory reconciliation --
+// see PROGRESSION_ITEM_RESREFS's own comment (entitlement.py) for why these
+// 8 specifically need this and the general gear pool doesn't.
+void CheckProgressionItems()
+{
+    object oPC = GetFirstPC();
+    string sReport = "AP|PROGRESSIONITEMSREPORT";
+    int bSithArmor = GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_sitharmor"));
+    sReport = sReport + "|sith_armor=" + IntToString(bSithArmor);
+    int bSithPapers = GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_sithpapers"));
+    sReport = sReport + "|sith_papers=" + IntToString(bSithPapers);
+    int bShieldCodes = GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_shieldcodes"));
+    sReport = sReport + "|shield_codes=" + IntToString(bShieldCodes);
+    int bEnviroSuit = GetIsObjectValid(GetItemPossessedBy(oPC, "man28_envirosuit"));
+    sReport = sReport + "|enviro_suit=" + IntToString(bEnviroSuit);
+    int bStarmapTatooine = GetIsObjectValid(GetItemPossessedBy(oPC, "tat_starpad"));
+    sReport = sReport + "|starmap_tatooine=" + IntToString(bStarmapTatooine);
+    int bStarmapKashyyyk = GetIsObjectValid(GetItemPossessedBy(oPC, "kas_starpad"));
+    sReport = sReport + "|starmap_kashyyyk=" + IntToString(bStarmapKashyyyk);
+    int bStarmapManaan = GetIsObjectValid(GetItemPossessedBy(oPC, "man_starpad"));
+    sReport = sReport + "|starmap_manaan=" + IntToString(bStarmapManaan);
+    int bStarmapKorriban = GetIsObjectValid(GetItemPossessedBy(oPC, "kor_starpad"));
+    sReport = sReport + "|starmap_korriban=" + IntToString(bStarmapKorriban);
+    KSE_Diag(140, sReport);
+}
+
+void CheckAPTrackerStage()
+{
+    KSE_Diag(167, "AP|APTRACKERREPORT|stage=" + IntToString(GetJournalEntry("ap_tracker")));
 }
 
 // Traps feature -- reports every feat.2da id the character
@@ -1810,6 +2129,10 @@ void main()
     CheckCredits();
     CheckAbilityScores();
     CheckClasses();
+    CheckCompanionClasses();
+    CheckCompanionFeats();
+    CheckProgressionItems();
+    CheckAPTrackerStage();
     CheckFeats();
     CheckForcePowers();
     CheckCharacterName();

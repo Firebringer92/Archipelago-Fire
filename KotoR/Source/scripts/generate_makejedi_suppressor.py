@@ -169,8 +169,21 @@ def main():
     print(f"Wrote {nss_path} (starting_class={starting_class}, {'vanilla' if starting_class == 0 else 'suppressed'})")
 
     ncs_path = os.path.join(SRC_DIR, f"{RESREF}.ncs")
-    result = subprocess.run([NWNNSSCOMP, "-c", nss_path, "-o", ncs_path], capture_output=True, text=True, cwd=SRC_DIR)
-    if not os.path.exists(ncs_path):
+    # Same os.path.exists()-only bug generate_trampoline_batch.py already hit
+    # and fixed: extender/scripts_src/ ships a precompiled fallback .ncs for
+    # machines without nwnnsscomp, so a silently-failed compile would leave
+    # that stale file sitting there and this check would report success
+    # anyway. mtime_before + a compile-error stdout scan catches that.
+    mtime_before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
+    result = subprocess.run(
+        [NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
+        capture_output=True, text=True, cwd=SRC_DIR, timeout=30,
+    )
+    compiled_fresh = os.path.exists(ncs_path) and (
+        mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
+    )
+    compile_error = "Compilation aborted" in result.stdout or "Error:" in result.stdout
+    if not compiled_fresh or compile_error:
         print(f"COMPILE FAILED:\n{result.stdout}\n{result.stderr}")
         sys.exit(1)
     print(f"Compiled -> {ncs_path}")

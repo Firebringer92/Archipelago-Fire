@@ -427,6 +427,44 @@ static const char *AP_ARM_NAMES[] = {
      * client-mirror-sync fix works end to end via a granted (not just
      * naturally learned) power. */
     "_retired_test_grant_juhani_power",
+    /* Slots 55/56 RETIRED (were diag_journal_persist_write/_read) --
+     * question answered, but not the one this pair was meant to test: a
+     * brand-new, never-declared plot ID can't even be WRITTEN via
+     * AddJournalQuestEntry (GetJournalEntry read back -1 same-tick), so
+     * persistence-across-reload was never reachable with it. Superseded
+     * by slots 58/59 below, against a properly-declared quest tag. */
+    "_retired_diag_journal_persist_write", "_retired_diag_journal_persist_read",
+    /* Slot 57 RETIRED (was diag_t3m4_jedi_test) -- gag test concluded, not
+     * a feature. See generate_trampoline_batch.py's APPLIES table. */
+    "_retired_diag_t3m4_jedi_test",
+    /* Slots 58/59: same research shape as the retired 55/56, now against
+     * "ap_tracker" -- a real quest declared in global.jrl by
+     * scripts/build_ap_tracker_quest.py (6 stages: 1/20/40/60/80/100 --
+     * NOT 0, confirmed live that stage 0 renders a blank/invisible
+     * Journal row, a reserved "not added" sentinel per nwscript.nss's own
+     * GetJournalEntry doc and confirmed against every real vanilla quest,
+     * none of which ever use it). 58 sets stage 1 (clearing any stuck
+     * blank-name snapshot first via RemoveJournalQuestEntry) and reads
+     * back same-tick; 59 is read-only (for checking after a save/
+     * reload -- confirmed live: persists correctly). See
+     * generate_trampoline_batch.py's APPLIES table for the full
+     * reasoning. */
+    "diag_ap_tracker_write", "diag_ap_tracker_read",
+    /* Slots 60-64: the real "Archipelago Tracker" journal stages (20/40/
+     * 60/80/100), sent by kotor_reconciliation.py's check-percentage
+     * branch -- replaces the cosmetic "Connected to..." send_notify
+     * messages removed from KotorClient.py/kotor_extender_bridge.py. See
+     * generate_trampoline_batch.py's APPLIES table for the full
+     * reasoning (AddJournalQuestEntry's own bAllowOverrideHigher=FALSE
+     * default already makes repeated/out-of-order sends safe). */
+    "journal_tracker_20", "journal_tracker_40", "journal_tracker_60",
+    "journal_tracker_80", "journal_tracker_100",
+    /* Slot 65: stage 1 ("run has begun") -- real bug found live
+     * (2026-09-30): the reconciler's own percentage check never actually
+     * requested this stage, so the tracker only ever appeared once a
+     * player crossed 20%. See generate_trampoline_batch.py's APPLIES
+     * table for the full writeup. */
+    "journal_tracker_1",
 };
 /* IDs must match AP_ARM_NAMES position (1-indexed). scripts/generate_trampoline_batch.py's
  * APPLIES table is the single source of truth this array is kept in sync

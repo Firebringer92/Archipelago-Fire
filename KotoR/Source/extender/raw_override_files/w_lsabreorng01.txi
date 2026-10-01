@@ -1,0 +1,2 @@
+blending 1
+decal 1

@@ -505,6 +505,11 @@ class ReconciliationTracker:
         # comment for why this is the right signal to gate staged-arm
         # retry decisions on, instead of wall-clock time alone.
         self._last_covered_area_entry_time: typing.Optional[float] = None
+        # Set by an empty AP|NAMEREPORT| line (see that check's own
+        # comment) and consumed/cleared at the top of _reconcile() --
+        # marks the CURRENT poll cycle's data as untrustworthy so
+        # _reconcile() skips it entirely rather than acting on any of it.
+        self._last_poll_garbage = False
 
         # Credits in-flight tracking (see
         # _CREDITS_INFLIGHT_TIMEOUT_SECONDS's own comment for why this
@@ -934,14 +939,36 @@ class ReconciliationTracker:
             return
         m = _SET_CREDITS_APPLIED_RE.search(event)
         if m:
-            # An absolute set -- new_credits IS the authoritative post-
-            # action total either way (the reconciler's own correction
-            # landing, where it already equals the target; or
-            # remove_credits, a legitimate wipe to sync to directly),
-            # unlike the vendor-gain case above which only ever raises.
+            before_credits = int(m.group(1))
             new_credits = int(m.group(2))
-            self._credit_baseline = new_credits
-            self._last_observed_credits = new_credits
+            if new_credits >= before_credits:
+                # The reconciler's own correction landing (a top-up, or a
+                # confirmation that's already equal) -- new_credits IS the
+                # authoritative target here, safe to sync immediately.
+                self._credit_baseline = new_credits
+                self._last_observed_credits = new_credits
+            # A real decrease (remove_credits, or any other direct
+            # credits-lowering action) is deliberately NOT synced here.
+            # Setting baseline straight to new_credits (the old behavior)
+            # made the drop permanent: expected_scalar["credits"]/
+            # _last_committed_cap (the player's actual entitled cap) is
+            # untouched by a trap, but baseline was, so every future
+            # check/grant only ever added its own delta on top of the
+            # trap's floor instead of restoring the player toward what
+            # they'd already earned -- a trap should cost credits once,
+            # the same as a real spend, not permanently forfeit past
+            # entitlement. Leaving this branch a no-op lets the ordinary
+            # CREDITSREPORT-driven delta logic below (current_credits,
+            # _last_observed_credits) pick up the exact same drop on its
+            # own very next poll and apply the identical floor-only
+            # treatment ("baseline follows current down, cap untouched")
+            # a normal spend already gets -- not a special case, the same
+            # path. The player then only grows back via the usual
+            # mechanisms: the cap genuinely rising (a new credit_item
+            # grant under ap_gated, a new check under ap_limited), or an
+            # explicit vendor credit gain (_VENDOR_CREDIT_GAIN_RE) -- never
+            # an automatic bounce back to the pre-trap total with zero new
+            # progress.
             return
         m = _CREDITS_RE.search(event)
         if m:
@@ -999,6 +1026,20 @@ class ReconciliationTracker:
         if m:
             self.current_force["current"] = int(m.group(1))
             self.current_force["max"] = int(m.group(2))
+            return
+        if "AP|NAMEREPORT|" in event and not _NAMEREPORT_RE.search(event):
+            # Empty name -- the PC object was momentarily invalid this poll
+            # tick (a loading screen/area transition catching the poll
+            # mid-flight), not real state: every other field reports as a
+            # sentinel/zero default in the same tick (abilities all 0,
+            # skills all -1, baselevel 0, XP 0). generate_poll_shared.py's
+            # main() calls CheckCharacterName() immediately before
+            # CheckSkills() every cycle, so this flag is set in time for
+            # _reconcile() (triggered by SKILLREPORT right after) to see
+            # it and skip the whole cycle rather than trust any of it --
+            # see _reconcile()'s own check for why skipping the whole
+            # cycle, not just credits, is the right scope.
+            self._last_poll_garbage = True
             return
         m = _NAMEREPORT_RE.search(event)
         if m:
@@ -1094,6 +1135,19 @@ class ReconciliationTracker:
             self._cycle_saw_death = True
             return
         if "AP|SKILLREPORT|" in event:
+            if self._last_poll_garbage:
+                # Don't touch current_skills/companion-cycle rotation/death
+                # detection or call _reconcile() at all this cycle -- none
+                # of this tick's data is trustworthy (see the empty-
+                # NAMEREPORT check above). Leaves _cycle_saw_death/
+                # _cycle_companions accumulated rather than clearing them,
+                # so anything genuinely captured during this tick (unlikely
+                # given the PC object was invalid, but not impossible) is
+                # still picked up by the next real cycle instead of lost.
+                self._last_poll_garbage = False
+                logger.warning("[reconcile] skipping poll cycle -- PC object was momentarily "
+                                "invalid (empty NAMEREPORT this tick), not acting on any of it.")
+                return
             m = _SKILLREPORT_RE.search(event)
             if m:
                 for field, value in zip(_SKILL_FIELDS, m.groups()):

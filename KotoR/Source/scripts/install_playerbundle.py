@@ -11,16 +11,18 @@ Steps 2-5:
   - Copies nwnnsscomp.exe into the game folder root (see
     scripts/nwnnsscomp_path.py -- this is now the PREFERRED location the
     3 patch scripts and 4 NWScript generators look for it).
-  - Installs the merged binkw32.dll proxy (same operation as
-    extender/install.ps1 -Install, reimplemented natively here in Python
-    rather than shelling out to PowerShell, because Python is already a hard,
-    unavoidable dependency for this whole project, PowerShell isn't.
-    install.ps1 itself is left in place, untouched, as a standalone
-    fallback/dev tool -- this is a deliberate, small, accepted duplication
-    of a short, stable, rarely-touched script, not an oversight).
-  - Writes ap_repo_root.txt into the game folder (same as install.ps1),
-    pointing at THIS PlayerBundle folder, so the compiled extender knows
-    where to find scripts\arm_orchestrator.py at runtime.
+  - Installs the merged binkw32.dll proxy (captures the real DLL once,
+    then swaps in the merged proxy -- see _install_binkw32()). This is the
+    only tester-facing path that does this: a parallel PowerShell
+    equivalent (extender/install.ps1) existed previously but is retired,
+    since it never wrote python_path.txt the way this script does below --
+    a second install path only matters if it's kept in exact parity with
+    this one, and the one thing it was missing is exactly what that
+    marker exists to prevent (bare "python" PATH resolution failing
+    silently against the orchestrator's own subprocess calls).
+  - Writes ap_repo_root.txt into the game folder, pointing at THIS
+    PlayerBundle folder, so the compiled extender knows where to find
+    scripts\arm_orchestrator.py at runtime.
   - Runs `pip install "setuptools<81" pykotor` for whichever Python
     interpreter runs this installer -- the same interpreter KotorClient.py
     and the 2 pykotor-dependent patch scripts need to run under later.
@@ -71,11 +73,10 @@ def _file_hash(path: str) -> str:
 
 
 def _install_binkw32(game_dir: str) -> dict:
-    """Python port of extender/install.ps1 -Install -- see that file for
-    the original, still-maintained-in-parallel version and why both exist
-    (this module's own docstring). Same capture-original-once-then-swap
-    logic, same backup filenames, so a game folder previously set up via
-    install.ps1 is recognized correctly here too (and vice versa)."""
+    """Captures the real binkw32.dll once (so it can be restored later),
+    then swaps in the merged proxy. Same backup filenames the now-retired
+    extender/install.ps1 used, so a game folder set up by that script
+    before it was retired is still recognized correctly here."""
     real_dll = os.path.join(game_dir, "binkw32.dll")
     real_backup = os.path.join(game_dir, "binkw32_real.dll")
 
@@ -112,7 +113,7 @@ def _install_binkw32(game_dir: str) -> dict:
 
 
 def _uninstall_binkw32(game_dir: str) -> None:
-    """Python port of extender/install.ps1 -Uninstall."""
+    """Restores the real binkw32.dll from whichever backup exists."""
     real_dll = os.path.join(game_dir, "binkw32.dll")
     real_backup = os.path.join(game_dir, "binkw32_real.dll")
 
@@ -260,8 +261,10 @@ def uninstall() -> None:
     manifest = _load_manifest()
     if manifest is None:
         sys.exit(f"No install manifest found at {INSTALL_MANIFEST} -- nothing recorded to undo. "
-                  f"If you installed manually, use extender/install.ps1 -Uninstall and each "
-                  f"patch_*.py script's own --restore flag instead.")
+                  f"If binkw32.dll still needs restoring manually, binkw32_real.dll (or "
+                  f"extender/backup/binkw32_real_captured.dll) sits next to it with the original -- "
+                  f"copy it back over binkw32.dll. Each patch_*.py script's own --restore flag "
+                  f"reverts its own per-seed edits independently.")
 
     game_dir = manifest["game_dir"]
     print(f"Uninstalling from {game_dir} (recorded at install time) ...\n")

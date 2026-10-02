@@ -57,7 +57,11 @@ FILES = [
     # Redistribution permission confirmed directly with the tool's dev.
     (("extender", "nwnnsscomp.exe"), "to_game_folder/nwnnsscomp.exe"),
     (("scripts", "nwnnsscomp_path.py"), "scripts/nwnnsscomp_path.py"),
-    (("extender", "install.ps1"), "extender/install.ps1"),
+    # extender/install.ps1 is retired, not shipped here -- a parallel
+    # PowerShell install path never wrote python_path.txt the way
+    # install_playerbundle.py does, reintroducing the PATH-resolution bug
+    # that marker exists to prevent for anyone who used it instead of
+    # Install.bat. One tester-facing install path only.
     (("extender", "build_new", "binkw32.dll"), "extender/build_new/binkw32.dll"),
     (("extender", "area_trampolines", "_graph.json"), "extender/area_trampolines/_graph.json"),
     (("extender", "area_trampolines", "_idx_to_name.json"), "extender/area_trampolines/_idx_to_name.json"),

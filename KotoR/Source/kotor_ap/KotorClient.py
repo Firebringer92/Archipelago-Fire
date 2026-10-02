@@ -1764,6 +1764,14 @@ class KotorContext(CommonContext):
         # unique per call, so back-to-back admin sends of the same arm
         # never look like duplicates to _delivered_keys.
         self._admin_heavy_counter = 0
+        # Same decrementing-synthetic-index trick as _admin_heavy_counter,
+        # own counter so it can't collide with that one -- covers the
+        # LIGHT reconciler correction paths (_guarded_send_apply/
+        # _guarded_send_apply_value/_guarded_send_additional_feats/
+        # _guarded_send_delevel), which call the extender bridge directly
+        # and never pass through _do_deliver, so they need their own
+        # _log_delivery call rather than inheriting one.
+        self._reconciler_light_counter = 0
 
     def _track_background_task(self, task: "asyncio.Task") -> None:
         """Pairs with self._background_tasks (see __init__) -- keeps the
@@ -3380,7 +3388,12 @@ class KotorContext(CommonContext):
             game_events_logger.warning(f"[SAFEGUARD] Skipping reconciliation send ({arm_name!r}) -- "
                             f"unrecognized character, run /ap_confirm_character first if this is intentional.")
             return False
-        return await self.extender.send_apply(arm_name)
+        ok = await self.extender.send_apply(arm_name)
+        if ok:
+            self._reconciler_light_counter -= 1
+            self._log_delivery(self.reconciler.current_character_name, self._reconciler_light_counter,
+                                f"(reconciler self-heal) {arm_name}", arm_name, "reconciled")
+        return ok
 
     async def _guarded_send_apply_value(self, action: str, value: int) -> bool:
         """Same as _guarded_send_apply, for the APPLYVALUE half (set_xp/
@@ -3389,7 +3402,12 @@ class KotorContext(CommonContext):
             game_events_logger.warning(f"[SAFEGUARD] Skipping reconciliation send ({action}={value}) -- "
                             f"unrecognized character, run /ap_confirm_character first if this is intentional.")
             return False
-        return await self.extender.send_apply_value(action, value)
+        ok = await self.extender.send_apply_value(action, value)
+        if ok:
+            self._reconciler_light_counter -= 1
+            self._log_delivery(self.reconciler.current_character_name, self._reconciler_light_counter,
+                                f"(reconciler self-heal) {action}={value}", action, "reconciled")
+        return ok
 
     async def _guarded_send_additional_feats(self, character_key: str, feat_ids: typing.List[int]) -> bool:
         """Wired to ReconciliationTracker as send_feats -- the reconciler's
@@ -3406,7 +3424,13 @@ class KotorContext(CommonContext):
                             f"(additional_feats:{character_key}:{feat_ids}) -- "
                             f"unrecognized character, run /ap_confirm_character first if this is intentional.")
             return False
-        return await self.extender.send_additional_feats(character_key, feat_ids)
+        ok = await self.extender.send_additional_feats(character_key, feat_ids)
+        if ok:
+            self._reconciler_light_counter -= 1
+            arm_name = f"additional_feats:{character_key}"
+            self._log_delivery(self.reconciler.current_character_name, self._reconciler_light_counter,
+                                f"(reconciler self-heal) {arm_name}:{feat_ids}", arm_name, "reconciled")
+        return ok
 
     async def _guarded_send_delevel(self, new_level: int, new_xp: int, new_force: int) -> bool:
         """Same guard as _guarded_send_apply/_guarded_send_apply_value, for
@@ -3417,7 +3441,13 @@ class KotorContext(CommonContext):
                             f"(delevel level={new_level} xp={new_xp} force={new_force}) -- "
                             f"unrecognized character, run /ap_confirm_character first if this is intentional.")
             return False
-        return await self.extender.send_delevel(new_level, new_xp, new_force)
+        ok = await self.extender.send_delevel(new_level, new_xp, new_force)
+        if ok:
+            self._reconciler_light_counter -= 1
+            self._log_delivery(self.reconciler.current_character_name, self._reconciler_light_counter,
+                                f"(reconciler self-heal) delevel level={new_level} xp={new_xp} force={new_force}",
+                                "delevel", "reconciled")
+        return ok
 
     def _guarded_queue_heavy(self, arm_name: str) -> None:
         """Wired to ReconciliationTracker as send_heavy -- the ONLY

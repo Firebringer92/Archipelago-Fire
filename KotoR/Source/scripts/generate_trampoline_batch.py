@@ -585,7 +585,7 @@ APPLIES = {
     # set_credits there's no single "clamp to target" call site, since each
     # firing only knows "add one more," not the eventual total.
     #
-    # 4 of 5 REWRITTEN to an absolute KSE_SetCreatureField SET instead of
+    # All 5 REWRITTEN to an absolute KSE_SetCreatureField SET instead of
     # ApplyEffectToObject + EffectAbilityIncrease -- same reasoning as
     # grant_test_ability/the 5 ability traps: the old approach stacks a new
     # effect object every firing, and firing N times in a row for a preset
@@ -596,9 +596,10 @@ APPLIES = {
     # this project's own traps/grants being blocked). Same "+1 per firing"
     # external behavior, just reading the live current value and writing
     # current+1 as an absolute base instead of stacking. CONSTITUTION (29)
-    # deliberately NOT converted -- see offsets.h's KSE_FIELD_SET_STR_BASE-
-    # family comment for why CON needs its own Max-HP-interaction decision
-    # first, same as the reduce_* traps.
+    # was the one holdout -- offsets.h's KSE_FIELD_SET_CON_BASE is
+    # documented as always recalculating Max HP as part of the native
+    # write itself, so the Max-HP-interaction concern that held it back is
+    # already resolved at the field level; nothing extra needed here.
     27: ("ability_strength", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_STRENGTH);',
@@ -616,7 +617,7 @@ APPLIES = {
     29: ("ability_constitution", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_CONSTITUTION);',
-        'ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectAbilityIncrease(ABILITY_CONSTITUTION, 1), oPC);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_CON_BASE(), nBefore + 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_CONSTITUTION);',
         'KSE_Diag(60, "AP|APPLIED|ability_constitution|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),

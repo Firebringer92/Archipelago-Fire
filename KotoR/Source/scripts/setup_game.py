@@ -5,11 +5,12 @@ needs nothing beyond the Python standard library (no pykotor, no
 nwnnsscomp.exe, no third-party packages at all), since everything it
 copies was already compiled ahead of time and checked into dist/Override.
 
-Run this once per game install, after extender/install.ps1 -Install and
-before generating/connecting to a seed. It only covers the always-on base
-layer (area trampolines, heartbeat, companion suppression, store markers)
--- item suppression and door randomization are separate, seed-gated steps,
-see patch_item_suppression.py / patch_door_randomizer.py.
+Run this once per game install, after the merged extender DLL is installed
+(see install_playerbundle.py) and before generating/connecting to a seed.
+It only covers the always-on base layer (area trampolines, heartbeat,
+companion suppression, store markers) -- item suppression and door
+randomization are separate, seed-gated steps, see
+patch_item_suppression.py / patch_door_randomizer.py.
 
 Usage:
   python setup_game.py --game-dir "C:\...\swkotor"

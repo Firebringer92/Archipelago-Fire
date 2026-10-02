@@ -544,6 +544,50 @@ static int ap_get_orchestrator_path(char *out, size_t outsize) {
     return 1;
 }
 
+/* Found live: a bare "python" command line trusts CreateProcessA's own PATH
+ * search to resolve it from the GAME PROCESS's inherited environment -- on a
+ * real tester's machine this silently resolved to the Microsoft Store's
+ * placeholder python.exe stub (exit code 9009, "not recognized"), failing
+ * EVERY orchestrator call uninterrupted for 28+ minutes of real play, with
+ * no crash and no visible error in-game (confirmed via a real tester's
+ * extender.log: 567 consecutive FAILED (exit=9009) calls, then 786
+ * consecutive successes right after the next game restart -- a process's
+ * environment block, PATH included, is captured once at CreateProcess time
+ * and never updated afterward, so fixing PATH/Python mid-session only takes
+ * effect on the NEXT fresh game launch). install_playerbundle.py already
+ * solves exactly this problem for launch_kotor_client()'s own python
+ * invocation (python_path.txt, the REAL interpreter that ran the installer,
+ * since that's always a genuine python.exe) -- this reads the identical
+ * marker so the orchestrator stops independently guessing. Falls back to
+ * the bare "python" command only if the marker is missing (e.g. an install
+ * from before this fix, or install.ps1 used instead of
+ * install_playerbundle.py) -- purely additive, never a regression for an
+ * install where "python" already resolved correctly. */
+static int ap_get_python_exe(char *out, size_t outsize) {
+    char base[MAX_PATH];
+    DWORD n = GetEnvironmentVariableA("LOCALAPPDATA", base, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return 0;
+
+    char marker_path[MAX_PATH];
+    _snprintf(marker_path, sizeof(marker_path) - 1, "%s\\KotorAP\\python_path.txt", base);
+    marker_path[sizeof(marker_path) - 1] = '\0';
+
+    FILE *f = fopen(marker_path, "r");
+    if (!f) return 0;
+    char python_exe[MAX_PATH];
+    int ok = fgets(python_exe, sizeof(python_exe), f) != NULL;
+    fclose(f);
+    if (!ok) return 0;
+
+    size_t len = strlen(python_exe);
+    while (len > 0 && (python_exe[len - 1] == '\n' || python_exe[len - 1] == '\r')) {
+        python_exe[--len] = '\0';
+    }
+    if (len == 0 || len >= outsize) return 0;
+    strcpy(out, python_exe);
+    return 1;
+}
+
 /* Shells out to the Python arm-batch orchestrator (scripts/arm_orchestrator.py)
  * synchronously -- it owns the connectivity graph, the pending-queue/armed-
  * state JSON files, and the actual trampoline regenerate+recompile+deploy
@@ -560,8 +604,13 @@ static void ap_run_orchestrator(const char *args) {
         return;
     }
 
+    char python_exe[MAX_PATH];
+    if (!ap_get_python_exe(python_exe, sizeof(python_exe))) {
+        strcpy(python_exe, "python");
+    }
+
     char cmdline[1024];
-    _snprintf(cmdline, sizeof(cmdline) - 1, "python \"%s\" %s --game-dir=\"%s\"", orchestrator_path, args, game_dir);
+    _snprintf(cmdline, sizeof(cmdline) - 1, "\"%s\" \"%s\" %s --game-dir=\"%s\"", python_exe, orchestrator_path, args, game_dir);
     cmdline[sizeof(cmdline) - 1] = '\0';
 
     EnterCriticalSection(&g_orchestrator_lock);

@@ -92,7 +92,19 @@ def launch_kotor_client(*args: str) -> None:
     args_list = list(args)
     if "--nogui" not in args_list and "--gui" not in args_list:
         args_list.append("--nogui")
-    subprocess.Popen(["cmd", "/K", python_exe, kotor_client_path, *args_list])
+    # Found live: launched from the compiled Launcher.exe (a windowed app
+    # with no console of its own), a bare `cmd /K` Popen has nowhere to
+    # actually attach an interactive console -- the process starts but
+    # --nogui's "enter your slot name" stdin prompt is unreachable, so the
+    # client just sits there forever looking hung (running the same
+    # command directly from an already-open terminal works fine, since
+    # that terminal already provides a real console). jakanddaxter's own
+    # client.py (worlds/jakanddaxter/client.py) hits the identical problem
+    # launching its own REPL from the Launcher and fixes it the same way:
+    # CREATE_NEW_CONSOLE forces a real, fresh console window regardless of
+    # what console context (or lack of one) the parent process has.
+    subprocess.Popen(["cmd", "/K", python_exe, kotor_client_path, *args_list],
+                      creationflags=subprocess.CREATE_NEW_CONSOLE)
 
 
 components.append(Component("KOTOR Client", "KOTORClient", func=launch_kotor_client, component_type=Type.CLIENT))

@@ -262,7 +262,15 @@ def regenerate(area_bases, batch_items):
             if others:
                 regenerate(others, batch_items)
             return
-    args = ["python", BATCH_GEN] + [_cli_token(x) for x in batch_items] + [f"--areas={','.join(area_bases)}", f"--game-dir={GAME_DIR}"]
+    # sys.executable, not a bare "python" -- same bug class as
+    # ap_extender.c's ap_run_orchestrator() (fixed 2026-10-01, see its own
+    # comment): a bare "python" trusts PATH resolution from whatever
+    # environment this process inherited, which can silently resolve to
+    # the Microsoft Store's placeholder stub or nothing at all. This
+    # script is ALREADY running under a real, working interpreter
+    # (whichever one launched it) -- sys.executable is that exact same
+    # interpreter, guaranteed correct, no PATH lookup or marker file needed.
+    args = [sys.executable, BATCH_GEN] + [_cli_token(x) for x in batch_items] + [f"--areas={','.join(area_bases)}", f"--game-dir={GAME_DIR}"]
     # timeout=90 (hang-safeguard): "a handful of recompiles"
     # (per ap_extender.c's own comment on this call's caller) takes well
     # under a second each -- generous, not tight. Real risk this closes:

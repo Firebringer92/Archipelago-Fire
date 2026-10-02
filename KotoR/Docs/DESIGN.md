@@ -736,11 +736,14 @@ the full dev toolchain — see `README.md`):
 - `setup_game.py` — tester-facing: copies `dist/Override/` into a real
   install. Pure standard library, no `pykotor`/compiler needed.
 - `install_playerbundle.py` (2026-09-08, the "3-step install" plan's
-  Step 2) — the real installer: calls `setup_game.py`, copies the now-
-  bundled `nwnnsscomp.exe` into the game folder root, installs the merged
-  `binkw32.dll` proxy (a native Python port of `install.ps1 -Install` --
-  see that file's own entry in 4.4 for why both exist rather than one
-  shelling out to the other), `pip install`s `pykotor`, and writes an
+  Step 2) — the real, only tester-facing installer: calls `setup_game.py`,
+  copies the now-bundled `nwnnsscomp.exe` into the game folder root,
+  installs the merged `binkw32.dll` proxy and writes
+  `%LOCALAPPDATA%\KotorAP\python_path.txt` (the real interpreter that ran
+  this installer, so `ap_extender.c`'s orchestrator shell-out never has to
+  guess at a working Python from the game process's own inherited PATH --
+  see 4.4's `ap_run_orchestrator()` entry), `pip install`s `pykotor`, and
+  writes an
   install-path marker (`%LOCALAPPDATA%\KotorAP\install_path.txt`, for the
   not-yet-built apworld Launcher-button registration to read) plus a
   manifest (`install_manifest.json`) recording exactly what it touched.
@@ -777,12 +780,17 @@ commands by shelling out to `arm_orchestrator.py`. `AP_ARM_NAMES[]` is the
 authoritative arm-ID table, kept in sync by hand with
 `generate_trampoline_batch.py`'s `APPLIES`.
 
-`extender/install.ps1` captures the game folder's real `binkw32.dll` as
-`binkw32_real.dll` (once) and swaps in this compiled proxy, plus writes
-`ap_repo_root.txt` (read by `ap_extender.c` at runtime to find
-`scripts\arm_orchestrator.py`). Still maintained as a standalone dev
-tool, but 4.3's `install_playerbundle.py` (2026-09-08) is now the
-tester-facing path -- it ports this same logic natively into Python
-rather than shelling out to PowerShell, a small deliberate duplication
-(this script is short and rarely touched) rather than adding a
-PowerShell subprocess dependency to the one true installer path.
+4.3's `install_playerbundle.py` captures the game folder's real
+`binkw32.dll` as `binkw32_real.dll` (once) and swaps in this compiled
+proxy, plus writes `ap_repo_root.txt` (read by `ap_extender.c` at runtime
+to find `scripts\arm_orchestrator.py`) and `python_path.txt` (read by
+`ap_run_orchestrator()` to resolve a real Python interpreter instead of
+trusting a bare `"python"` command against the game process's own
+inherited PATH -- see that function's own comment in `ap_extender.c` for
+the real tester failure this closes: a wrong/stale PATH resolving
+`"python"` to the Microsoft Store's placeholder stub, failing every
+orchestrator call silently until the next full game restart). A separate
+PowerShell equivalent (`extender/install.ps1`) existed previously; it's
+retired now rather than kept in parity by hand, since it never wrote
+`python_path.txt` and silently reintroduced exactly that failure for
+anyone who used it instead of `Install.bat`.

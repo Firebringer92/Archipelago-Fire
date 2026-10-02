@@ -199,6 +199,19 @@ _VENDOR_RESET_RE = re.compile(r"AP\|APPLIED\|vendor_character_reset\|")
 # yet" (stage 0 is a reserved sentinel, never a real stage -- see
 # build_ap_tracker_quest.py's STAGES comment).
 _APTRACKERREPORT_RE = re.compile(r"AP\|APTRACKERREPORT\|stage=(\d+)")
+# Emitted by every covered area's trampoline wrapper (generate_
+# trampoline_batch.py) in the SAME script execution, unconditionally
+# before the armed-batch-apply block runs -- confirmed by reading that
+# generator's own wrapper template, not assumed. Arrival of this line is
+# therefore a reliable proxy for "a covered area just had its one chance
+# to flush whatever was armed," independent of which specific area it was.
+# Used to gate the staged-arm "assume lost, retry" decisions below on an
+# actual opportunity to apply having passed, not on wall-clock time alone
+# -- a correction stuck behind an area the player hasn't left yet (the
+# Endar Spire prologue, pre-fix, is the confirmed real case) is NOT lost,
+# it's correctly queued and waiting; only a qualifying area entry with the
+# deficit still unresolved afterward is real evidence of loss.
+_AREA_CHECK_RE = re.compile(r"AP\|CHECK\|AREA\|(\d+)")
 # (threshold percentage, stage id) pairs, highest first, so _reconcile()
 # can pick "the highest stage the percentage qualifies for" with a simple
 # first-match walk. Stage id 1 ("run has begun") is deliberately keyed on
@@ -488,6 +501,10 @@ class ReconciliationTracker:
         self._credit_baseline: typing.Optional[int] = None
         self._last_observed_credits: typing.Optional[int] = None
         self._last_committed_cap = 0
+        # Set on every _AREA_CHECK_RE arrival -- see that regex's own
+        # comment for why this is the right signal to gate staged-arm
+        # retry decisions on, instead of wall-clock time alone.
+        self._last_covered_area_entry_time: typing.Optional[float] = None
 
         # Credits in-flight tracking (see
         # _CREDITS_INFLIGHT_TIMEOUT_SECONDS's own comment for why this
@@ -822,6 +839,15 @@ class ReconciliationTracker:
         elif kind == "skill":
             _, key, amount = rule
             self.expected_skills[key] += amount
+            # Mark this amount in-flight too, not just expected_skills --
+            # otherwise _reconcile() computes a deficit against `current`
+            # (which hasn't caught up to this real grant yet, since
+            # delivery and the next poll cycle race independently) with no
+            # visibility that a real delivery already covers it, and sends
+            # a redundant correction for the exact same amount on top.
+            if self._inflight_skill_since.get(key) is None:
+                self._inflight_skill_since[key] = time.time()
+            self._inflight_skill_count[key] += amount
         elif kind == "companion":
             _, npc_idx = rule
             self.expected_companions.add(npc_idx)
@@ -834,6 +860,18 @@ class ReconciliationTracker:
             # skipping the increment here.
             if self._ability_baseline.get(key) is not None:
                 self._ability_baseline[key] += amount
+                # Same in-flight bookkeeping as the skill branch above --
+                # a real delivery's own effect on `current` hasn't landed
+                # by the time this runs, so without marking it in-flight,
+                # the next reconciliation pass sees a deficit a real
+                # delivery already covers and sends a redundant
+                # correction for the same amount. Charisma has no
+                # ARM_EFFECT entry and therefore no reconciliation path at
+                # all, which is why this specific race can only double
+                # the 5 tracked abilities (str/dex/con/int/wis), never it.
+                if self._ability_inflight_since.get(key) is None:
+                    self._ability_inflight_since[key] = time.time()
+                self._ability_inflight_count[key] += amount
 
     def handle_event(self, event: str) -> None:
         """Feed every extender EVENT line here. Parses the report types
@@ -949,6 +987,9 @@ class ReconciliationTracker:
         m = _APTRACKERREPORT_RE.search(event)
         if m:
             self.current_ap_tracker_stage = int(m.group(1))
+            return
+        if _AREA_CHECK_RE.search(event):
+            self._last_covered_area_entry_time = time.time()
             return
         m = _LEVEL_RE.search(event)
         if m:
@@ -1071,6 +1112,21 @@ class ReconciliationTracker:
 
             self._reconcile()
 
+    def _staged_arm_stale(self, since: typing.Optional[float]) -> bool:
+        """Replaces a pure time.time() - since > TIMEOUT check for every
+        staged-arm correction type (ability, skill, PC class, companion
+        class, feats, progression items, AP tracker) -- see
+        _AREA_CHECK_RE's own comment for why. `since` is None (never sent,
+        nothing to go stale) returns False; otherwise a correction only
+        counts as possibly lost once a covered area has actually been
+        entered AFTER it was sent, giving the orchestrator a real chance
+        to flush it. credits deliberately does NOT use this -- its own
+        30s timeout and replace (not additive) semantics make a premature
+        retry harmless there, unlike every arm this gates."""
+        if since is None:
+            return False
+        return self._last_covered_area_entry_time is not None and self._last_covered_area_entry_time > since
+
     def _reconcile(self) -> None:
         import asyncio
         corrections: typing.List[str] = []
@@ -1170,13 +1226,13 @@ class ReconciliationTracker:
                 self._inflight_skill_since.pop(key, None)
             self._prev_current_skills[key] = current
 
-            # Staleness timeout, skills only: a request that's been
-            # in-flight this long with zero progress is presumed lost --
-            # treat it as gone so the deficit below gets a fresh retry
-            # instead of waiting forever.
+            # Staleness, skills only: a request with zero progress is only
+            # presumed lost once a covered area has actually been entered
+            # since it was sent (see _staged_arm_stale's own comment) --
+            # treat it as gone so the deficit below gets a fresh retry.
             since = self._inflight_skill_since.get(key)
-            if since is not None and time.time() - since > _SKILL_INFLIGHT_TIMEOUT_SECONDS:
-                logger.info(f"[reconcile] {key} in-flight request timed out with no progress, retrying")
+            if self._staged_arm_stale(since):
+                logger.info(f"[reconcile] {key} in-flight request stale after an area transition with no progress, retrying")
                 self._inflight_skill_count[key] = 0
                 self._inflight_skill_since.pop(key, None)
 
@@ -1218,8 +1274,8 @@ class ReconciliationTracker:
                 continue
 
             since = self._ability_inflight_since.get(key)
-            if since is not None and time.time() - since > _SKILL_INFLIGHT_TIMEOUT_SECONDS:
-                logger.info(f"[reconcile] ability_{key} in-flight request timed out with no progress, retrying")
+            if self._staged_arm_stale(since):
+                logger.info(f"[reconcile] ability_{key} in-flight request stale after an area transition with no progress, retrying")
                 self._ability_inflight_count[key] = 0
                 self._ability_inflight_since.pop(key, None)
 
@@ -1307,8 +1363,7 @@ class ReconciliationTracker:
             snapshot = compute_entitlement(self)
             if snapshot.pc_class != -1 and self.current_classes.get("baseclass", -1) != snapshot.pc_class:
                 target = snapshot.pc_class
-                stale = (self._pc_class_inflight_since is not None
-                         and time.time() - self._pc_class_inflight_since > _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS)
+                stale = self._staged_arm_stale(self._pc_class_inflight_since)
                 if self._pc_class_inflight_target != target or stale:
                     pc_arm = PC_CLASS_CONST_TO_ARM.get(target)
                     if pc_arm is not None and not self._is_awaiting_confirmation(pc_arm):
@@ -1328,7 +1383,7 @@ class ReconciliationTracker:
                     self._companion_class_inflight_since.pop(npc_key, None)
                     continue
                 since = self._companion_class_inflight_since.get(npc_key)
-                stale = since is not None and time.time() - since > _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS
+                stale = self._staged_arm_stale(since)
                 if self._companion_class_inflight.get(npc_key) == expected_const and not stale:
                     continue
                 class_name = self.companion_class_rolls.get(npc_key)
@@ -1381,7 +1436,7 @@ class ReconciliationTracker:
                     continue
                 target = frozenset(missing)
                 since = self._feats_inflight_since.get(character_key)
-                stale = since is not None and time.time() - since > _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS
+                stale = self._staged_arm_stale(since)
                 if self._feats_inflight.get(character_key) == target and not stale:
                     continue
                 feats_corrections.append((character_key, sorted(missing)))
@@ -1403,7 +1458,7 @@ class ReconciliationTracker:
                 self._progression_item_inflight_since.pop(key, None)
                 continue
             since = self._progression_item_inflight_since.get(key)
-            stale = since is not None and time.time() - since > _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS
+            stale = self._staged_arm_stale(since)
             if since is not None and not stale:
                 continue
             corrections.append(f"give_item:{PROGRESSION_ITEM_RESREFS[key]}")
@@ -1419,8 +1474,7 @@ class ReconciliationTracker:
             percentage = (self.checked_location_count / self.total_location_count) * 100
             expected_stage = next((stage for threshold, stage in _AP_TRACKER_STAGES if percentage >= threshold), 0)
             if expected_stage > self.current_ap_tracker_stage:
-                stale = (self._ap_tracker_inflight_since is not None
-                         and time.time() - self._ap_tracker_inflight_since > _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS)
+                stale = self._staged_arm_stale(self._ap_tracker_inflight_since)
                 if self._ap_tracker_inflight_target != expected_stage or stale:
                     corrections.append(f"journal_tracker_{expected_stage}")
                     self._ap_tracker_inflight_target = expected_stage

@@ -30,7 +30,20 @@ from pykotor.resource.type import ResourceType
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-GEAR_JSON = os.path.join(REPO_ROOT, "Archipelago", "worlds", "kotor", "gear_items.json")
+# Three candidates in order, same fallback chain as patch_item_suppression.py/
+# patch_loot_disturb.py/generate_trampoline_batch.py -- found missing here via
+# a real tester's FileNotFoundError (this script never got the same
+# multi-layout treatment when it was added): old bundled location
+# (pre-existing installs), dev checkout's real source tree, then the current
+# PlayerBundle location (worlds/kotor/ at the bundle root -- see
+# package_playerbundle.py). A real tester's merged single-folder checkout has
+# worlds/kotor/gear_items.json directly at the bundle root, NOT nested under
+# an Archipelago/ subfolder -- that nesting only exists in this dev repo.
+GEAR_JSON = os.path.join(REPO_ROOT, "scripts", "gear_items.json")
+if not os.path.isfile(GEAR_JSON):
+    GEAR_JSON = os.path.join(REPO_ROOT, "Archipelago", "worlds", "kotor", "gear_items.json")
+if not os.path.isfile(GEAR_JSON):
+    GEAR_JSON = os.path.join(REPO_ROOT, "worlds", "kotor", "gear_items.json")
 DEFAULT_MIN_COST = 500
 
 

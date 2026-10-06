@@ -45,18 +45,18 @@ NWNNSSCOMP = resolve_nwnnsscomp()
 _SLOT_DATA_PATH = os.path.join(SRC_DIR, "_slot_data.json")
 
 
-def _connected_galactic_shop() -> bool:
+def _connected_archipelago_vendor() -> bool:
     if not os.path.isfile(_SLOT_DATA_PATH):
         return False
     try:
         with open(_SLOT_DATA_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        return bool(data.get("galactic_shop", False))
+        return bool(data.get("archipelago_vendor", False))
     except Exception:
         return False
 
 
-_GALACTIC_SHOP_ON = _connected_galactic_shop()
+_ARCHIPELAGO_VENDOR_ON = _connected_archipelago_vendor()
 
 # Permanent-object spawns that must survive every regeneration of an
 # area's OnEnter trampoline -- this script rebuilds the target area's
@@ -64,15 +64,15 @@ _GALACTIC_SHOP_ON = _connected_galactic_shop()
 # addition has to live here (and in generate_area_trampolines.py's own
 # copy of this same dict), never hand-edited into a generated .nss.
 #
-# The AP Vendor's own spawn is gated on Options.py's GalacticShop (the
-# same option that drives the Void Trade cargo-hold crates via
-# patch_galactic_shop.py) -- selecting Galactic Shop gets you both the
-# trade crates AND the vendor NPC together, ungated for every purchase
-# category (per-item/per-category gating on receiving a specific AP item
-# is a real, deliberately deferred follow-up, not built here). Read the
-# same way _connected_new_companion() reads its own per-seed flag --
+# The AP Vendor's own spawn is gated on Options.py's ArchipelagoVendor
+# (its own option, separate from Galactic Shop). The NPC always stands on
+# the Hawk when the option is on; what the player can buy from it is gated
+# per menu on the five Vendor Pass items (generate_ap_vendor.py). Read
+# the same way _connected_new_companion() reads its own per-seed flag --
 # see that function's own comment for why this is safe to compute once
-# at module-parse time rather than per-call.
+# at module-parse time rather than per-call. `arm_orchestrator.py
+# --ensure-vendor` rebuilds the Hawk's trampoline on every Connect so the
+# spawn tracks the connected seed's option.
 AREA_PERMANENT_SPAWNS = {
     "ebo_m12aa": [
         'if (!GetIsObjectValid(GetObjectByTag("ap_vendor_npc")))',
@@ -80,11 +80,131 @@ AREA_PERMANENT_SPAWNS = {
         '    CreateObject(OBJECT_TYPE_CREATURE, "ap_vendor_npc", Location(Vector(55.5, 36.5, 1.80), 0.0));',
         '}',
     ],
-} if _GALACTIC_SHOP_ON else {}
+} if _ARCHIPELAGO_VENDOR_ON else {}
+
+
+# Area-specific helper functions placed at file level in a trampoline (before main), and the statements that call them
+# from the entry block (inside the player-entered branch, after area_entry_diag_lines, so nVisitMark is in scope).
+# The function runs inside the area's OWN OnEnter script: a conversation started from a script reached through
+# ExecuteScript silently fails to queue, so none of this may be moved into a called script.
+#
+# Taris Hideout (tar_m02af), first visit only: the escape pod lands the player here, and Carth's reunion
+# conversation (tar02_carth022) is normally started by the vanilla trigger tar02_carstr. This is the fallback for
+# when it does not start (reported: no Carth standing there and no conversation). 7 seconds after arrival, so the
+# vanilla trigger gets first go, it starts the conversation itself unless one is already running, Carth has already
+# joined (IsAvailableCreature), or his recruit marker exists; it stages Carth at his own waypoint if his placed
+# object is missing, and flags the area (local boolean 60) so it can only ever happen once.
+HIDEOUT_REUNION_FUNC = """
+void HideoutCarthReunion()
+{
+    object oPC = GetFirstPC();
+    object oArea = GetArea(oPC);
+    if (!GetIsObjectValid(oPC) || GetLocalBoolean(oArea, 60)) return;
+    string sWhy = "";
+    if (GetIsInConversation(oPC)) sWhy = "conversation_running";
+    else if (IsAvailableCreature(NPC_CARTH)) sWhy = "carth_available";
+    else if (GetJournalEntry("ap_recruit_carth") > 0) sWhy = "already_recruited";
+    if (sWhy != "")
+    {
+        KSE_Diag(183, "AP|HIDEOUT|forced_reunion_skipped|" + sWhy);
+        return;
+    }
+    SetLocalBoolean(oArea, 60, TRUE);
+    object oCarth = GetObjectByTag("Carth");
+    if (!GetIsObjectValid(oCarth))
+    {
+        object oWp = GetObjectByTag("pebn_carth");
+        if (!GetIsObjectValid(oWp))
+        {
+            KSE_Diag(183, "AP|HIDEOUT|forced_reunion_failed|no_carth_and_no_waypoint");
+            return;
+        }
+        oCarth = CreateObject(OBJECT_TYPE_CREATURE, "p_carth", GetLocation(oWp), TRUE);
+        KSE_Diag(183, "AP|HIDEOUT|forced_reunion_staged_carth");
+    }
+    KSE_Diag(183, "AP|HIDEOUT|forced_reunion_starting");
+    AssignCommand(oCarth, ActionStartConversation(oPC, "tar02_carth022", FALSE, CONVERSATION_TYPE_CINEMATIC, TRUE));
+}
+"""
+AREA_ENTRY_FUNCS = {"tar_m02af": HIDEOUT_REUNION_FUNC}
+AREA_ENTRY_CALLS = {"tar_m02af": ["if (nVisitMark == 0) DelayCommand(7.0, HideoutCarthReunion());"]}
 
 
 def permanent_spawn_lines_for(base, indent):
-    return [f"{indent}{stmt}" for stmt in AREA_PERMANENT_SPAWNS.get(base, [])]
+    return [f"{indent}{stmt}" for stmt in AREA_PERMANENT_SPAWNS.get(base, []) + AREA_ENTRY_CALLS.get(base, [])]
+
+
+def area_entry_diag_lines(idx, indent):
+    """The area-entry report: the existing AP|CHECK|AREA|<idx> line, now also carrying seen=0/1.
+    The mark is a LocalBoolean on the area object, which the game saves with the area's module
+    state. A re-entry that reports seen=0 for an area the player has already been in, with no save
+    load in between, means the game started the area from scratch instead of restoring its saved
+    state -- the symptom behind "scripts refire and the game does not recognise I have been here"
+    reports. Folded into the existing line (all readers match only the prefix) rather than a
+    separate diagnostic line; nothing reads the mark.
+
+    Also gives the player the plot item `ap_loc_<idx>` ("Location: <area>") if they do not have it. The
+    item stays in the save, so the visited set survives a closed client or a missed report; the poll's
+    CheckVisitedMarkers() reports it. Written here, in the always-on entry block, so it needs no client
+    and no queued arm. Keep in sync with the copy in generate_area_trampolines.py and with
+    generate_location_items.py (the templates)."""
+    marker = f"ap_loc_{idx:02d}"
+    lines = [
+        f"{indent}int nVisitMark = GetLocalBoolean(OBJECT_SELF, 62);",
+        f"{indent}SetLocalBoolean(OBJECT_SELF, 62, TRUE);",
+        f'{indent}KSE_Diag(20, "AP|CHECK|AREA|{idx}|seen=" + IntToString(nVisitMark));',
+        f'{indent}if (!GetIsObjectValid(GetItemPossessedBy(GetFirstPC(), "{marker}")))',
+        f"{indent}{{",
+        f'{indent}    CreateItemOnObject("{marker}", GetFirstPC(), 1);',
+        f"{indent}}}",
+    ]
+    if idx == 0:
+        # The first Endar Spire area (end_m01aa): a brand-new level-1 character gets the Player ID item
+        # (patch_player_id.py writes its per-seed template). Level 1 only, so a leveled character that
+        # is warped or loaded in here is never stamped with the current seed. Runs after the original
+        # OnEnter, so an entry-time inventory strip cannot remove it.
+        lines += [
+            f'{indent}if (GetHitDice(GetFirstPC()) <= 1 && !GetIsObjectValid(GetItemPossessedBy(GetFirstPC(), "ap_pid")))',
+            f"{indent}{{",
+            f'{indent}    CreateItemOnObject("ap_pid", GetFirstPC(), 1);',
+            f"{indent}}}",
+        ]
+    return lines
+
+
+# OnEnter scripts whose vanilla body makes a companion available on every
+# real entry, which hands Carth/Bastila back to a player whose AP item hasn't
+# arrived. The trampoline records who was available before the preserved
+# original runs and takes away whoever it added; a companion the AP grant
+# already made available is left alone. Keep in sync with the copy in
+# generate_area_trampolines.py, which builds the same trampolines without a
+# batch.
+ORIGINAL_ENTER_GUARDS = {
+    "k_pdan_13_area": [("NPC_CARTH", "carth"), ("NPC_BASTILA", "bastila")],
+    "k_pdan_15_area": [("NPC_BASTILA", "bastila")],
+}
+
+
+def original_enter_guard(onenter):
+    """(lines before, lines after) the ExecuteScript of the preserved
+    original, as ready-to-embed text. Both empty for an unguarded OnEnter so
+    its generated trampoline is unchanged."""
+    guards = ORIGINAL_ENTER_GUARDS.get(onenter)
+    if not guards:
+        return "", ""
+    pre = ""
+    post = ""
+    for npc_const, key in guards:
+        pre += f"    int bWas_{key} = IsAvailableCreature({npc_const});\n"
+        post += (
+            f"    if (!bWas_{key} && IsAvailableCreature({npc_const}))\n"
+            "    {\n"
+            f"        RemovePartyMember({npc_const});\n"
+            f"        RemoveAvailableNPC({npc_const});\n"
+            f'        KSE_Diag(28, "AP|SUPPRESSED|companion_{key}|area_enter");\n'
+            "    }\n"
+        )
+    return pre, post
 
 
 def _connected_new_companion() -> int:
@@ -283,6 +403,7 @@ APPLIES = {
         '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
+        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(4, "AP|APPLIED|companion_bastila|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     10: ("companion_canderous", [
@@ -305,6 +426,7 @@ APPLIES = {
         # legitimate grant apart from vanilla making him available for
         # free with no AP gating at all.
         'KSE_SetData("ap_canderous_legit", "1");',
+        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(4, "AP|APPLIED|companion_canderous|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     11: ("xp", [
@@ -439,11 +561,14 @@ APPLIES = {
         # arm is specifically designed to fire N times in a row for a "+N"
         # starting preset, which is exactly the repeated-firing pattern that
         # exhausted a real character's stacked-effect budget live. Same "+1
-        # per firing" external behavior, just reading the live current value
-        # and writing current+1 as an absolute base instead of stacking.
+        # per firing" external behavior, via the native INCREMENT field: it
+        # adds 1 to the TRUE base score. (Writing GetAbilityScore()+1 as an
+        # absolute base would bake any item bonus or active debuff into the
+        # permanent base, because GetAbilityScore is the effective score.)
+        # nBefore/nAfter are effective scores, for the confirmation line only.
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_CHARISMA);',
-        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_CHA_BASE(), nBefore + 1);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_CHA_BASE(), 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_CHARISMA);',
         'KSE_Diag(92, "AP|APPLIED|grant_test_ability|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
@@ -466,6 +591,7 @@ APPLIES = {
         '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
+        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(50, "AP|APPLIED|companion_carth|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     20: ("companion_hk47", [
@@ -480,6 +606,7 @@ APPLIES = {
         '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
+        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(51, "AP|APPLIED|companion_hk47|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     21: ("companion_jolee", [
@@ -494,6 +621,7 @@ APPLIES = {
         '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
+        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(52, "AP|APPLIED|companion_jolee|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     22: ("companion_juhani", [
@@ -508,6 +636,7 @@ APPLIES = {
         '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
+        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(53, "AP|APPLIED|companion_juhani|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     23: ("companion_mission", [
@@ -522,6 +651,7 @@ APPLIES = {
         '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
+        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(54, "AP|APPLIED|companion_mission|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     24: ("companion_t3m4", [
@@ -536,6 +666,7 @@ APPLIES = {
         '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
+        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(55, "AP|APPLIED|companion_t3m4|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     25: ("companion_zaalbar", [
@@ -550,6 +681,7 @@ APPLIES = {
         '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
+        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(56, "AP|APPLIED|companion_zaalbar|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
     ]),
     # Third Jedi class -- class_guardian/class_consular (13/14) covered
@@ -594,8 +726,11 @@ APPLIES = {
     # equipping a real vanilla +DEX item afterward produced no change either
     # -- the ability's modifier-effect slot was completely full, not just
     # this project's own traps/grants being blocked). Same "+1 per firing"
-    # external behavior, just reading the live current value and writing
-    # current+1 as an absolute base instead of stacking. CONSTITUTION (29)
+    # external behavior via the native INCREMENT_*_BASE fields, which add 1
+    # to the TRUE base score instead of stacking an effect. (An absolute
+    # write of GetAbilityScore()+1 is not equivalent: GetAbilityScore is the
+    # effective score, so it would bake item bonuses and active debuffs into
+    # the permanent base.) CONSTITUTION (29)
     # was the one holdout -- offsets.h's KSE_FIELD_SET_CON_BASE is
     # documented as always recalculating Max HP as part of the native
     # write itself, so the Max-HP-interaction concern that held it back is
@@ -603,35 +738,35 @@ APPLIES = {
     27: ("ability_strength", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_STRENGTH);',
-        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_STR_BASE(), nBefore + 1);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_STR_BASE(), 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_STRENGTH);',
         'KSE_Diag(58, "AP|APPLIED|ability_strength|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
     28: ("ability_dexterity", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_DEXTERITY);',
-        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_DEX_BASE(), nBefore + 1);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_DEX_BASE(), 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_DEXTERITY);',
         'KSE_Diag(59, "AP|APPLIED|ability_dexterity|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
     29: ("ability_constitution", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_CONSTITUTION);',
-        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_CON_BASE(), nBefore + 1);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_CON_BASE(), 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_CONSTITUTION);',
         'KSE_Diag(60, "AP|APPLIED|ability_constitution|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
     30: ("ability_intelligence", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_INTELLIGENCE);',
-        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_INT_BASE(), nBefore + 1);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_INT_BASE(), 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_INTELLIGENCE);',
         'KSE_Diag(61, "AP|APPLIED|ability_intelligence|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
     31: ("ability_wisdom", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetAbilityScore(oPC, ABILITY_WISDOM);',
-        'KSE_SetCreatureField(oPC, KSE_FIELD_SET_WIS_BASE(), nBefore + 1);',
+        'KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_WIS_BASE(), 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_WISDOM);',
         'KSE_Diag(62, "AP|APPLIED|ability_wisdom|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
@@ -1557,17 +1692,25 @@ def build_trap_block(trap_type, params_str):
         # not an absolute set like the ability fields, but that's fine here:
         # the write itself doesn't stack, so there's nothing to accumulate
         # and no ceiling to hit regardless of delta-vs-absolute shape.
+        # The halving itself is native (KSE_FIELD_HALVE_SKILL_RANK): it reads
+        # the TRUE rank byte and lowers it by rank - rank/2. GetSkillRank is
+        # rank + ability modifier + effects, so halving THAT and subtracting
+        # it from the rank over-reduced the skill (often straight to 0 for a
+        # high-modifier, low-rank skill). nBefore/nAfter below stay effective
+        # scores, used only to report the change: the modifier is constant
+        # across the call, so their difference is exactly how far the true
+        # rank moved. An unchanged score means the native refused or the rank
+        # was already 0, which is reported as a no-op.
         lines += [
             f"int nBefore = GetSkillRank({skill_const}, oPC);",
-            "if (nBefore <= 0)",
+            f"KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), {skill_const});",
+            f"int nAfter = GetSkillRank({skill_const}, oPC);",
+            "if (nAfter == nBefore)",
             "{",
             f'    KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill={skill_key}|current=" + IntToString(nBefore));',
             "}",
             "else",
             "{",
-            "    int nDecrease = nBefore - (nBefore / 2);",
-            f"    KSE_AdjustCreatureSkills(oPC, {skill_const}, -nDecrease);",
-            f"    int nAfter = GetSkillRank({skill_const}, oPC);",
             f'    KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill={skill_key}|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
             "}",
         ]
@@ -1642,7 +1785,8 @@ def build_trap_block(trap_type, params_str):
         # (root-caused via the Bounty Card count bug).
         # Rather than keep a Python-side selection fed by an unreliable
         # report, this now does the ENTIRE thing natively in one shot:
-        # backpack walk, quest_dependent exemption (QUEST_EXEMPT_TAGS is
+        # backpack walk, plot-item exemption (any item with the plot flag is
+        # skipped, which covers the Archipelago marker/ledger items), quest_dependent exemption (QUEST_EXEMPT_TAGS is
         # static gear_items.json data, known at codegen time -- baked in
         # directly, same pattern every other suppression whitelist in this
         # project already uses), and random selection, all in NWScript, so
@@ -1669,16 +1813,30 @@ def build_trap_block(trap_type, params_str):
         # advance from a now-destroyed reference is exactly the "mutating
         # the list mid-walk" hazard the original per-tag walk above was
         # already written to avoid.
-        exempt_conditions = " ||\n            ".join(f'sTag == "{r}"' for r in QUEST_EXEMPT_TAGS)
-        is_exempt_expr = f"({exempt_conditions})" if exempt_conditions else "FALSE"
+        # COST: a script that runs past the engine's instruction budget is aborted silently, taking the
+        # whole area script (and every arm in the batch) with it, so the trap never confirms and re-fires
+        # at every transition. The quest-dependent exemption is therefore NOT a per-item chain of
+        # string comparisons (139 tags x every item x 2 walks overflowed the budget at about 460
+        # items): the tags are folded into a few "|tag|tag|" strings and searched with FindSubString,
+        # and only for an item the random draw has already picked. The count walk skips plot items only.
+        # An exempt item that is picked is simply not removed (the draw's target is unchanged, so later
+        # items become likelier); the total never exceeds half of the non-plot items.
+        quest_chunks = []
+        _cur = "|"
+        for _tag in QUEST_EXEMPT_TAGS:
+            if len(_cur) + len(_tag) + 1 > 400:
+                quest_chunks.append(_cur)
+                _cur = "|"
+            _cur += _tag + "|"
+        if len(_cur) > 1:
+            quest_chunks.append(_cur)
+        lines += [f'string sQuestTags{i} = "{chunk}";' for i, chunk in enumerate(quest_chunks)]
         lines += [
-            "string sTag;",
             "int nEligible = 0;",
             "object oCountItem = GetFirstItemInInventory(oPC);",
             "while (GetIsObjectValid(oCountItem))",
             "{",
-            "    sTag = GetTag(oCountItem);",
-            f"    if (!{is_exempt_expr})",
+            "    if (!GetPlotFlag(oCountItem))",
             "    {",
             "        nEligible = nEligible + 1;",
             "    }",
@@ -1693,14 +1851,22 @@ def build_trap_block(trap_type, params_str):
             "while (GetIsObjectValid(oCurrent))",
             "{",
             "    object oNext = GetNextItemInInventory(oPC);",
-            "    sTag = GetTag(oCurrent);",
-            f"    if (!{is_exempt_expr})",
+            "    if (!GetPlotFlag(oCurrent))",
             "    {",
             "        if (Random(nRemaining) < nToRemove - nRemovedSoFar)",
             "        {",
-            "            DestroyObject(oCurrent);",
-            "            nRemovedSoFar = nRemovedSoFar + 1;",
-            "            nRemoved = nRemoved + 1;",
+            "            string sKey = \"|\" + GetTag(oCurrent) + \"|\";",
+            "            int bQuest = FALSE;",
+        ]
+        for _i in range(len(quest_chunks)):
+            lines.append(f"            if (!bQuest) bQuest = (FindSubString(sQuestTags{_i}, sKey) != -1);")
+        lines += [
+            "            if (!bQuest)",
+            "            {",
+            "                DestroyObject(oCurrent);",
+            "                nRemovedSoFar = nRemovedSoFar + 1;",
+            "                nRemoved = nRemoved + 1;",
+            "            }",
             "        }",
             "        nRemaining = nRemaining - 1;",
             "    }",
@@ -1743,6 +1909,97 @@ def build_trap_block(trap_type, params_str):
             "{",
             f'    KSE_Diag(134, "AP|APPLIED|trap|type={trap_type}|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
             "}",
+        ]
+
+    elif trap_type == "purge_companion":
+        # ADMIN/cleanup action, not a Traps item: there is no Items.py entry
+        # and KotorClient's _resolve_trap never sends it. Send it by hand,
+        # e.g. `/ap_raw APPLYVALUE:trap:purge_companion:mission`.
+        #
+        # remove_companion above only calls RemoveAvailableNPC, which is a
+        # party-ROSTER operation: it ejects the companion from the party and
+        # the available list, but the creature OBJECT keeps standing in the
+        # area, so the player can still walk up to it. This also takes the
+        # companion out of the active party explicitly and destroys every
+        # object carrying their tag. Meant for a temporary companion that
+        # was staged to get past a vanilla scene and then left behind; a real
+        # grant later creates a fresh object, so nothing is lost by
+        # destroying a stray. params_str = the companion key.
+        name = params_str
+        npc_const = _COMPANION_NPC_CONST_ALL[name]
+        tag = {**_COMPANION_TAGS, "t3m4": "t3m4"}[name]
+        lines = [
+            f"RemovePartyMember({npc_const});",
+            f"RemoveAvailableNPC({npc_const});",
+            "int nPurged = 0;",
+            f'object oStray = GetObjectByTag("{tag}", nPurged);',
+            "while (GetIsObjectValid(oStray))",
+            "{",
+            "    DestroyObject(oStray);",
+            "    nPurged++;",
+            f'    oStray = GetObjectByTag("{tag}", nPurged);',
+            "}",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name={name}|destroyed=" + IntToString(nPurged));',
+        ]
+
+    elif trap_type == "unparty_companion":
+        # Reconciler-only (Star Forge pass, light path, entitled Bastila): takes the
+        # companion out of the ACTIVE party and destroys their standing objects but
+        # KEEPS the roster entry (unlike purge_companion, which also does
+        # RemoveAvailableNPC). A companion object tagged Bastila standing in the
+        # area stops the light-path boss stand-in from being created.
+        # params_str = the companion key.
+        name = params_str
+        npc_const = _COMPANION_NPC_CONST_ALL[name]
+        tag = {**_COMPANION_TAGS, "t3m4": "t3m4"}[name]
+        lines = [
+            f"RemovePartyMember({npc_const});",
+            "int nStray = 0;",
+            f'object oStray = GetObjectByTag("{tag}", nStray);',
+            "while (GetIsObjectValid(oStray))",
+            "{",
+            "    DestroyObject(oStray);",
+            "    nStray++;",
+            f'    oStray = GetObjectByTag("{tag}", nStray);',
+            "}",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name={name}|destroyed=" + IntToString(nStray));',
+        ]
+
+    elif trap_type == "select_companion":
+        # Reconciler-only: an entitled companion who is on the roster but cannot be picked on
+        # the party screen (selectability off). Vanilla scenes switch it off (the Dantooine
+        # Enclave load script does for Bastila and Carth) and the vanilla script that switches
+        # it back on can be skipped or suppressed by the companion modes, leaving them listed
+        # but unselectable. params_str = the companion key.
+        name = params_str
+        npc_const = _COMPANION_NPC_CONST_ALL[name]
+        lines = [
+            f"SetNPCSelectability({npc_const}, TRUE);",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name={name}");',
+        ]
+
+    elif trap_type == "set_recruit_marker":
+        # ADMIN/backfill action, not a Traps item (same status as
+        # purge_companion above): send by hand, e.g.
+        # `/ap_raw APPLYVALUE:trap:set_recruit_marker:zaalbar`. Writes the
+        # persistent journal marker for a companion whose recruit was reached
+        # BEFORE the marker system existed (or whose live check line was
+        # lost), so ap_poll_shared's CheckRecruitMarkers() starts re-reporting
+        # that recruit's check every poll. Needs the recruit quests declared
+        # in global.jrl (build_ap_tracker_quest.py, applied at Connect with the
+        # game closed, then a game restart); on an install without them
+        # AddJournalQuestEntry silently does nothing, which the confirmation
+        # line shows as marker=-1 instead of marker=1.
+        name = params_str
+        if name not in _COMPANION_NPC_CONST_ALL:
+            raise ValueError(f"set_recruit_marker: unknown companion key {name!r}")
+        tag = f"ap_recruit_{name}"
+        lines = [
+            f'if (GetJournalEntry("{tag}") < 1)',
+            "{",
+            f'    AddJournalQuestEntry("{tag}", 1);',
+            "}",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name={name}|marker=" + IntToString(GetJournalEntry("{tag}")));',
         ]
 
     else:
@@ -2072,6 +2329,21 @@ def main():
         # subset) to rebuild the correct tag-dispatch report_block
         full_group = [b for b, info in mapping.items() if info["onenter"] == onenter]
         renamed_resref = mapping[full_group[0]]["renamed"]
+        # Areas sharing one OnEnter resref can each have a different real
+        # script, preserved under different names (see
+        # generate_area_trampolines.py) and told apart by the ARE tag, which
+        # is NOT the module name (e.g. korr_m34aa's tag is "SithMonastery").
+        def area_tag_for(base):
+            return mapping[base].get("tag", base)
+
+        if len({mapping[b]["renamed"] for b in full_group}) == 1:
+            original_block = f'    ExecuteScript("{renamed_resref}", OBJECT_SELF);\n'
+        else:
+            original_block = '    string sEnterTag = GetTag(GetArea(OBJECT_SELF));\n'
+            for i, b in enumerate(full_group):
+                kw = "if" if i == 0 else "else if"
+                original_block += f'    {kw} (sEnterTag == "{area_tag_for(b)}") ExecuteScript("{mapping[b]["renamed"]}", OBJECT_SELF);\n'
+            original_block += f'    else ExecuteScript("{renamed_resref}", OBJECT_SELF);\n'
 
         def shop_lines_for(base):
             store_tags = shop_map.get(base)
@@ -2085,7 +2357,7 @@ def main():
         if len(full_group) == 1:
             base = full_group[0]
             idx = mapping[base]["idx"]
-            lines = [f'        KSE_Diag(20, "AP|CHECK|AREA|{idx}");']
+            lines = list(area_entry_diag_lines(idx, "        "))
             lines.extend(f"        {stmt}" for stmt in shop_lines_for(base))
             lines.extend(permanent_spawn_lines_for(base, "        "))
             report_block = "\n".join(lines)
@@ -2094,9 +2366,9 @@ def main():
             for i, base in enumerate(full_group):
                 idx = mapping[base]["idx"]
                 kw = "if" if i == 0 else "else if"
-                lines.append(f'        {kw} (sAreaTag == "{base}")')
+                lines.append(f'        {kw} (sAreaTag == "{area_tag_for(base)}")')
                 lines.append('        {')
-                lines.append(f'            KSE_Diag(20, "AP|CHECK|AREA|{idx}");')
+                lines.extend(area_entry_diag_lines(idx, "            "))
                 lines.extend(f"            {stmt}" for stmt in shop_lines_for(base))
                 lines.extend(permanent_spawn_lines_for(base, "            "))
                 lines.append('        }')
@@ -2104,18 +2376,25 @@ def main():
 
         base_list_comment = ", ".join(full_group)
         notify_funcs_block = f"\n{notify_funcs}\n" if notify_funcs else ""
+        guard_pre, guard_post = original_enter_guard(onenter)
+        area_funcs_block = "".join(AREA_ENTRY_FUNCS[b] for b in full_group if b in AREA_ENTRY_FUNCS)
         trampoline_src = f"""// AUTO-GENERATED trampoline for OnEnter={onenter}, WITH a pending arm
 // batch inlined (see generate_trampoline_batch.py). Covers: {base_list_comment}
 #include "kse"
-{notify_funcs_block}
+{notify_funcs_block}{area_funcs_block}
 void main()
 {{
-    ExecuteScript("{renamed_resref}", OBJECT_SELF);
-
+{guard_pre}{original_block}{guard_post}
     object oEnterer = GetEnteringObject();
     if (GetIsPC(oEnterer))
     {{
 {report_block}
+        // Restart the heartbeat on every area entry. An area change ends the heartbeat's timer chain, and the
+        // staleness check inside the poll only notices that when the game clock steps back by a whole second;
+        // a smaller step left the heartbeat dead (no polls at all) until the next transition. Starting it
+        // bumps its generation, so any older chain ends itself at its next tick and exactly one chain
+        // survives, attached to this area.
+        ExecuteScript("ap_heartbeat", OBJECT_SELF);
         ExecuteScript("ap_poll_shared", OBJECT_SELF);
 
 {batch_block}

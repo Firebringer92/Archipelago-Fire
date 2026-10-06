@@ -4,6 +4,8 @@
 // file is the only redevelopment cost for new checks -- the 97 area
 // trampolines that call it never need to change.
 #include "kse"
+#include "ap_jolee_field"
+#include "ap_lev_cast"
 
 // Area-visited checks are done INLINE in each area trampoline, not here --
 // a global set immediately before ExecuteScript was confirmed NOT visible
@@ -20,752 +22,576 @@
 // (a real globalcat.2da quest flag, IsAvailableCreature, current XP) is
 // true. Deduplication now lives on the extender/AP-client side, which has
 // real, uncapped persistent storage -- not in the game scripts.
+//
+// Nothing in the client reads CHECK|QUEST (locations are journal-based), so it is only a
+// support record: a flag is printed when it is first seen set and when it changes, not
+// every poll. One KSE data-store string ("q_bits", one 0/1 character per flag) holds the
+// previous poll's state; after a game restart the first poll prints every flag that is set.
 void CheckQuests()
 {
-    if (GetGlobalBoolean("DAN_STARMAP_DONE"))
-    {
+    string sNow = "";
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_STARMAP_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_JUHANI_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VANDARJ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VANDARS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VANDARR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ZHARJ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ZHARL_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_CRATISJ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_CRATISL_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_KARAL_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_AHLAN_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ESTATE_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_WHITE_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_BLACK_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_MEET_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_HATE_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_SHEN_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_LEAVE_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VISION_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_CRYSTAL_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_PLAINS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_DOOR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_BELAYAS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_BELAYAT_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_BELAYAJ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_DROID_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_CRATISF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_CRATISS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_KARALF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ESTATEC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_JUHANIQ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_COMMENT_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_DROIDS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_BODY_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_MISSC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_MISSB_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ZAALK_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_BELAYAM_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_MEETS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VANDARP_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ZHARD_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ZHARC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ZHARH_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VROOKJ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VROOKR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VROOKP_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_NEMOF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_NEMOJ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_NEMOR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_CRATISI_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_SOLD_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_EGGS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_GARF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_GARL_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_DAKOTAF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_DUANF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_ECHANIR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_ECHANIF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_ARBITER_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_ELORAFN_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_FIRITHR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_RODIANF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_ECHANIT_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_GONTOR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_MANDAL_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_NILKOF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_NILKOQ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_PORTF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_REPDIQ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_REPRET_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_TYVARKT_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_REPSPYC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_CRIME_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SHALASF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SHALASQ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHACF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_REPACF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHB1_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHB2_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_DOOR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_OPEN_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHT_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SUNRYJF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SUNRYF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_TYVARKD_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SECRET_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_CONFESS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_VIGLOF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_YUKAF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_ZORIISF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_REWARD_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_ELORAFT_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_REPS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_FIRITHI_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_FIRITHH_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_MERCD_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_GONTOI_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_GONTOH_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VROOKB_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_NEMOB_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VANDARM_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_IRIDORS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_KILLS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SHALASC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_AFFAIR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_GONTOM_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_MIND_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHFF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_AUTOM_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_AUTOF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_YORTALH_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_YORTALS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_YORTALM_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_QUEEDLE_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_HUKTAL_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SWOOPR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_AUTOGM_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_AUTOGF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHSMF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHSFF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHSC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SHASAQ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_DIARY_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_LIEM_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_LIED_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ANGER5_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ANGER6_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ANGER7_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHMEF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VANDARF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_BASTM_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VANDAR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_JUHANIF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ELISEF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SHALASH_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ELISEH_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_BOLOOKF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_HANDONF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_RICKARDF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_IDROIDF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_IDROIDB_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("T_JUHANIR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_HANDONG_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_REPHACK_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SITHPASS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_INTERR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_PERS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_PTRAP_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SUNAFF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SUNAFFD_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_ELORAS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_IGNUSL_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_GLUUPEV_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_TYVARKM_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_SWOOP_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_ZHARR_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VROOKS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_HRAKERT_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_REPTECH1_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_REPTECH2_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_COMP_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_YORTALF_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_LIFE_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_DEATH_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_TYVARKS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_TYVARKC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_KARALK_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_KARALC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_KARALS_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_CRATISC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_CRATISK_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_YORTALK_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("MAN_YORTALC_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VANDARB_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_VROOKBB_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("TAT_SWOOP_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_DORAK_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_SABER_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DEMO_FIELD_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("ebo_turret_done"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_SOL_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("UNK_SWITCH_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("DAN_TAREEJ_DONE"));
+    sNow = sNow + IntToString(GetGlobalBoolean("UNK_PUZG_DONE"));
+    string sLast = "";
+    if (KSE_HasData("q_bits")) sLast = KSE_GetData("q_bits");
+    if (sNow == sLast) return;
+    KSE_SetData("q_bits", sNow);
+    if (GetSubString(sNow, 0, 1) == "1" && GetSubString(sLast, 0, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_STARMAP_DONE");
-    }
-    if (GetGlobalBoolean("DAN_JUHANI_DONE"))
-    {
+    if (GetSubString(sNow, 1, 1) == "1" && GetSubString(sLast, 1, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_JUHANI_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VANDARJ_DONE"))
-    {
+    if (GetSubString(sNow, 2, 1) == "1" && GetSubString(sLast, 2, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VANDARJ_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VANDARS_DONE"))
-    {
+    if (GetSubString(sNow, 3, 1) == "1" && GetSubString(sLast, 3, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VANDARS_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VANDARR_DONE"))
-    {
+    if (GetSubString(sNow, 4, 1) == "1" && GetSubString(sLast, 4, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VANDARR_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ZHARJ_DONE"))
-    {
+    if (GetSubString(sNow, 5, 1) == "1" && GetSubString(sLast, 5, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ZHARJ_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ZHARL_DONE"))
-    {
+    if (GetSubString(sNow, 6, 1) == "1" && GetSubString(sLast, 6, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ZHARL_DONE");
-    }
-    if (GetGlobalBoolean("DAN_CRATISJ_DONE"))
-    {
+    if (GetSubString(sNow, 7, 1) == "1" && GetSubString(sLast, 7, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_CRATISJ_DONE");
-    }
-    if (GetGlobalBoolean("DAN_CRATISL_DONE"))
-    {
+    if (GetSubString(sNow, 8, 1) == "1" && GetSubString(sLast, 8, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_CRATISL_DONE");
-    }
-    if (GetGlobalBoolean("DAN_KARAL_DONE"))
-    {
+    if (GetSubString(sNow, 9, 1) == "1" && GetSubString(sLast, 9, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_KARAL_DONE");
-    }
-    if (GetGlobalBoolean("DAN_AHLAN_DONE"))
-    {
+    if (GetSubString(sNow, 10, 1) == "1" && GetSubString(sLast, 10, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_AHLAN_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ESTATE_DONE"))
-    {
+    if (GetSubString(sNow, 11, 1) == "1" && GetSubString(sLast, 11, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ESTATE_DONE");
-    }
-    if (GetGlobalBoolean("DAN_WHITE_DONE"))
-    {
+    if (GetSubString(sNow, 12, 1) == "1" && GetSubString(sLast, 12, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_WHITE_DONE");
-    }
-    if (GetGlobalBoolean("DAN_BLACK_DONE"))
-    {
+    if (GetSubString(sNow, 13, 1) == "1" && GetSubString(sLast, 13, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_BLACK_DONE");
-    }
-    if (GetGlobalBoolean("DAN_MEET_DONE"))
-    {
+    if (GetSubString(sNow, 14, 1) == "1" && GetSubString(sLast, 14, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_MEET_DONE");
-    }
-    if (GetGlobalBoolean("DAN_HATE_DONE"))
-    {
+    if (GetSubString(sNow, 15, 1) == "1" && GetSubString(sLast, 15, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_HATE_DONE");
-    }
-    if (GetGlobalBoolean("DAN_SHEN_DONE"))
-    {
+    if (GetSubString(sNow, 16, 1) == "1" && GetSubString(sLast, 16, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_SHEN_DONE");
-    }
-    if (GetGlobalBoolean("DAN_LEAVE_DONE"))
-    {
+    if (GetSubString(sNow, 17, 1) == "1" && GetSubString(sLast, 17, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_LEAVE_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VISION_DONE"))
-    {
+    if (GetSubString(sNow, 18, 1) == "1" && GetSubString(sLast, 18, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VISION_DONE");
-    }
-    if (GetGlobalBoolean("DAN_CRYSTAL_DONE"))
-    {
+    if (GetSubString(sNow, 19, 1) == "1" && GetSubString(sLast, 19, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_CRYSTAL_DONE");
-    }
-    if (GetGlobalBoolean("DAN_PLAINS_DONE"))
-    {
+    if (GetSubString(sNow, 20, 1) == "1" && GetSubString(sLast, 20, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_PLAINS_DONE");
-    }
-    if (GetGlobalBoolean("DAN_DOOR_DONE"))
-    {
+    if (GetSubString(sNow, 21, 1) == "1" && GetSubString(sLast, 21, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_DOOR_DONE");
-    }
-    if (GetGlobalBoolean("DAN_BELAYAS_DONE"))
-    {
+    if (GetSubString(sNow, 22, 1) == "1" && GetSubString(sLast, 22, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_BELAYAS_DONE");
-    }
-    if (GetGlobalBoolean("DAN_BELAYAT_DONE"))
-    {
+    if (GetSubString(sNow, 23, 1) == "1" && GetSubString(sLast, 23, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_BELAYAT_DONE");
-    }
-    if (GetGlobalBoolean("DAN_BELAYAJ_DONE"))
-    {
+    if (GetSubString(sNow, 24, 1) == "1" && GetSubString(sLast, 24, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_BELAYAJ_DONE");
-    }
-    if (GetGlobalBoolean("DAN_DROID_DONE"))
-    {
+    if (GetSubString(sNow, 25, 1) == "1" && GetSubString(sLast, 25, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_DROID_DONE");
-    }
-    if (GetGlobalBoolean("DAN_CRATISF_DONE"))
-    {
+    if (GetSubString(sNow, 26, 1) == "1" && GetSubString(sLast, 26, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_CRATISF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_CRATISS_DONE"))
-    {
+    if (GetSubString(sNow, 27, 1) == "1" && GetSubString(sLast, 27, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_CRATISS_DONE");
-    }
-    if (GetGlobalBoolean("DAN_KARALF_DONE"))
-    {
+    if (GetSubString(sNow, 28, 1) == "1" && GetSubString(sLast, 28, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_KARALF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ESTATEC_DONE"))
-    {
+    if (GetSubString(sNow, 29, 1) == "1" && GetSubString(sLast, 29, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ESTATEC_DONE");
-    }
-    if (GetGlobalBoolean("DAN_JUHANIQ_DONE"))
-    {
+    if (GetSubString(sNow, 30, 1) == "1" && GetSubString(sLast, 30, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_JUHANIQ_DONE");
-    }
-    if (GetGlobalBoolean("DAN_COMMENT_DONE"))
-    {
+    if (GetSubString(sNow, 31, 1) == "1" && GetSubString(sLast, 31, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_COMMENT_DONE");
-    }
-    if (GetGlobalBoolean("DAN_DROIDS_DONE"))
-    {
+    if (GetSubString(sNow, 32, 1) == "1" && GetSubString(sLast, 32, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_DROIDS_DONE");
-    }
-    if (GetGlobalBoolean("DAN_BODY_DONE"))
-    {
+    if (GetSubString(sNow, 33, 1) == "1" && GetSubString(sLast, 33, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_BODY_DONE");
-    }
-    if (GetGlobalBoolean("DAN_MISSC_DONE"))
-    {
+    if (GetSubString(sNow, 34, 1) == "1" && GetSubString(sLast, 34, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_MISSC_DONE");
-    }
-    if (GetGlobalBoolean("DAN_MISSB_DONE"))
-    {
+    if (GetSubString(sNow, 35, 1) == "1" && GetSubString(sLast, 35, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_MISSB_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ZAALK_DONE"))
-    {
+    if (GetSubString(sNow, 36, 1) == "1" && GetSubString(sLast, 36, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ZAALK_DONE");
-    }
-    if (GetGlobalBoolean("DAN_BELAYAM_DONE"))
-    {
+    if (GetSubString(sNow, 37, 1) == "1" && GetSubString(sLast, 37, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_BELAYAM_DONE");
-    }
-    if (GetGlobalBoolean("DAN_MEETS_DONE"))
-    {
+    if (GetSubString(sNow, 38, 1) == "1" && GetSubString(sLast, 38, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_MEETS_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VANDARP_DONE"))
-    {
+    if (GetSubString(sNow, 39, 1) == "1" && GetSubString(sLast, 39, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VANDARP_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ZHARD_DONE"))
-    {
+    if (GetSubString(sNow, 40, 1) == "1" && GetSubString(sLast, 40, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ZHARD_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ZHARC_DONE"))
-    {
+    if (GetSubString(sNow, 41, 1) == "1" && GetSubString(sLast, 41, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ZHARC_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ZHARH_DONE"))
-    {
+    if (GetSubString(sNow, 42, 1) == "1" && GetSubString(sLast, 42, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ZHARH_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VROOKJ_DONE"))
-    {
+    if (GetSubString(sNow, 43, 1) == "1" && GetSubString(sLast, 43, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VROOKJ_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VROOKR_DONE"))
-    {
+    if (GetSubString(sNow, 44, 1) == "1" && GetSubString(sLast, 44, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VROOKR_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VROOKP_DONE"))
-    {
+    if (GetSubString(sNow, 45, 1) == "1" && GetSubString(sLast, 45, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VROOKP_DONE");
-    }
-    if (GetGlobalBoolean("DAN_NEMOF_DONE"))
-    {
+    if (GetSubString(sNow, 46, 1) == "1" && GetSubString(sLast, 46, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_NEMOF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_NEMOJ_DONE"))
-    {
+    if (GetSubString(sNow, 47, 1) == "1" && GetSubString(sLast, 47, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_NEMOJ_DONE");
-    }
-    if (GetGlobalBoolean("DAN_NEMOR_DONE"))
-    {
+    if (GetSubString(sNow, 48, 1) == "1" && GetSubString(sLast, 48, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_NEMOR_DONE");
-    }
-    if (GetGlobalBoolean("DAN_CRATISI_DONE"))
-    {
+    if (GetSubString(sNow, 49, 1) == "1" && GetSubString(sLast, 49, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_CRATISI_DONE");
-    }
-    if (GetGlobalBoolean("DAN_SOLD_DONE"))
-    {
+    if (GetSubString(sNow, 50, 1) == "1" && GetSubString(sLast, 50, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_SOLD_DONE");
-    }
-    if (GetGlobalBoolean("DAN_EGGS_DONE"))
-    {
+    if (GetSubString(sNow, 51, 1) == "1" && GetSubString(sLast, 51, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_EGGS_DONE");
-    }
-    if (GetGlobalBoolean("DAN_GARF_DONE"))
-    {
+    if (GetSubString(sNow, 52, 1) == "1" && GetSubString(sLast, 52, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_GARF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_GARL_DONE"))
-    {
+    if (GetSubString(sNow, 53, 1) == "1" && GetSubString(sLast, 53, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_GARL_DONE");
-    }
-    if (GetGlobalBoolean("MAN_DAKOTAF_DONE"))
-    {
+    if (GetSubString(sNow, 54, 1) == "1" && GetSubString(sLast, 54, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_DAKOTAF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_DUANF_DONE"))
-    {
+    if (GetSubString(sNow, 55, 1) == "1" && GetSubString(sLast, 55, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_DUANF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_ECHANIR_DONE"))
-    {
+    if (GetSubString(sNow, 56, 1) == "1" && GetSubString(sLast, 56, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_ECHANIR_DONE");
-    }
-    if (GetGlobalBoolean("MAN_ECHANIF_DONE"))
-    {
+    if (GetSubString(sNow, 57, 1) == "1" && GetSubString(sLast, 57, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_ECHANIF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_ARBITER_DONE"))
-    {
+    if (GetSubString(sNow, 58, 1) == "1" && GetSubString(sLast, 58, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_ARBITER_DONE");
-    }
-    if (GetGlobalBoolean("MAN_ELORAFN_DONE"))
-    {
+    if (GetSubString(sNow, 59, 1) == "1" && GetSubString(sLast, 59, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_ELORAFN_DONE");
-    }
-    if (GetGlobalBoolean("MAN_FIRITHR_DONE"))
-    {
+    if (GetSubString(sNow, 60, 1) == "1" && GetSubString(sLast, 60, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_FIRITHR_DONE");
-    }
-    if (GetGlobalBoolean("MAN_RODIANF_DONE"))
-    {
+    if (GetSubString(sNow, 61, 1) == "1" && GetSubString(sLast, 61, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_RODIANF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_ECHANIT_DONE"))
-    {
+    if (GetSubString(sNow, 62, 1) == "1" && GetSubString(sLast, 62, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_ECHANIT_DONE");
-    }
-    if (GetGlobalBoolean("MAN_GONTOR_DONE"))
-    {
+    if (GetSubString(sNow, 63, 1) == "1" && GetSubString(sLast, 63, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_GONTOR_DONE");
-    }
-    if (GetGlobalBoolean("MAN_MANDAL_DONE"))
-    {
+    if (GetSubString(sNow, 64, 1) == "1" && GetSubString(sLast, 64, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_MANDAL_DONE");
-    }
-    if (GetGlobalBoolean("MAN_NILKOF_DONE"))
-    {
+    if (GetSubString(sNow, 65, 1) == "1" && GetSubString(sLast, 65, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_NILKOF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_NILKOQ_DONE"))
-    {
+    if (GetSubString(sNow, 66, 1) == "1" && GetSubString(sLast, 66, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_NILKOQ_DONE");
-    }
-    if (GetGlobalBoolean("MAN_PORTF_DONE"))
-    {
+    if (GetSubString(sNow, 67, 1) == "1" && GetSubString(sLast, 67, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_PORTF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_REPDIQ_DONE"))
-    {
+    if (GetSubString(sNow, 68, 1) == "1" && GetSubString(sLast, 68, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_REPDIQ_DONE");
-    }
-    if (GetGlobalBoolean("MAN_REPRET_DONE"))
-    {
+    if (GetSubString(sNow, 69, 1) == "1" && GetSubString(sLast, 69, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_REPRET_DONE");
-    }
-    if (GetGlobalBoolean("MAN_TYVARKT_DONE"))
-    {
+    if (GetSubString(sNow, 70, 1) == "1" && GetSubString(sLast, 70, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_TYVARKT_DONE");
-    }
-    if (GetGlobalBoolean("MAN_REPSPYC_DONE"))
-    {
+    if (GetSubString(sNow, 71, 1) == "1" && GetSubString(sLast, 71, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_REPSPYC_DONE");
-    }
-    if (GetGlobalBoolean("MAN_CRIME_DONE"))
-    {
+    if (GetSubString(sNow, 72, 1) == "1" && GetSubString(sLast, 72, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_CRIME_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SHALASF_DONE"))
-    {
+    if (GetSubString(sNow, 73, 1) == "1" && GetSubString(sLast, 73, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SHALASF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SHALASQ_DONE"))
-    {
+    if (GetSubString(sNow, 74, 1) == "1" && GetSubString(sLast, 74, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SHALASQ_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHACF_DONE"))
-    {
+    if (GetSubString(sNow, 75, 1) == "1" && GetSubString(sLast, 75, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHACF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_REPACF_DONE"))
-    {
+    if (GetSubString(sNow, 76, 1) == "1" && GetSubString(sLast, 76, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_REPACF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHF_DONE"))
-    {
+    if (GetSubString(sNow, 77, 1) == "1" && GetSubString(sLast, 77, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHB1_DONE"))
-    {
+    if (GetSubString(sNow, 78, 1) == "1" && GetSubString(sLast, 78, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHB1_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHB2_DONE"))
-    {
+    if (GetSubString(sNow, 79, 1) == "1" && GetSubString(sLast, 79, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHB2_DONE");
-    }
-    if (GetGlobalBoolean("MAN_DOOR_DONE"))
-    {
+    if (GetSubString(sNow, 80, 1) == "1" && GetSubString(sLast, 80, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_DOOR_DONE");
-    }
-    if (GetGlobalBoolean("MAN_OPEN_DONE"))
-    {
+    if (GetSubString(sNow, 81, 1) == "1" && GetSubString(sLast, 81, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_OPEN_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHT_DONE"))
-    {
+    if (GetSubString(sNow, 82, 1) == "1" && GetSubString(sLast, 82, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHT_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SUNRYJF_DONE"))
-    {
+    if (GetSubString(sNow, 83, 1) == "1" && GetSubString(sLast, 83, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SUNRYJF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SUNRYF_DONE"))
-    {
+    if (GetSubString(sNow, 84, 1) == "1" && GetSubString(sLast, 84, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SUNRYF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_TYVARKD_DONE"))
-    {
+    if (GetSubString(sNow, 85, 1) == "1" && GetSubString(sLast, 85, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_TYVARKD_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SECRET_DONE"))
-    {
+    if (GetSubString(sNow, 86, 1) == "1" && GetSubString(sLast, 86, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SECRET_DONE");
-    }
-    if (GetGlobalBoolean("MAN_CONFESS_DONE"))
-    {
+    if (GetSubString(sNow, 87, 1) == "1" && GetSubString(sLast, 87, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_CONFESS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_VIGLOF_DONE"))
-    {
+    if (GetSubString(sNow, 88, 1) == "1" && GetSubString(sLast, 88, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_VIGLOF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_YUKAF_DONE"))
-    {
+    if (GetSubString(sNow, 89, 1) == "1" && GetSubString(sLast, 89, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_YUKAF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_ZORIISF_DONE"))
-    {
+    if (GetSubString(sNow, 90, 1) == "1" && GetSubString(sLast, 90, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_ZORIISF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_REWARD_DONE"))
-    {
+    if (GetSubString(sNow, 91, 1) == "1" && GetSubString(sLast, 91, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_REWARD_DONE");
-    }
-    if (GetGlobalBoolean("MAN_ELORAFT_DONE"))
-    {
+    if (GetSubString(sNow, 92, 1) == "1" && GetSubString(sLast, 92, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_ELORAFT_DONE");
-    }
-    if (GetGlobalBoolean("MAN_REPS_DONE"))
-    {
+    if (GetSubString(sNow, 93, 1) == "1" && GetSubString(sLast, 93, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_REPS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHS_DONE"))
-    {
+    if (GetSubString(sNow, 94, 1) == "1" && GetSubString(sLast, 94, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_FIRITHI_DONE"))
-    {
+    if (GetSubString(sNow, 95, 1) == "1" && GetSubString(sLast, 95, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_FIRITHI_DONE");
-    }
-    if (GetGlobalBoolean("MAN_FIRITHH_DONE"))
-    {
+    if (GetSubString(sNow, 96, 1) == "1" && GetSubString(sLast, 96, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_FIRITHH_DONE");
-    }
-    if (GetGlobalBoolean("MAN_MERCD_DONE"))
-    {
+    if (GetSubString(sNow, 97, 1) == "1" && GetSubString(sLast, 97, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_MERCD_DONE");
-    }
-    if (GetGlobalBoolean("MAN_GONTOI_DONE"))
-    {
+    if (GetSubString(sNow, 98, 1) == "1" && GetSubString(sLast, 98, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_GONTOI_DONE");
-    }
-    if (GetGlobalBoolean("MAN_GONTOH_DONE"))
-    {
+    if (GetSubString(sNow, 99, 1) == "1" && GetSubString(sLast, 99, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_GONTOH_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VROOKB_DONE"))
-    {
+    if (GetSubString(sNow, 100, 1) == "1" && GetSubString(sLast, 100, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VROOKB_DONE");
-    }
-    if (GetGlobalBoolean("DAN_NEMOB_DONE"))
-    {
+    if (GetSubString(sNow, 101, 1) == "1" && GetSubString(sLast, 101, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_NEMOB_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VANDARM_DONE"))
-    {
+    if (GetSubString(sNow, 102, 1) == "1" && GetSubString(sLast, 102, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VANDARM_DONE");
-    }
-    if (GetGlobalBoolean("MAN_IRIDORS_DONE"))
-    {
+    if (GetSubString(sNow, 103, 1) == "1" && GetSubString(sLast, 103, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_IRIDORS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_KILLS_DONE"))
-    {
+    if (GetSubString(sNow, 104, 1) == "1" && GetSubString(sLast, 104, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_KILLS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SHALASC_DONE"))
-    {
+    if (GetSubString(sNow, 105, 1) == "1" && GetSubString(sLast, 105, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SHALASC_DONE");
-    }
-    if (GetGlobalBoolean("MAN_AFFAIR_DONE"))
-    {
+    if (GetSubString(sNow, 106, 1) == "1" && GetSubString(sLast, 106, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_AFFAIR_DONE");
-    }
-    if (GetGlobalBoolean("MAN_GONTOM_DONE"))
-    {
+    if (GetSubString(sNow, 107, 1) == "1" && GetSubString(sLast, 107, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_GONTOM_DONE");
-    }
-    if (GetGlobalBoolean("MAN_MIND_DONE"))
-    {
+    if (GetSubString(sNow, 108, 1) == "1" && GetSubString(sLast, 108, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_MIND_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHFF_DONE"))
-    {
+    if (GetSubString(sNow, 109, 1) == "1" && GetSubString(sLast, 109, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHFF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_AUTOM_DONE"))
-    {
+    if (GetSubString(sNow, 110, 1) == "1" && GetSubString(sLast, 110, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_AUTOM_DONE");
-    }
-    if (GetGlobalBoolean("MAN_AUTOF_DONE"))
-    {
+    if (GetSubString(sNow, 111, 1) == "1" && GetSubString(sLast, 111, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_AUTOF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_YORTALH_DONE"))
-    {
+    if (GetSubString(sNow, 112, 1) == "1" && GetSubString(sLast, 112, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_YORTALH_DONE");
-    }
-    if (GetGlobalBoolean("MAN_YORTALS_DONE"))
-    {
+    if (GetSubString(sNow, 113, 1) == "1" && GetSubString(sLast, 113, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_YORTALS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_YORTALM_DONE"))
-    {
+    if (GetSubString(sNow, 114, 1) == "1" && GetSubString(sLast, 114, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_YORTALM_DONE");
-    }
-    if (GetGlobalBoolean("MAN_QUEEDLE_DONE"))
-    {
+    if (GetSubString(sNow, 115, 1) == "1" && GetSubString(sLast, 115, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_QUEEDLE_DONE");
-    }
-    if (GetGlobalBoolean("MAN_HUKTAL_DONE"))
-    {
+    if (GetSubString(sNow, 116, 1) == "1" && GetSubString(sLast, 116, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_HUKTAL_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SWOOPR_DONE"))
-    {
+    if (GetSubString(sNow, 117, 1) == "1" && GetSubString(sLast, 117, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SWOOPR_DONE");
-    }
-    if (GetGlobalBoolean("MAN_AUTOGM_DONE"))
-    {
+    if (GetSubString(sNow, 118, 1) == "1" && GetSubString(sLast, 118, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_AUTOGM_DONE");
-    }
-    if (GetGlobalBoolean("MAN_AUTOGF_DONE"))
-    {
+    if (GetSubString(sNow, 119, 1) == "1" && GetSubString(sLast, 119, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_AUTOGF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHSMF_DONE"))
-    {
+    if (GetSubString(sNow, 120, 1) == "1" && GetSubString(sLast, 120, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHSMF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHSFF_DONE"))
-    {
+    if (GetSubString(sNow, 121, 1) == "1" && GetSubString(sLast, 121, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHSFF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHSC_DONE"))
-    {
+    if (GetSubString(sNow, 122, 1) == "1" && GetSubString(sLast, 122, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHSC_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SHASAQ_DONE"))
-    {
+    if (GetSubString(sNow, 123, 1) == "1" && GetSubString(sLast, 123, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SHASAQ_DONE");
-    }
-    if (GetGlobalBoolean("DAN_DIARY_DONE"))
-    {
+    if (GetSubString(sNow, 124, 1) == "1" && GetSubString(sLast, 124, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_DIARY_DONE");
-    }
-    if (GetGlobalBoolean("DAN_LIEM_DONE"))
-    {
+    if (GetSubString(sNow, 125, 1) == "1" && GetSubString(sLast, 125, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_LIEM_DONE");
-    }
-    if (GetGlobalBoolean("DAN_LIED_DONE"))
-    {
+    if (GetSubString(sNow, 126, 1) == "1" && GetSubString(sLast, 126, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_LIED_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ANGER5_DONE"))
-    {
+    if (GetSubString(sNow, 127, 1) == "1" && GetSubString(sLast, 127, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ANGER5_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ANGER6_DONE"))
-    {
+    if (GetSubString(sNow, 128, 1) == "1" && GetSubString(sLast, 128, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ANGER6_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ANGER7_DONE"))
-    {
+    if (GetSubString(sNow, 129, 1) == "1" && GetSubString(sLast, 129, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ANGER7_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHMEF_DONE"))
-    {
+    if (GetSubString(sNow, 130, 1) == "1" && GetSubString(sLast, 130, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHMEF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VANDARF_DONE"))
-    {
+    if (GetSubString(sNow, 131, 1) == "1" && GetSubString(sLast, 131, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VANDARF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_BASTM_DONE"))
-    {
+    if (GetSubString(sNow, 132, 1) == "1" && GetSubString(sLast, 132, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_BASTM_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VANDAR_DONE"))
-    {
+    if (GetSubString(sNow, 133, 1) == "1" && GetSubString(sLast, 133, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VANDAR_DONE");
-    }
-    if (GetGlobalBoolean("DAN_JUHANIF_DONE"))
-    {
+    if (GetSubString(sNow, 134, 1) == "1" && GetSubString(sLast, 134, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_JUHANIF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ELISEF_DONE"))
-    {
+    if (GetSubString(sNow, 135, 1) == "1" && GetSubString(sLast, 135, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ELISEF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SHALASH_DONE"))
-    {
+    if (GetSubString(sNow, 136, 1) == "1" && GetSubString(sLast, 136, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SHALASH_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ELISEH_DONE"))
-    {
+    if (GetSubString(sNow, 137, 1) == "1" && GetSubString(sLast, 137, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ELISEH_DONE");
-    }
-    if (GetGlobalBoolean("DAN_BOLOOKF_DONE"))
-    {
+    if (GetSubString(sNow, 138, 1) == "1" && GetSubString(sLast, 138, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_BOLOOKF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_HANDONF_DONE"))
-    {
+    if (GetSubString(sNow, 139, 1) == "1" && GetSubString(sLast, 139, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_HANDONF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_RICKARDF_DONE"))
-    {
+    if (GetSubString(sNow, 140, 1) == "1" && GetSubString(sLast, 140, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_RICKARDF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_IDROIDF_DONE"))
-    {
+    if (GetSubString(sNow, 141, 1) == "1" && GetSubString(sLast, 141, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_IDROIDF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_IDROIDB_DONE"))
-    {
+    if (GetSubString(sNow, 142, 1) == "1" && GetSubString(sLast, 142, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_IDROIDB_DONE");
-    }
-    if (GetGlobalBoolean("T_JUHANIR_DONE"))
-    {
+    if (GetSubString(sNow, 143, 1) == "1" && GetSubString(sLast, 143, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|T_JUHANIR_DONE");
-    }
-    if (GetGlobalBoolean("DAN_HANDONG_DONE"))
-    {
+    if (GetSubString(sNow, 144, 1) == "1" && GetSubString(sLast, 144, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_HANDONG_DONE");
-    }
-    if (GetGlobalBoolean("MAN_REPHACK_DONE"))
-    {
+    if (GetSubString(sNow, 145, 1) == "1" && GetSubString(sLast, 145, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_REPHACK_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SITHPASS_DONE"))
-    {
+    if (GetSubString(sNow, 146, 1) == "1" && GetSubString(sLast, 146, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SITHPASS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_INTERR_DONE"))
-    {
+    if (GetSubString(sNow, 147, 1) == "1" && GetSubString(sLast, 147, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_INTERR_DONE");
-    }
-    if (GetGlobalBoolean("MAN_PERS_DONE"))
-    {
+    if (GetSubString(sNow, 148, 1) == "1" && GetSubString(sLast, 148, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_PERS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_PTRAP_DONE"))
-    {
+    if (GetSubString(sNow, 149, 1) == "1" && GetSubString(sLast, 149, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_PTRAP_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SUNAFF_DONE"))
-    {
+    if (GetSubString(sNow, 150, 1) == "1" && GetSubString(sLast, 150, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SUNAFF_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SUNAFFD_DONE"))
-    {
+    if (GetSubString(sNow, 151, 1) == "1" && GetSubString(sLast, 151, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SUNAFFD_DONE");
-    }
-    if (GetGlobalBoolean("MAN_ELORAS_DONE"))
-    {
+    if (GetSubString(sNow, 152, 1) == "1" && GetSubString(sLast, 152, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_ELORAS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_IGNUSL_DONE"))
-    {
+    if (GetSubString(sNow, 153, 1) == "1" && GetSubString(sLast, 153, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_IGNUSL_DONE");
-    }
-    if (GetGlobalBoolean("MAN_GLUUPEV_DONE"))
-    {
+    if (GetSubString(sNow, 154, 1) == "1" && GetSubString(sLast, 154, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_GLUUPEV_DONE");
-    }
-    if (GetGlobalBoolean("MAN_TYVARKM_DONE"))
-    {
+    if (GetSubString(sNow, 155, 1) == "1" && GetSubString(sLast, 155, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_TYVARKM_DONE");
-    }
-    if (GetGlobalBoolean("MAN_SWOOP_DONE"))
-    {
+    if (GetSubString(sNow, 156, 1) == "1" && GetSubString(sLast, 156, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_SWOOP_DONE");
-    }
-    if (GetGlobalBoolean("DAN_ZHARR_DONE"))
-    {
+    if (GetSubString(sNow, 157, 1) == "1" && GetSubString(sLast, 157, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_ZHARR_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VROOKS_DONE"))
-    {
+    if (GetSubString(sNow, 158, 1) == "1" && GetSubString(sLast, 158, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VROOKS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_HRAKERT_DONE"))
-    {
+    if (GetSubString(sNow, 159, 1) == "1" && GetSubString(sLast, 159, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_HRAKERT_DONE");
-    }
-    if (GetGlobalBoolean("MAN_REPTECH1_DONE"))
-    {
+    if (GetSubString(sNow, 160, 1) == "1" && GetSubString(sLast, 160, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_REPTECH1_DONE");
-    }
-    if (GetGlobalBoolean("MAN_REPTECH2_DONE"))
-    {
+    if (GetSubString(sNow, 161, 1) == "1" && GetSubString(sLast, 161, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_REPTECH2_DONE");
-    }
-    if (GetGlobalBoolean("MAN_COMP_DONE"))
-    {
+    if (GetSubString(sNow, 162, 1) == "1" && GetSubString(sLast, 162, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_COMP_DONE");
-    }
-    if (GetGlobalBoolean("MAN_YORTALF_DONE"))
-    {
+    if (GetSubString(sNow, 163, 1) == "1" && GetSubString(sLast, 163, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_YORTALF_DONE");
-    }
-    if (GetGlobalBoolean("DAN_LIFE_DONE"))
-    {
+    if (GetSubString(sNow, 164, 1) == "1" && GetSubString(sLast, 164, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_LIFE_DONE");
-    }
-    if (GetGlobalBoolean("DAN_DEATH_DONE"))
-    {
+    if (GetSubString(sNow, 165, 1) == "1" && GetSubString(sLast, 165, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_DEATH_DONE");
-    }
-    if (GetGlobalBoolean("MAN_TYVARKS_DONE"))
-    {
+    if (GetSubString(sNow, 166, 1) == "1" && GetSubString(sLast, 166, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_TYVARKS_DONE");
-    }
-    if (GetGlobalBoolean("MAN_TYVARKC_DONE"))
-    {
+    if (GetSubString(sNow, 167, 1) == "1" && GetSubString(sLast, 167, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_TYVARKC_DONE");
-    }
-    if (GetGlobalBoolean("DAN_KARALK_DONE"))
-    {
+    if (GetSubString(sNow, 168, 1) == "1" && GetSubString(sLast, 168, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_KARALK_DONE");
-    }
-    if (GetGlobalBoolean("DAN_KARALC_DONE"))
-    {
+    if (GetSubString(sNow, 169, 1) == "1" && GetSubString(sLast, 169, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_KARALC_DONE");
-    }
-    if (GetGlobalBoolean("DAN_KARALS_DONE"))
-    {
+    if (GetSubString(sNow, 170, 1) == "1" && GetSubString(sLast, 170, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_KARALS_DONE");
-    }
-    if (GetGlobalBoolean("DAN_CRATISC_DONE"))
-    {
+    if (GetSubString(sNow, 171, 1) == "1" && GetSubString(sLast, 171, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_CRATISC_DONE");
-    }
-    if (GetGlobalBoolean("DAN_CRATISK_DONE"))
-    {
+    if (GetSubString(sNow, 172, 1) == "1" && GetSubString(sLast, 172, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_CRATISK_DONE");
-    }
-    if (GetGlobalBoolean("MAN_YORTALK_DONE"))
-    {
+    if (GetSubString(sNow, 173, 1) == "1" && GetSubString(sLast, 173, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_YORTALK_DONE");
-    }
-    if (GetGlobalBoolean("MAN_YORTALC_DONE"))
-    {
+    if (GetSubString(sNow, 174, 1) == "1" && GetSubString(sLast, 174, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|MAN_YORTALC_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VANDARB_DONE"))
-    {
+    if (GetSubString(sNow, 175, 1) == "1" && GetSubString(sLast, 175, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VANDARB_DONE");
-    }
-    if (GetGlobalBoolean("DAN_VROOKBB_DONE"))
-    {
+    if (GetSubString(sNow, 176, 1) == "1" && GetSubString(sLast, 176, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_VROOKBB_DONE");
-    }
-    if (GetGlobalBoolean("TAT_SWOOP_DONE"))
-    {
+    if (GetSubString(sNow, 177, 1) == "1" && GetSubString(sLast, 177, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|TAT_SWOOP_DONE");
-    }
-    if (GetGlobalBoolean("DAN_DORAK_DONE"))
-    {
+    if (GetSubString(sNow, 178, 1) == "1" && GetSubString(sLast, 178, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_DORAK_DONE");
-    }
-    if (GetGlobalBoolean("DAN_SABER_DONE"))
-    {
+    if (GetSubString(sNow, 179, 1) == "1" && GetSubString(sLast, 179, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_SABER_DONE");
-    }
-    if (GetGlobalBoolean("DEMO_FIELD_DONE"))
-    {
+    if (GetSubString(sNow, 180, 1) == "1" && GetSubString(sLast, 180, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DEMO_FIELD_DONE");
-    }
-    if (GetGlobalBoolean("ebo_turret_done"))
-    {
+    if (GetSubString(sNow, 181, 1) == "1" && GetSubString(sLast, 181, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|ebo_turret_done");
-    }
-    if (GetGlobalBoolean("DAN_SOL_DONE"))
-    {
+    if (GetSubString(sNow, 182, 1) == "1" && GetSubString(sLast, 182, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_SOL_DONE");
-    }
-    if (GetGlobalBoolean("UNK_SWITCH_DONE"))
-    {
+    if (GetSubString(sNow, 183, 1) == "1" && GetSubString(sLast, 183, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|UNK_SWITCH_DONE");
-    }
-    if (GetGlobalBoolean("DAN_TAREEJ_DONE"))
-    {
+    if (GetSubString(sNow, 184, 1) == "1" && GetSubString(sLast, 184, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|DAN_TAREEJ_DONE");
-    }
-    if (GetGlobalBoolean("UNK_PUZG_DONE"))
-    {
+    if (GetSubString(sNow, 185, 1) == "1" && GetSubString(sLast, 185, 1) != "1")
         KSE_Diag(21, "AP|CHECK|QUEST|UNK_PUZG_DONE");
-    }
 }
 
 // _PLOT trackers are real globalcat.2da Number globals (same proven-
@@ -775,88 +601,63 @@ void CheckQuests()
 // client derives 'newly reached stage N' by comparing against its own
 // memory of the highest stage already converted into a check, and can
 // map each newly-crossed threshold to a separate AP location.
+// Like CheckQuests, printed on change only (nothing in the client reads CHECK|PLOT): the
+// previous poll's values are kept in one data-store string, 3 digits per tracker ("p_vals").
 void CheckPlot()
 {
-    int nMAIN_PLOT = GetGlobalNumber("MAIN_PLOT");
-    if (nMAIN_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|MAIN_PLOT|value=" + IntToString(nMAIN_PLOT));
-    }
-    int nDAN_PLANET_PLOT = GetGlobalNumber("DAN_PLANET_PLOT");
-    if (nDAN_PLANET_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|DAN_PLANET_PLOT|value=" + IntToString(nDAN_PLANET_PLOT));
-    }
-    int nDAN_ROMANCE_PLOT = GetGlobalNumber("DAN_ROMANCE_PLOT");
-    if (nDAN_ROMANCE_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|DAN_ROMANCE_PLOT|value=" + IntToString(nDAN_ROMANCE_PLOT));
-    }
-    int nDAN_JEDI_PLOT = GetGlobalNumber("DAN_JEDI_PLOT");
-    if (nDAN_JEDI_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|DAN_JEDI_PLOT|value=" + IntToString(nDAN_JEDI_PLOT));
-    }
-    int nDAN_JUHANI_PLOT = GetGlobalNumber("DAN_JUHANI_PLOT");
-    if (nDAN_JUHANI_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|DAN_JUHANI_PLOT|value=" + IntToString(nDAN_JUHANI_PLOT));
-    }
-    int nDAN_CASUS_PLOT = GetGlobalNumber("DAN_CASUS_PLOT");
-    if (nDAN_CASUS_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|DAN_CASUS_PLOT|value=" + IntToString(nDAN_CASUS_PLOT));
-    }
-    int nMAN_PLANET_PLOT = GetGlobalNumber("MAN_PLANET_PLOT");
-    if (nMAN_PLANET_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|MAN_PLANET_PLOT|value=" + IntToString(nMAN_PLANET_PLOT));
-    }
-    int nMAN_MURDER_PLOT = GetGlobalNumber("MAN_MURDER_PLOT");
-    if (nMAN_MURDER_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|MAN_MURDER_PLOT|value=" + IntToString(nMAN_MURDER_PLOT));
-    }
-    int nMAN_RODIAN_PLOT = GetGlobalNumber("MAN_RODIAN_PLOT");
-    if (nMAN_RODIAN_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|MAN_RODIAN_PLOT|value=" + IntToString(nMAN_RODIAN_PLOT));
-    }
-    int nMAN_MISSING_PLOT = GetGlobalNumber("MAN_MISSING_PLOT");
-    if (nMAN_MISSING_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|MAN_MISSING_PLOT|value=" + IntToString(nMAN_MISSING_PLOT));
-    }
-    int nDAN_ELISE_PLOT = GetGlobalNumber("DAN_ELISE_PLOT");
-    if (nDAN_ELISE_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|DAN_ELISE_PLOT|value=" + IntToString(nDAN_ELISE_PLOT));
-    }
-    int nKOR_LASHOWE_PLOT = GetGlobalNumber("KOR_LASHOWE_PLOT");
-    if (nKOR_LASHOWE_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|KOR_LASHOWE_PLOT|value=" + IntToString(nKOR_LASHOWE_PLOT));
-    }
-    int nG_CAND_PLOT = GetGlobalNumber("G_CAND_PLOT");
-    if (nG_CAND_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|G_CAND_PLOT|value=" + IntToString(nG_CAND_PLOT));
-    }
-    int nG_JUHANI_PLOT = GetGlobalNumber("G_JUHANI_PLOT");
-    if (nG_JUHANI_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|G_JUHANI_PLOT|value=" + IntToString(nG_JUHANI_PLOT));
-    }
-    int nEBO_SASHA_PLOT = GetGlobalNumber("EBO_SASHA_PLOT");
-    if (nEBO_SASHA_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|EBO_SASHA_PLOT|value=" + IntToString(nEBO_SASHA_PLOT));
-    }
-    int nEBO_GIZKA_PLOT = GetGlobalNumber("EBO_GIZKA_PLOT");
-    if (nEBO_GIZKA_PLOT > 0)
-    {
-        KSE_Diag(25, "AP|CHECK|PLOT|EBO_GIZKA_PLOT|value=" + IntToString(nEBO_GIZKA_PLOT));
-    }
+    string sNow = "";
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("MAIN_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("DAN_PLANET_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("DAN_ROMANCE_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("DAN_JEDI_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("DAN_JUHANI_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("DAN_CASUS_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("MAN_PLANET_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("MAN_MURDER_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("MAN_RODIAN_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("MAN_MISSING_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("DAN_ELISE_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("KOR_LASHOWE_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("G_CAND_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("G_JUHANI_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("EBO_SASHA_PLOT")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetGlobalNumber("EBO_GIZKA_PLOT")), 3);
+    string sLast = "";
+    if (KSE_HasData("p_vals")) sLast = KSE_GetData("p_vals");
+    if (sNow == sLast) return;
+    KSE_SetData("p_vals", sNow);
+    if (GetSubString(sNow, 0, 3) != GetSubString(sLast, 0, 3) && GetSubString(sNow, 0, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|MAIN_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 0, 3))));
+    if (GetSubString(sNow, 3, 3) != GetSubString(sLast, 3, 3) && GetSubString(sNow, 3, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|DAN_PLANET_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 3, 3))));
+    if (GetSubString(sNow, 6, 3) != GetSubString(sLast, 6, 3) && GetSubString(sNow, 6, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|DAN_ROMANCE_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 6, 3))));
+    if (GetSubString(sNow, 9, 3) != GetSubString(sLast, 9, 3) && GetSubString(sNow, 9, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|DAN_JEDI_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 9, 3))));
+    if (GetSubString(sNow, 12, 3) != GetSubString(sLast, 12, 3) && GetSubString(sNow, 12, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|DAN_JUHANI_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 12, 3))));
+    if (GetSubString(sNow, 15, 3) != GetSubString(sLast, 15, 3) && GetSubString(sNow, 15, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|DAN_CASUS_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 15, 3))));
+    if (GetSubString(sNow, 18, 3) != GetSubString(sLast, 18, 3) && GetSubString(sNow, 18, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|MAN_PLANET_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 18, 3))));
+    if (GetSubString(sNow, 21, 3) != GetSubString(sLast, 21, 3) && GetSubString(sNow, 21, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|MAN_MURDER_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 21, 3))));
+    if (GetSubString(sNow, 24, 3) != GetSubString(sLast, 24, 3) && GetSubString(sNow, 24, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|MAN_RODIAN_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 24, 3))));
+    if (GetSubString(sNow, 27, 3) != GetSubString(sLast, 27, 3) && GetSubString(sNow, 27, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|MAN_MISSING_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 27, 3))));
+    if (GetSubString(sNow, 30, 3) != GetSubString(sLast, 30, 3) && GetSubString(sNow, 30, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|DAN_ELISE_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 30, 3))));
+    if (GetSubString(sNow, 33, 3) != GetSubString(sLast, 33, 3) && GetSubString(sNow, 33, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|KOR_LASHOWE_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 33, 3))));
+    if (GetSubString(sNow, 36, 3) != GetSubString(sLast, 36, 3) && GetSubString(sNow, 36, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|G_CAND_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 36, 3))));
+    if (GetSubString(sNow, 39, 3) != GetSubString(sLast, 39, 3) && GetSubString(sNow, 39, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|G_JUHANI_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 39, 3))));
+    if (GetSubString(sNow, 42, 3) != GetSubString(sLast, 42, 3) && GetSubString(sNow, 42, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|EBO_SASHA_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 42, 3))));
+    if (GetSubString(sNow, 45, 3) != GetSubString(sLast, 45, 3) && GetSubString(sNow, 45, 3) != "000")
+        KSE_Diag(25, "AP|CHECK|PLOT|EBO_GIZKA_PLOT|value=" + IntToString(StringToInt(GetSubString(sNow, 45, 3))));
 }
 
 // Game-wide quest tracking via KOTOR's own journal system -- covers all
@@ -868,518 +669,566 @@ void CheckPlot()
 // not a workaround. Reports nonzero stages every poll, same stateless
 // pattern as CheckPlot(): the client tracks which (tag, stage) pairs it's
 // already converted into a check.
+//
+// Printed on change plus a full re-dump on the first poll and then every 12th (about once a
+// minute), not every 5 s: a client that attaches late or reconnects mid-session still catches
+// up within a minute, and the tracker ignores repeats anyway. The previous poll's values are
+// one data-store string, 3 digits per quest ("j_vals"; stages are well under 1000).
 void CheckJournal()
 {
-    int ntat18ac_dragonhunt = GetJournalEntry("tat18ac_dragonhunt");
-    if (ntat18ac_dragonhunt > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat18ac_dragonhunt|value=" + IntToString(ntat18ac_dragonhunt));
-    }
-    int nkor25_doubtsith = GetJournalEntry("kor25_doubtsith");
-    if (nkor25_doubtsith > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor25_doubtsith|value=" + IntToString(nkor25_doubtsith));
-    }
-    int nk_starforge = GetJournalEntry("k_starforge");
-    if (nk_starforge > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_starforge|value=" + IntToString(nk_starforge));
-    }
-    int ntar_rancor = GetJournalEntry("tar_rancor");
-    if (ntar_rancor > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_rancor|value=" + IntToString(ntar_rancor));
-    }
-    int nkas23_rorworr = GetJournalEntry("kas23_rorworr");
-    if (nkas23_rorworr > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kas23_rorworr|value=" + IntToString(nkas23_rorworr));
-    }
-    int nkor35_aidlashowe = GetJournalEntry("kor35_aidlashowe");
-    if (nkor35_aidlashowe > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_aidlashowe|value=" + IntToString(nkor35_aidlashowe));
-    }
-    int nend_attack = GetJournalEntry("end_attack");
-    if (nend_attack > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|end_attack|value=" + IntToString(nend_attack));
-    }
-    int nk_swg_bastilatalk = GetJournalEntry("k_swg_bastilatalk");
-    if (nk_swg_bastilatalk > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_bastilatalk|value=" + IntToString(nk_swg_bastilatalk));
-    }
-    int nk_swg_helenatalk = GetJournalEntry("k_swg_helenatalk");
-    if (nk_swg_helenatalk > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_helenatalk|value=" + IntToString(nk_swg_helenatalk));
-    }
-    int ntar_bendakbounty = GetJournalEntry("tar_bendakbounty");
-    if (ntar_bendakbounty > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_bendakbounty|value=" + IntToString(ntar_bendakbounty));
-    }
-    int nk_swg_canderous = GetJournalEntry("k_swg_canderous");
-    if (nk_swg_canderous > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_canderous|value=" + IntToString(nk_swg_canderous));
-    }
-    int nlev_captured = GetJournalEntry("lev_captured");
-    if (nlev_captured > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|lev_captured|value=" + IntToString(nlev_captured));
-    }
-    int nk_swg_carthtalk = GetJournalEntry("k_swg_carthtalk");
-    if (nk_swg_carthtalk > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_carthtalk|value=" + IntToString(nk_swg_carthtalk));
-    }
-    int nkas23_mainwookplot = GetJournalEntry("kas23_mainwookplot");
-    if (nkas23_mainwookplot > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kas23_mainwookplot|value=" + IntToString(nkas23_mainwookplot));
-    }
-    int ndan_casus = GetJournalEntry("dan_casus");
-    if (ndan_casus > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_casus|value=" + IntToString(ndan_casus));
-    }
-    int ntat_ambush = GetJournalEntry("tat_ambush");
-    if (ntat_ambush > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat_ambush|value=" + IntToString(ntat_ambush));
-    }
-    int ntar_diabounty = GetJournalEntry("tar_diabounty");
-    if (ntar_diabounty > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_diabounty|value=" + IntToString(ntar_diabounty));
-    }
-    int ntat17ad_buyinghk47 = GetJournalEntry("tat17ad_buyinghk47");
-    if (ntat17ad_buyinghk47 > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17ad_buyinghk47|value=" + IntToString(ntat17ad_buyinghk47));
-    }
-    int nebo_supplies = GetJournalEntry("ebo_supplies");
-    if (nebo_supplies > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|ebo_supplies|value=" + IntToString(nebo_supplies));
-    }
-    int nman_elora = GetJournalEntry("man_elora");
-    if (nman_elora > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_elora|value=" + IntToString(nman_elora));
-    }
-    int nkor33_enteracademy = GetJournalEntry("kor33_enteracademy");
-    if (nkor33_enteracademy > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor33_enteracademy|value=" + IntToString(nkor33_enteracademy));
-    }
-    int ntar_escape = GetJournalEntry("tar_escape");
-    if (ntar_escape > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_escape|value=" + IntToString(ntar_escape));
-    }
-    int ntat17aa_jawarescue = GetJournalEntry("tat17aa_jawarescue");
-    if (ntat17aa_jawarescue > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17aa_jawarescue|value=" + IntToString(ntat17aa_jawarescue));
-    }
-    int nkor35_findingdustil = GetJournalEntry("kor35_findingdustil");
-    if (nkor35_findingdustil > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_findingdustil|value=" + IntToString(nkor35_findingdustil));
-    }
-    int nman_firith = GetJournalEntry("man_firith");
-    if (nman_firith > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_firith|value=" + IntToString(nman_firith));
-    }
-    int nGenoharadan = GetJournalEntry("Genoharadan");
-    if (nGenoharadan > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|Genoharadan|value=" + IntToString(nGenoharadan));
-    }
-    int nGeno_Ithorak = GetJournalEntry("Geno_Ithorak");
-    if (nGeno_Ithorak > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Ithorak|value=" + IntToString(nGeno_Ithorak));
-    }
-    int nGeno_Lorgal = GetJournalEntry("Geno_Lorgal");
-    if (nGeno_Lorgal > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Lorgal|value=" + IntToString(nGeno_Lorgal));
-    }
-    int nGeno_Rulan = GetJournalEntry("Geno_Rulan");
-    if (nGeno_Rulan > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Rulan|value=" + IntToString(nGeno_Rulan));
-    }
-    int nGeno_Vorn = GetJournalEntry("Geno_Vorn");
-    if (nGeno_Vorn > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Vorn|value=" + IntToString(nGeno_Vorn));
-    }
-    int nGeno_Zuulan = GetJournalEntry("Geno_Zuulan");
-    if (nGeno_Zuulan > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Zuulan|value=" + IntToString(nGeno_Zuulan));
-    }
-    int nman_gluupor = GetJournalEntry("man_gluupor");
-    if (nman_gluupor > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_gluupor|value=" + IntToString(nman_gluupor));
-    }
-    int nkas25_mandalorians = GetJournalEntry("kas25_mandalorians");
-    if (nkas25_mandalorians > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kas25_mandalorians|value=" + IntToString(nkas25_mandalorians));
-    }
-    int nk_swg_hk47talk = GetJournalEntry("k_swg_hk47talk");
-    if (nk_swg_hk47talk > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_hk47talk|value=" + IntToString(nk_swg_hk47talk));
-    }
-    int nkas22_EliMatton = GetJournalEntry("kas22_EliMatton");
-    if (nkas22_EliMatton > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kas22_EliMatton|value=" + IntToString(nkas22_EliMatton));
-    }
-    int nman_ignus = GetJournalEntry("man_ignus");
-    if (nman_ignus > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_ignus|value=" + IntToString(nman_ignus));
-    }
-    int ntar_infectedoutcasts = GetJournalEntry("tar_infectedoutcasts");
-    if (ntar_infectedoutcasts > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_infectedoutcasts|value=" + IntToString(ntar_infectedoutcasts));
-    }
-    int ntar_vulkarbase = GetJournalEntry("tar_vulkarbase");
-    if (ntar_vulkarbase > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_vulkarbase|value=" + IntToString(ntar_vulkarbase));
-    }
-    int ndan_ruins = GetJournalEntry("dan_ruins");
-    if (ndan_ruins > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_ruins|value=" + IntToString(ndan_ruins));
-    }
-    int nunk_invis = GetJournalEntry("unk_invis");
-    if (nunk_invis > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|unk_invis|value=" + IntToString(nunk_invis));
-    }
-    int ntar_party = GetJournalEntry("tar_party");
-    if (ntar_party > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_party|value=" + IntToString(ntar_party));
-    }
-    int nk_jagi = GetJournalEntry("k_jagi");
-    if (nk_jagi > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_jagi|value=" + IntToString(nk_jagi));
-    }
-    int ndan_trials = GetJournalEntry("dan_trials");
-    if (ndan_trials > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_trials|value=" + IntToString(ndan_trials));
-    }
-    int nk_swg_joleetalk = GetJournalEntry("k_swg_joleetalk");
-    if (nk_swg_joleetalk > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_joleetalk|value=" + IntToString(nk_swg_joleetalk));
-    }
-    int nkas24_removepoachers = GetJournalEntry("kas24_removepoachers");
-    if (nkas24_removepoachers > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kas24_removepoachers|value=" + IntToString(nkas24_removepoachers));
-    }
-    int nk_swg_juhani = GetJournalEntry("k_swg_juhani");
-    if (nk_swg_juhani > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_juhani|value=" + IntToString(nk_swg_juhani));
-    }
-    int ntar_largobounty = GetJournalEntry("tar_largobounty");
-    if (ntar_largobounty > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_largobounty|value=" + IntToString(ntar_largobounty));
-    }
-    int nMan26ab_swoopraces = GetJournalEntry("Man26ab_swoopraces");
-    if (nMan26ab_swoopraces > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|Man26ab_swoopraces|value=" + IntToString(nMan26ab_swoopraces));
-    }
-    int ndan_raiders = GetJournalEntry("dan_raiders");
-    if (ndan_raiders > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_raiders|value=" + IntToString(ndan_raiders));
-    }
-    int ntar_matrik = GetJournalEntry("tar_matrik");
-    if (ntar_matrik > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_matrik|value=" + IntToString(ntar_matrik));
-    }
-    int ntar_meetCand = GetJournalEntry("tar_meetCand");
-    if (ntar_meetCand > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_meetCand|value=" + IntToString(ntar_meetCand));
-    }
-    int ntat17aa_middleman = GetJournalEntry("tat17aa_middleman");
-    if (ntat17aa_middleman > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17aa_middleman|value=" + IntToString(ntat17aa_middleman));
-    }
-    int ndan_companion = GetJournalEntry("dan_companion");
-    if (ndan_companion > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_companion|value=" + IntToString(ndan_companion));
-    }
-    int nman_missing = GetJournalEntry("man_missing");
-    if (nman_missing > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_missing|value=" + IntToString(nman_missing));
-    }
-    int nman_planet = GetJournalEntry("man_planet");
-    if (nman_planet > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_planet|value=" + IntToString(nman_planet));
-    }
-    int nk_missbroth = GetJournalEntry("k_missbroth");
-    if (nk_missbroth > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_missbroth|value=" + IntToString(nk_missbroth));
-    }
-    int ndan_murder = GetJournalEntry("dan_murder");
-    if (ndan_murder > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_murder|value=" + IntToString(ndan_murder));
-    }
-    int nk_pazaak = GetJournalEntry("k_pazaak");
-    if (nk_pazaak > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_pazaak|value=" + IntToString(nk_pazaak));
-    }
-    int nmain_premium = GetJournalEntry("main_premium");
-    if (nmain_premium > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|main_premium|value=" + IntToString(nmain_premium));
-    }
-    int ntar_buydroid = GetJournalEntry("tar_buydroid");
-    if (ntar_buydroid > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_buydroid|value=" + IntToString(ntar_buydroid));
-    }
-    int nunk_research = GetJournalEntry("unk_research");
-    if (nunk_research > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|unk_research|value=" + IntToString(nunk_research));
-    }
-    int ntar_rakghoulserum = GetJournalEntry("tar_rakghoulserum");
-    if (ntar_rakghoulserum > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_rakghoulserum|value=" + IntToString(ntar_rakghoulserum));
-    }
-    int nk_rapidtransit = GetJournalEntry("k_rapidtransit");
-    if (nk_rapidtransit > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_rapidtransit|value=" + IntToString(nk_rapidtransit));
-    }
-    int nkor35_renegadesith = GetJournalEntry("kor35_renegadesith");
-    if (nkor35_renegadesith > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_renegadesith|value=" + IntToString(nkor35_renegadesith));
-    }
-    int nman_emb = GetJournalEntry("man_emb");
-    if (nman_emb > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_emb|value=" + IntToString(nman_emb));
-    }
-    int nman_merc = GetJournalEntry("man_merc");
-    if (nman_merc > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_merc|value=" + IntToString(nman_merc));
-    }
-    int nkor38_roguedroid = GetJournalEntry("kor38_roguedroid");
-    if (nkor38_roguedroid > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor38_roguedroid|value=" + IntToString(nkor38_roguedroid));
-    }
-    int ntar_rukilapprentice = GetJournalEntry("tar_rukilapprentice");
-    if (ntar_rukilapprentice > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_rukilapprentice|value=" + IntToString(ntar_rukilapprentice));
-    }
-    int ntat17ag_sandbounty = GetJournalEntry("tat17ag_sandbounty");
-    if (ntat17ag_sandbounty > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17ag_sandbounty|value=" + IntToString(ntat17ag_sandbounty));
-    }
-    int ndan_romance = GetJournalEntry("dan_romance");
-    if (ndan_romance > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_romance|value=" + IntToString(ndan_romance));
-    }
-    int ntar_selvenbounty = GetJournalEntry("tar_selvenbounty");
-    if (ntar_selvenbounty > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_selvenbounty|value=" + IntToString(ntar_selvenbounty));
-    }
-    int ntat17ae_signingnico = GetJournalEntry("tat17ae_signingnico");
-    if (ntat17ae_signingnico > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17ae_signingnico|value=" + IntToString(ntat17ae_signingnico));
-    }
-    int nkas22_starmap = GetJournalEntry("kas22_starmap");
-    if (nkas22_starmap > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kas22_starmap|value=" + IntToString(nkas22_starmap));
-    }
-    int nkor33_findstarmap = GetJournalEntry("kor33_findstarmap");
-    if (nkor33_findstarmap > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor33_findstarmap|value=" + IntToString(nkor33_findstarmap));
-    }
-    int nman26_starmap = GetJournalEntry("man26_starmap");
-    if (nman26_starmap > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man26_starmap|value=" + IntToString(nman26_starmap));
-    }
-    int ntat17_starmap = GetJournalEntry("tat17_starmap");
-    if (ntat17_starmap > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17_starmap|value=" + IntToString(ntat17_starmap));
-    }
-    int nk_pebo_stowaway = GetJournalEntry("k_pebo_stowaway");
-    if (nk_pebo_stowaway > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_pebo_stowaway|value=" + IntToString(nk_pebo_stowaway));
-    }
-    int nman_murder = GetJournalEntry("man_murder");
-    if (nman_murder > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_murder|value=" + IntToString(nman_murder));
-    }
-    int nman_sunry = GetJournalEntry("man_sunry");
-    if (nman_sunry > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|man_sunry|value=" + IntToString(nman_sunry));
-    }
-    int nkas24_tachpoaching = GetJournalEntry("kas24_tachpoaching");
-    if (nkas24_tachpoaching > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kas24_tachpoaching|value=" + IntToString(nkas24_tachpoaching));
-    }
-    int ntat18aa_tanistrapped = GetJournalEntry("tat18aa_tanistrapped");
-    if (ntat18aa_tanistrapped > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat18aa_tanistrapped|value=" + IntToString(ntat18aa_tanistrapped));
-    }
-    int ntar_planetinfo = GetJournalEntry("tar_planetinfo");
-    if (ntar_planetinfo > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_planetinfo|value=" + IntToString(ntar_planetinfo));
-    }
-    int ntat17ae_swoopracing = GetJournalEntry("tat17ae_swoopracing");
-    if (ntat17ae_swoopracing > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17ae_swoopracing|value=" + IntToString(ntat17ae_swoopracing));
-    }
-    int nCategory000 = GetJournalEntry("Category000");
-    if (nCategory000 > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|Category000|value=" + IntToString(nCategory000));
-    }
-    int nkor35_doublecross = GetJournalEntry("kor35_doublecross");
-    if (nkor35_doublecross > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_doublecross|value=" + IntToString(nkor35_doublecross));
-    }
-    int nkor35_doublecross2 = GetJournalEntry("kor35_doublecross2");
-    if (nkor35_doublecross2 > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_doublecross2|value=" + IntToString(nkor35_doublecross2));
-    }
-    int ntar_duelring = GetJournalEntry("tar_duelring");
-    if (ntar_duelring > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_duelring|value=" + IntToString(ntar_duelring));
-    }
-    int nk_ebonhawk = GetJournalEntry("k_ebonhawk");
-    if (nk_ebonhawk > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_ebonhawk|value=" + IntToString(nk_ebonhawk));
-    }
-    int nsta_confront = GetJournalEntry("sta_confront");
-    if (nsta_confront > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|sta_confront|value=" + IntToString(nsta_confront));
-    }
-    int nkor38_hermit = GetJournalEntry("kor38_hermit");
-    if (nkor38_hermit > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor38_hermit|value=" + IntToString(nkor38_hermit));
-    }
-    int ndan_council = GetJournalEntry("dan_council");
-    if (ndan_council > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_council|value=" + IntToString(ndan_council));
-    }
-    int nkor35_mandalorian = GetJournalEntry("kor35_mandalorian");
-    if (nkor35_mandalorian > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_mandalorian|value=" + IntToString(nkor35_mandalorian));
-    }
-    int ntar_promisedland = GetJournalEntry("tar_promisedland");
-    if (ntar_promisedland > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_promisedland|value=" + IntToString(ntar_promisedland));
-    }
-    int ntar_bastsearch = GetJournalEntry("tar_bastsearch");
-    if (ntar_bastsearch > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_bastsearch|value=" + IntToString(ntar_bastsearch));
-    }
-    int nkor37_ajuntapall = GetJournalEntry("kor37_ajuntapall");
-    if (nkor37_ajuntapall > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor37_ajuntapall|value=" + IntToString(nkor37_ajuntapall));
-    }
-    int nk_pebo_gizkatrouble = GetJournalEntry("k_pebo_gizkatrouble");
-    if (nk_pebo_gizkatrouble > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_pebo_gizkatrouble|value=" + IntToString(nk_pebo_gizkatrouble));
-    }
-    int nkor35_waysith = GetJournalEntry("kor35_waysith");
-    if (nkor35_waysith > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_waysith|value=" + IntToString(nkor35_waysith));
-    }
-    int nk_xor = GetJournalEntry("k_xor");
-    if (nk_xor > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|k_xor|value=" + IntToString(nk_xor));
-    }
-    int nunk_trapped = GetJournalEntry("unk_trapped");
-    if (nunk_trapped > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|unk_trapped|value=" + IntToString(nunk_trapped));
-    }
-    int nebo46_unfinishedbusiness = GetJournalEntry("ebo46_unfinishedbusiness");
-    if (nebo46_unfinishedbusiness > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|ebo46_unfinishedbusiness|value=" + IntToString(nebo46_unfinishedbusiness));
-    }
-    int nTat20aa_worthy = GetJournalEntry("Tat20aa_worthy");
-    if (nTat20aa_worthy > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|Tat20aa_worthy|value=" + IntToString(nTat20aa_worthy));
-    }
-    int nap_tracker = GetJournalEntry("ap_tracker");
-    if (nap_tracker > 0)
-    {
-        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_tracker|value=" + IntToString(nap_tracker));
-    }
+    int nJ = 0;
+    if (KSE_HasData("j_n")) nJ = StringToInt(KSE_GetData("j_n"));
+    KSE_SetData("j_n", IntToString(nJ + 1));
+    int bFull = (nJ % 12 == 0);
+    string sNow = "";
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat18ac_dragonhunt")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor25_doubtsith")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_starforge")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_rancor")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kas23_rorworr")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor35_aidlashowe")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("end_attack")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_swg_bastilatalk")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_swg_helenatalk")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_bendakbounty")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_swg_canderous")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("lev_captured")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_swg_carthtalk")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kas23_mainwookplot")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("dan_casus")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat_ambush")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_diabounty")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat17ad_buyinghk47")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ebo_supplies")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_elora")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor33_enteracademy")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_escape")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat17aa_jawarescue")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor35_findingdustil")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_firith")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("Genoharadan")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("Geno_Ithorak")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("Geno_Lorgal")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("Geno_Rulan")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("Geno_Vorn")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("Geno_Zuulan")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_gluupor")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kas25_mandalorians")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_swg_hk47talk")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kas22_EliMatton")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_ignus")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_infectedoutcasts")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_vulkarbase")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("dan_ruins")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("unk_invis")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_party")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_jagi")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("dan_trials")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_swg_joleetalk")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kas24_removepoachers")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_swg_juhani")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_largobounty")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("Man26ab_swoopraces")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("dan_raiders")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_matrik")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_meetCand")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat17aa_middleman")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("dan_companion")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_missing")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_planet")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_missbroth")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("dan_murder")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_pazaak")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("main_premium")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_buydroid")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("unk_research")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_rakghoulserum")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_rapidtransit")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor35_renegadesith")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_emb")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_merc")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor38_roguedroid")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_rukilapprentice")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat17ag_sandbounty")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("dan_romance")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_selvenbounty")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat17ae_signingnico")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kas22_starmap")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor33_findstarmap")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man26_starmap")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat17_starmap")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_pebo_stowaway")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_murder")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("man_sunry")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kas24_tachpoaching")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat18aa_tanistrapped")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_planetinfo")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tat17ae_swoopracing")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("Category000")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor35_doublecross")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor35_doublecross2")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_duelring")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_ebonhawk")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("sta_confront")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor38_hermit")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("dan_council")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor35_mandalorian")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_promisedland")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("tar_bastsearch")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor37_ajuntapall")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_pebo_gizkatrouble")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("kor35_waysith")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("k_xor")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("unk_trapped")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ebo46_unfinishedbusiness")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("Tat20aa_worthy")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_tracker")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_bastila")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_canderous")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_carth")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_hk47")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_jolee")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_juhani")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_mission")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_t3m4")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_zaalbar")), 3);
+    string sLast = "";
+    if (KSE_HasData("j_vals")) sLast = KSE_GetData("j_vals");
+    if (sNow == sLast && !bFull) return;
+    KSE_SetData("j_vals", sNow);
+    if (GetSubString(sNow, 0, 3) != "000" && (bFull || GetSubString(sNow, 0, 3) != GetSubString(sLast, 0, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat18ac_dragonhunt|value=" + IntToString(StringToInt(GetSubString(sNow, 0, 3))));
+    if (GetSubString(sNow, 3, 3) != "000" && (bFull || GetSubString(sNow, 3, 3) != GetSubString(sLast, 3, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor25_doubtsith|value=" + IntToString(StringToInt(GetSubString(sNow, 3, 3))));
+    if (GetSubString(sNow, 6, 3) != "000" && (bFull || GetSubString(sNow, 6, 3) != GetSubString(sLast, 6, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_starforge|value=" + IntToString(StringToInt(GetSubString(sNow, 6, 3))));
+    if (GetSubString(sNow, 9, 3) != "000" && (bFull || GetSubString(sNow, 9, 3) != GetSubString(sLast, 9, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_rancor|value=" + IntToString(StringToInt(GetSubString(sNow, 9, 3))));
+    if (GetSubString(sNow, 12, 3) != "000" && (bFull || GetSubString(sNow, 12, 3) != GetSubString(sLast, 12, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kas23_rorworr|value=" + IntToString(StringToInt(GetSubString(sNow, 12, 3))));
+    if (GetSubString(sNow, 15, 3) != "000" && (bFull || GetSubString(sNow, 15, 3) != GetSubString(sLast, 15, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_aidlashowe|value=" + IntToString(StringToInt(GetSubString(sNow, 15, 3))));
+    if (GetSubString(sNow, 18, 3) != "000" && (bFull || GetSubString(sNow, 18, 3) != GetSubString(sLast, 18, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|end_attack|value=" + IntToString(StringToInt(GetSubString(sNow, 18, 3))));
+    if (GetSubString(sNow, 21, 3) != "000" && (bFull || GetSubString(sNow, 21, 3) != GetSubString(sLast, 21, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_bastilatalk|value=" + IntToString(StringToInt(GetSubString(sNow, 21, 3))));
+    if (GetSubString(sNow, 24, 3) != "000" && (bFull || GetSubString(sNow, 24, 3) != GetSubString(sLast, 24, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_helenatalk|value=" + IntToString(StringToInt(GetSubString(sNow, 24, 3))));
+    if (GetSubString(sNow, 27, 3) != "000" && (bFull || GetSubString(sNow, 27, 3) != GetSubString(sLast, 27, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_bendakbounty|value=" + IntToString(StringToInt(GetSubString(sNow, 27, 3))));
+    if (GetSubString(sNow, 30, 3) != "000" && (bFull || GetSubString(sNow, 30, 3) != GetSubString(sLast, 30, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_canderous|value=" + IntToString(StringToInt(GetSubString(sNow, 30, 3))));
+    if (GetSubString(sNow, 33, 3) != "000" && (bFull || GetSubString(sNow, 33, 3) != GetSubString(sLast, 33, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|lev_captured|value=" + IntToString(StringToInt(GetSubString(sNow, 33, 3))));
+    if (GetSubString(sNow, 36, 3) != "000" && (bFull || GetSubString(sNow, 36, 3) != GetSubString(sLast, 36, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_carthtalk|value=" + IntToString(StringToInt(GetSubString(sNow, 36, 3))));
+    if (GetSubString(sNow, 39, 3) != "000" && (bFull || GetSubString(sNow, 39, 3) != GetSubString(sLast, 39, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kas23_mainwookplot|value=" + IntToString(StringToInt(GetSubString(sNow, 39, 3))));
+    if (GetSubString(sNow, 42, 3) != "000" && (bFull || GetSubString(sNow, 42, 3) != GetSubString(sLast, 42, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_casus|value=" + IntToString(StringToInt(GetSubString(sNow, 42, 3))));
+    if (GetSubString(sNow, 45, 3) != "000" && (bFull || GetSubString(sNow, 45, 3) != GetSubString(sLast, 45, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat_ambush|value=" + IntToString(StringToInt(GetSubString(sNow, 45, 3))));
+    if (GetSubString(sNow, 48, 3) != "000" && (bFull || GetSubString(sNow, 48, 3) != GetSubString(sLast, 48, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_diabounty|value=" + IntToString(StringToInt(GetSubString(sNow, 48, 3))));
+    if (GetSubString(sNow, 51, 3) != "000" && (bFull || GetSubString(sNow, 51, 3) != GetSubString(sLast, 51, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17ad_buyinghk47|value=" + IntToString(StringToInt(GetSubString(sNow, 51, 3))));
+    if (GetSubString(sNow, 54, 3) != "000" && (bFull || GetSubString(sNow, 54, 3) != GetSubString(sLast, 54, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ebo_supplies|value=" + IntToString(StringToInt(GetSubString(sNow, 54, 3))));
+    if (GetSubString(sNow, 57, 3) != "000" && (bFull || GetSubString(sNow, 57, 3) != GetSubString(sLast, 57, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_elora|value=" + IntToString(StringToInt(GetSubString(sNow, 57, 3))));
+    if (GetSubString(sNow, 60, 3) != "000" && (bFull || GetSubString(sNow, 60, 3) != GetSubString(sLast, 60, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor33_enteracademy|value=" + IntToString(StringToInt(GetSubString(sNow, 60, 3))));
+    if (GetSubString(sNow, 63, 3) != "000" && (bFull || GetSubString(sNow, 63, 3) != GetSubString(sLast, 63, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_escape|value=" + IntToString(StringToInt(GetSubString(sNow, 63, 3))));
+    if (GetSubString(sNow, 66, 3) != "000" && (bFull || GetSubString(sNow, 66, 3) != GetSubString(sLast, 66, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17aa_jawarescue|value=" + IntToString(StringToInt(GetSubString(sNow, 66, 3))));
+    if (GetSubString(sNow, 69, 3) != "000" && (bFull || GetSubString(sNow, 69, 3) != GetSubString(sLast, 69, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_findingdustil|value=" + IntToString(StringToInt(GetSubString(sNow, 69, 3))));
+    if (GetSubString(sNow, 72, 3) != "000" && (bFull || GetSubString(sNow, 72, 3) != GetSubString(sLast, 72, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_firith|value=" + IntToString(StringToInt(GetSubString(sNow, 72, 3))));
+    if (GetSubString(sNow, 75, 3) != "000" && (bFull || GetSubString(sNow, 75, 3) != GetSubString(sLast, 75, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|Genoharadan|value=" + IntToString(StringToInt(GetSubString(sNow, 75, 3))));
+    if (GetSubString(sNow, 78, 3) != "000" && (bFull || GetSubString(sNow, 78, 3) != GetSubString(sLast, 78, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Ithorak|value=" + IntToString(StringToInt(GetSubString(sNow, 78, 3))));
+    if (GetSubString(sNow, 81, 3) != "000" && (bFull || GetSubString(sNow, 81, 3) != GetSubString(sLast, 81, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Lorgal|value=" + IntToString(StringToInt(GetSubString(sNow, 81, 3))));
+    if (GetSubString(sNow, 84, 3) != "000" && (bFull || GetSubString(sNow, 84, 3) != GetSubString(sLast, 84, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Rulan|value=" + IntToString(StringToInt(GetSubString(sNow, 84, 3))));
+    if (GetSubString(sNow, 87, 3) != "000" && (bFull || GetSubString(sNow, 87, 3) != GetSubString(sLast, 87, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Vorn|value=" + IntToString(StringToInt(GetSubString(sNow, 87, 3))));
+    if (GetSubString(sNow, 90, 3) != "000" && (bFull || GetSubString(sNow, 90, 3) != GetSubString(sLast, 90, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|Geno_Zuulan|value=" + IntToString(StringToInt(GetSubString(sNow, 90, 3))));
+    if (GetSubString(sNow, 93, 3) != "000" && (bFull || GetSubString(sNow, 93, 3) != GetSubString(sLast, 93, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_gluupor|value=" + IntToString(StringToInt(GetSubString(sNow, 93, 3))));
+    if (GetSubString(sNow, 96, 3) != "000" && (bFull || GetSubString(sNow, 96, 3) != GetSubString(sLast, 96, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kas25_mandalorians|value=" + IntToString(StringToInt(GetSubString(sNow, 96, 3))));
+    if (GetSubString(sNow, 99, 3) != "000" && (bFull || GetSubString(sNow, 99, 3) != GetSubString(sLast, 99, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_hk47talk|value=" + IntToString(StringToInt(GetSubString(sNow, 99, 3))));
+    if (GetSubString(sNow, 102, 3) != "000" && (bFull || GetSubString(sNow, 102, 3) != GetSubString(sLast, 102, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kas22_EliMatton|value=" + IntToString(StringToInt(GetSubString(sNow, 102, 3))));
+    if (GetSubString(sNow, 105, 3) != "000" && (bFull || GetSubString(sNow, 105, 3) != GetSubString(sLast, 105, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_ignus|value=" + IntToString(StringToInt(GetSubString(sNow, 105, 3))));
+    if (GetSubString(sNow, 108, 3) != "000" && (bFull || GetSubString(sNow, 108, 3) != GetSubString(sLast, 108, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_infectedoutcasts|value=" + IntToString(StringToInt(GetSubString(sNow, 108, 3))));
+    if (GetSubString(sNow, 111, 3) != "000" && (bFull || GetSubString(sNow, 111, 3) != GetSubString(sLast, 111, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_vulkarbase|value=" + IntToString(StringToInt(GetSubString(sNow, 111, 3))));
+    if (GetSubString(sNow, 114, 3) != "000" && (bFull || GetSubString(sNow, 114, 3) != GetSubString(sLast, 114, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_ruins|value=" + IntToString(StringToInt(GetSubString(sNow, 114, 3))));
+    if (GetSubString(sNow, 117, 3) != "000" && (bFull || GetSubString(sNow, 117, 3) != GetSubString(sLast, 117, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|unk_invis|value=" + IntToString(StringToInt(GetSubString(sNow, 117, 3))));
+    if (GetSubString(sNow, 120, 3) != "000" && (bFull || GetSubString(sNow, 120, 3) != GetSubString(sLast, 120, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_party|value=" + IntToString(StringToInt(GetSubString(sNow, 120, 3))));
+    if (GetSubString(sNow, 123, 3) != "000" && (bFull || GetSubString(sNow, 123, 3) != GetSubString(sLast, 123, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_jagi|value=" + IntToString(StringToInt(GetSubString(sNow, 123, 3))));
+    if (GetSubString(sNow, 126, 3) != "000" && (bFull || GetSubString(sNow, 126, 3) != GetSubString(sLast, 126, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_trials|value=" + IntToString(StringToInt(GetSubString(sNow, 126, 3))));
+    if (GetSubString(sNow, 129, 3) != "000" && (bFull || GetSubString(sNow, 129, 3) != GetSubString(sLast, 129, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_joleetalk|value=" + IntToString(StringToInt(GetSubString(sNow, 129, 3))));
+    if (GetSubString(sNow, 132, 3) != "000" && (bFull || GetSubString(sNow, 132, 3) != GetSubString(sLast, 132, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kas24_removepoachers|value=" + IntToString(StringToInt(GetSubString(sNow, 132, 3))));
+    if (GetSubString(sNow, 135, 3) != "000" && (bFull || GetSubString(sNow, 135, 3) != GetSubString(sLast, 135, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_swg_juhani|value=" + IntToString(StringToInt(GetSubString(sNow, 135, 3))));
+    if (GetSubString(sNow, 138, 3) != "000" && (bFull || GetSubString(sNow, 138, 3) != GetSubString(sLast, 138, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_largobounty|value=" + IntToString(StringToInt(GetSubString(sNow, 138, 3))));
+    if (GetSubString(sNow, 141, 3) != "000" && (bFull || GetSubString(sNow, 141, 3) != GetSubString(sLast, 141, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|Man26ab_swoopraces|value=" + IntToString(StringToInt(GetSubString(sNow, 141, 3))));
+    if (GetSubString(sNow, 144, 3) != "000" && (bFull || GetSubString(sNow, 144, 3) != GetSubString(sLast, 144, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_raiders|value=" + IntToString(StringToInt(GetSubString(sNow, 144, 3))));
+    if (GetSubString(sNow, 147, 3) != "000" && (bFull || GetSubString(sNow, 147, 3) != GetSubString(sLast, 147, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_matrik|value=" + IntToString(StringToInt(GetSubString(sNow, 147, 3))));
+    if (GetSubString(sNow, 150, 3) != "000" && (bFull || GetSubString(sNow, 150, 3) != GetSubString(sLast, 150, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_meetCand|value=" + IntToString(StringToInt(GetSubString(sNow, 150, 3))));
+    if (GetSubString(sNow, 153, 3) != "000" && (bFull || GetSubString(sNow, 153, 3) != GetSubString(sLast, 153, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17aa_middleman|value=" + IntToString(StringToInt(GetSubString(sNow, 153, 3))));
+    if (GetSubString(sNow, 156, 3) != "000" && (bFull || GetSubString(sNow, 156, 3) != GetSubString(sLast, 156, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_companion|value=" + IntToString(StringToInt(GetSubString(sNow, 156, 3))));
+    if (GetSubString(sNow, 159, 3) != "000" && (bFull || GetSubString(sNow, 159, 3) != GetSubString(sLast, 159, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_missing|value=" + IntToString(StringToInt(GetSubString(sNow, 159, 3))));
+    if (GetSubString(sNow, 162, 3) != "000" && (bFull || GetSubString(sNow, 162, 3) != GetSubString(sLast, 162, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_planet|value=" + IntToString(StringToInt(GetSubString(sNow, 162, 3))));
+    if (GetSubString(sNow, 165, 3) != "000" && (bFull || GetSubString(sNow, 165, 3) != GetSubString(sLast, 165, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_missbroth|value=" + IntToString(StringToInt(GetSubString(sNow, 165, 3))));
+    if (GetSubString(sNow, 168, 3) != "000" && (bFull || GetSubString(sNow, 168, 3) != GetSubString(sLast, 168, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_murder|value=" + IntToString(StringToInt(GetSubString(sNow, 168, 3))));
+    if (GetSubString(sNow, 171, 3) != "000" && (bFull || GetSubString(sNow, 171, 3) != GetSubString(sLast, 171, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_pazaak|value=" + IntToString(StringToInt(GetSubString(sNow, 171, 3))));
+    if (GetSubString(sNow, 174, 3) != "000" && (bFull || GetSubString(sNow, 174, 3) != GetSubString(sLast, 174, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|main_premium|value=" + IntToString(StringToInt(GetSubString(sNow, 174, 3))));
+    if (GetSubString(sNow, 177, 3) != "000" && (bFull || GetSubString(sNow, 177, 3) != GetSubString(sLast, 177, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_buydroid|value=" + IntToString(StringToInt(GetSubString(sNow, 177, 3))));
+    if (GetSubString(sNow, 180, 3) != "000" && (bFull || GetSubString(sNow, 180, 3) != GetSubString(sLast, 180, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|unk_research|value=" + IntToString(StringToInt(GetSubString(sNow, 180, 3))));
+    if (GetSubString(sNow, 183, 3) != "000" && (bFull || GetSubString(sNow, 183, 3) != GetSubString(sLast, 183, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_rakghoulserum|value=" + IntToString(StringToInt(GetSubString(sNow, 183, 3))));
+    if (GetSubString(sNow, 186, 3) != "000" && (bFull || GetSubString(sNow, 186, 3) != GetSubString(sLast, 186, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_rapidtransit|value=" + IntToString(StringToInt(GetSubString(sNow, 186, 3))));
+    if (GetSubString(sNow, 189, 3) != "000" && (bFull || GetSubString(sNow, 189, 3) != GetSubString(sLast, 189, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_renegadesith|value=" + IntToString(StringToInt(GetSubString(sNow, 189, 3))));
+    if (GetSubString(sNow, 192, 3) != "000" && (bFull || GetSubString(sNow, 192, 3) != GetSubString(sLast, 192, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_emb|value=" + IntToString(StringToInt(GetSubString(sNow, 192, 3))));
+    if (GetSubString(sNow, 195, 3) != "000" && (bFull || GetSubString(sNow, 195, 3) != GetSubString(sLast, 195, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_merc|value=" + IntToString(StringToInt(GetSubString(sNow, 195, 3))));
+    if (GetSubString(sNow, 198, 3) != "000" && (bFull || GetSubString(sNow, 198, 3) != GetSubString(sLast, 198, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor38_roguedroid|value=" + IntToString(StringToInt(GetSubString(sNow, 198, 3))));
+    if (GetSubString(sNow, 201, 3) != "000" && (bFull || GetSubString(sNow, 201, 3) != GetSubString(sLast, 201, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_rukilapprentice|value=" + IntToString(StringToInt(GetSubString(sNow, 201, 3))));
+    if (GetSubString(sNow, 204, 3) != "000" && (bFull || GetSubString(sNow, 204, 3) != GetSubString(sLast, 204, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17ag_sandbounty|value=" + IntToString(StringToInt(GetSubString(sNow, 204, 3))));
+    if (GetSubString(sNow, 207, 3) != "000" && (bFull || GetSubString(sNow, 207, 3) != GetSubString(sLast, 207, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_romance|value=" + IntToString(StringToInt(GetSubString(sNow, 207, 3))));
+    if (GetSubString(sNow, 210, 3) != "000" && (bFull || GetSubString(sNow, 210, 3) != GetSubString(sLast, 210, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_selvenbounty|value=" + IntToString(StringToInt(GetSubString(sNow, 210, 3))));
+    if (GetSubString(sNow, 213, 3) != "000" && (bFull || GetSubString(sNow, 213, 3) != GetSubString(sLast, 213, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17ae_signingnico|value=" + IntToString(StringToInt(GetSubString(sNow, 213, 3))));
+    if (GetSubString(sNow, 216, 3) != "000" && (bFull || GetSubString(sNow, 216, 3) != GetSubString(sLast, 216, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kas22_starmap|value=" + IntToString(StringToInt(GetSubString(sNow, 216, 3))));
+    if (GetSubString(sNow, 219, 3) != "000" && (bFull || GetSubString(sNow, 219, 3) != GetSubString(sLast, 219, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor33_findstarmap|value=" + IntToString(StringToInt(GetSubString(sNow, 219, 3))));
+    if (GetSubString(sNow, 222, 3) != "000" && (bFull || GetSubString(sNow, 222, 3) != GetSubString(sLast, 222, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man26_starmap|value=" + IntToString(StringToInt(GetSubString(sNow, 222, 3))));
+    if (GetSubString(sNow, 225, 3) != "000" && (bFull || GetSubString(sNow, 225, 3) != GetSubString(sLast, 225, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17_starmap|value=" + IntToString(StringToInt(GetSubString(sNow, 225, 3))));
+    if (GetSubString(sNow, 228, 3) != "000" && (bFull || GetSubString(sNow, 228, 3) != GetSubString(sLast, 228, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_pebo_stowaway|value=" + IntToString(StringToInt(GetSubString(sNow, 228, 3))));
+    if (GetSubString(sNow, 231, 3) != "000" && (bFull || GetSubString(sNow, 231, 3) != GetSubString(sLast, 231, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_murder|value=" + IntToString(StringToInt(GetSubString(sNow, 231, 3))));
+    if (GetSubString(sNow, 234, 3) != "000" && (bFull || GetSubString(sNow, 234, 3) != GetSubString(sLast, 234, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|man_sunry|value=" + IntToString(StringToInt(GetSubString(sNow, 234, 3))));
+    if (GetSubString(sNow, 237, 3) != "000" && (bFull || GetSubString(sNow, 237, 3) != GetSubString(sLast, 237, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kas24_tachpoaching|value=" + IntToString(StringToInt(GetSubString(sNow, 237, 3))));
+    if (GetSubString(sNow, 240, 3) != "000" && (bFull || GetSubString(sNow, 240, 3) != GetSubString(sLast, 240, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat18aa_tanistrapped|value=" + IntToString(StringToInt(GetSubString(sNow, 240, 3))));
+    if (GetSubString(sNow, 243, 3) != "000" && (bFull || GetSubString(sNow, 243, 3) != GetSubString(sLast, 243, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_planetinfo|value=" + IntToString(StringToInt(GetSubString(sNow, 243, 3))));
+    if (GetSubString(sNow, 246, 3) != "000" && (bFull || GetSubString(sNow, 246, 3) != GetSubString(sLast, 246, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tat17ae_swoopracing|value=" + IntToString(StringToInt(GetSubString(sNow, 246, 3))));
+    if (GetSubString(sNow, 249, 3) != "000" && (bFull || GetSubString(sNow, 249, 3) != GetSubString(sLast, 249, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|Category000|value=" + IntToString(StringToInt(GetSubString(sNow, 249, 3))));
+    if (GetSubString(sNow, 252, 3) != "000" && (bFull || GetSubString(sNow, 252, 3) != GetSubString(sLast, 252, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_doublecross|value=" + IntToString(StringToInt(GetSubString(sNow, 252, 3))));
+    if (GetSubString(sNow, 255, 3) != "000" && (bFull || GetSubString(sNow, 255, 3) != GetSubString(sLast, 255, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_doublecross2|value=" + IntToString(StringToInt(GetSubString(sNow, 255, 3))));
+    if (GetSubString(sNow, 258, 3) != "000" && (bFull || GetSubString(sNow, 258, 3) != GetSubString(sLast, 258, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_duelring|value=" + IntToString(StringToInt(GetSubString(sNow, 258, 3))));
+    if (GetSubString(sNow, 261, 3) != "000" && (bFull || GetSubString(sNow, 261, 3) != GetSubString(sLast, 261, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_ebonhawk|value=" + IntToString(StringToInt(GetSubString(sNow, 261, 3))));
+    if (GetSubString(sNow, 264, 3) != "000" && (bFull || GetSubString(sNow, 264, 3) != GetSubString(sLast, 264, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|sta_confront|value=" + IntToString(StringToInt(GetSubString(sNow, 264, 3))));
+    if (GetSubString(sNow, 267, 3) != "000" && (bFull || GetSubString(sNow, 267, 3) != GetSubString(sLast, 267, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor38_hermit|value=" + IntToString(StringToInt(GetSubString(sNow, 267, 3))));
+    if (GetSubString(sNow, 270, 3) != "000" && (bFull || GetSubString(sNow, 270, 3) != GetSubString(sLast, 270, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|dan_council|value=" + IntToString(StringToInt(GetSubString(sNow, 270, 3))));
+    if (GetSubString(sNow, 273, 3) != "000" && (bFull || GetSubString(sNow, 273, 3) != GetSubString(sLast, 273, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_mandalorian|value=" + IntToString(StringToInt(GetSubString(sNow, 273, 3))));
+    if (GetSubString(sNow, 276, 3) != "000" && (bFull || GetSubString(sNow, 276, 3) != GetSubString(sLast, 276, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_promisedland|value=" + IntToString(StringToInt(GetSubString(sNow, 276, 3))));
+    if (GetSubString(sNow, 279, 3) != "000" && (bFull || GetSubString(sNow, 279, 3) != GetSubString(sLast, 279, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|tar_bastsearch|value=" + IntToString(StringToInt(GetSubString(sNow, 279, 3))));
+    if (GetSubString(sNow, 282, 3) != "000" && (bFull || GetSubString(sNow, 282, 3) != GetSubString(sLast, 282, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor37_ajuntapall|value=" + IntToString(StringToInt(GetSubString(sNow, 282, 3))));
+    if (GetSubString(sNow, 285, 3) != "000" && (bFull || GetSubString(sNow, 285, 3) != GetSubString(sLast, 285, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_pebo_gizkatrouble|value=" + IntToString(StringToInt(GetSubString(sNow, 285, 3))));
+    if (GetSubString(sNow, 288, 3) != "000" && (bFull || GetSubString(sNow, 288, 3) != GetSubString(sLast, 288, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|kor35_waysith|value=" + IntToString(StringToInt(GetSubString(sNow, 288, 3))));
+    if (GetSubString(sNow, 291, 3) != "000" && (bFull || GetSubString(sNow, 291, 3) != GetSubString(sLast, 291, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|k_xor|value=" + IntToString(StringToInt(GetSubString(sNow, 291, 3))));
+    if (GetSubString(sNow, 294, 3) != "000" && (bFull || GetSubString(sNow, 294, 3) != GetSubString(sLast, 294, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|unk_trapped|value=" + IntToString(StringToInt(GetSubString(sNow, 294, 3))));
+    if (GetSubString(sNow, 297, 3) != "000" && (bFull || GetSubString(sNow, 297, 3) != GetSubString(sLast, 297, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ebo46_unfinishedbusiness|value=" + IntToString(StringToInt(GetSubString(sNow, 297, 3))));
+    if (GetSubString(sNow, 300, 3) != "000" && (bFull || GetSubString(sNow, 300, 3) != GetSubString(sLast, 300, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|Tat20aa_worthy|value=" + IntToString(StringToInt(GetSubString(sNow, 300, 3))));
+    if (GetSubString(sNow, 303, 3) != "000" && (bFull || GetSubString(sNow, 303, 3) != GetSubString(sLast, 303, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_tracker|value=" + IntToString(StringToInt(GetSubString(sNow, 303, 3))));
+    if (GetSubString(sNow, 306, 3) != "000" && (bFull || GetSubString(sNow, 306, 3) != GetSubString(sLast, 306, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_bastila|value=" + IntToString(StringToInt(GetSubString(sNow, 306, 3))));
+    if (GetSubString(sNow, 309, 3) != "000" && (bFull || GetSubString(sNow, 309, 3) != GetSubString(sLast, 309, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_canderous|value=" + IntToString(StringToInt(GetSubString(sNow, 309, 3))));
+    if (GetSubString(sNow, 312, 3) != "000" && (bFull || GetSubString(sNow, 312, 3) != GetSubString(sLast, 312, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_carth|value=" + IntToString(StringToInt(GetSubString(sNow, 312, 3))));
+    if (GetSubString(sNow, 315, 3) != "000" && (bFull || GetSubString(sNow, 315, 3) != GetSubString(sLast, 315, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_hk47|value=" + IntToString(StringToInt(GetSubString(sNow, 315, 3))));
+    if (GetSubString(sNow, 318, 3) != "000" && (bFull || GetSubString(sNow, 318, 3) != GetSubString(sLast, 318, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_jolee|value=" + IntToString(StringToInt(GetSubString(sNow, 318, 3))));
+    if (GetSubString(sNow, 321, 3) != "000" && (bFull || GetSubString(sNow, 321, 3) != GetSubString(sLast, 321, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_juhani|value=" + IntToString(StringToInt(GetSubString(sNow, 321, 3))));
+    if (GetSubString(sNow, 324, 3) != "000" && (bFull || GetSubString(sNow, 324, 3) != GetSubString(sLast, 324, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_mission|value=" + IntToString(StringToInt(GetSubString(sNow, 324, 3))));
+    if (GetSubString(sNow, 327, 3) != "000" && (bFull || GetSubString(sNow, 327, 3) != GetSubString(sLast, 327, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_t3m4|value=" + IntToString(StringToInt(GetSubString(sNow, 327, 3))));
+    if (GetSubString(sNow, 330, 3) != "000" && (bFull || GetSubString(sNow, 330, 3) != GetSubString(sLast, 330, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_zaalbar|value=" + IntToString(StringToInt(GetSubString(sNow, 330, 3))));
+}
+
+// Persistent companion-recruit markers. The recruit scripts report
+// AP|CHECK|COMPANION|<idx> exactly once, at the moment of recruitment; if no
+// client was attached then, that line is gone for good. They also write the
+// journal quest ap_recruit_<key> (build_ap_tracker_quest.py / ap_recruit_
+// marker.nss), which lives in the SAVE, and this re-reports every set one on
+// every poll -- the same stateless pattern as CheckJournal() above. The client
+// dedups against its checked locations, so repeats are harmless. Not a
+// IsAvailableCreature poll: slot 0 is reused by Trask in the prologue.
+// GetJournalEntry reads -1 for a quest global.jrl doesn't declare, so this
+// is simply silent on an install without the recruit quests.
+void CheckRecruitMarkers()
+{
+    if (GetJournalEntry("ap_recruit_bastila") > 0)
+        KSE_Diag(22, "AP|CHECK|COMPANION|0");
+    if (GetJournalEntry("ap_recruit_canderous") > 0)
+        KSE_Diag(22, "AP|CHECK|COMPANION|1");
+    if (GetJournalEntry("ap_recruit_carth") > 0)
+        KSE_Diag(22, "AP|CHECK|COMPANION|2");
+    if (GetJournalEntry("ap_recruit_hk47") > 0)
+        KSE_Diag(22, "AP|CHECK|COMPANION|3");
+    if (GetJournalEntry("ap_recruit_jolee") > 0)
+        KSE_Diag(22, "AP|CHECK|COMPANION|4");
+    if (GetJournalEntry("ap_recruit_juhani") > 0)
+        KSE_Diag(22, "AP|CHECK|COMPANION|5");
+    if (GetJournalEntry("ap_recruit_mission") > 0)
+        KSE_Diag(22, "AP|CHECK|COMPANION|6");
+    if (GetJournalEntry("ap_recruit_t3m4") > 0)
+        KSE_Diag(22, "AP|CHECK|COMPANION|7");
+    if (GetJournalEntry("ap_recruit_zaalbar") > 0)
+        KSE_Diag(22, "AP|CHECK|COMPANION|8");
+}
+
+// Level of every party member, logged when it changes. Companions only
+// level from real combat XP (the PC's XP is set directly by AP items), so
+// this shows how far behind they are. The PC's tag is empty.
+void CheckPartyLevels()
+{
+    string sLevels = "";
+    int nMember = 0;
+    while (nMember < 3)
+    {
+        object oMember = GetPartyMemberByIndex(nMember);
+        if (GetIsObjectValid(oMember))
+        {
+            string sTag = GetTag(oMember);
+            if (sTag == "") sTag = "pc";
+            sLevels = sLevels + sTag + "=" + IntToString(GetHitDice(oMember)) + "|";
+        }
+        nMember = nMember + 1;
+    }
+    string sLast = "";
+    if (KSE_HasData("party_levels")) sLast = KSE_GetData("party_levels");
+    if (sLevels != sLast)
+    {
+        KSE_SetData("party_levels", sLevels);
+        KSE_Diag(177, "AP|PARTYLEVELS|" + sLevels);
+    }
+}
+
+// True while a scripted scene has companions staged or held on purpose: the
+// Leviathan sequence, the Zaalbar/Jolee temporary-companion scenes (PC local
+// booleans 77/78 and the Taris KSE flags) and the Bastila+Carth party gate
+// (module local boolean 50). Shared by the roster report and the stuck-
+// companion check, which must both leave such scenes alone.
+int ApSceneBusy()
+{
+    object oPC = GetFirstPC();
+    if (InLeviathanSequence()) return TRUE;
+    if (GetLocalBoolean(oPC, 77) || GetLocalBoolean(oPC, 78)) return TRUE;
+    if (KSE_GetData("ff_mission_staged") == "1" || KSE_GetData("zaal_mission_staged") == "1") return TRUE;
+    if (GetLocalBoolean(GetModule(), 50)) return TRUE;
+    return FALSE;
+}
+
+// Companions that stop following or stop fighting (seen live: they stand
+// still while the leader walks off or fights, whatever else is going on).
+// For each of the two companion slots, counted in polls (about 5 s each):
+//   uncommandable   the companion is not commandable (a scene's lock that
+//                   was never released) for 2 polls
+//   idle_far        idle (empty action queue) more than 10 m from the leader
+//                   for 3 polls: not following
+//   other_area      the companion is not in the leader's area (left behind by an
+//                   area change) for 3 polls
+//   idle_in_combat  the leader is in combat and the companion is not, and
+//                   idle, for 2 polls: not engaging
+// The fix clears the companion's actions and makes them commandable; for
+// idle_far it also sends them to the leader, for idle_in_combat to the
+// nearest enemy, and a companion that is stuck again soon after a fix, or more
+// than 30 m away, is teleported 2 m from the leader. Left alone: conversations, a restricted or
+// uncommandable leader, scenes ApSceneBusy() reports and the Endar Spire
+// prologue. Each fix is logged
+// as AP|COMPANIONFIX. Counters live in KSE data (in-DLL memory).
+// One companion slot of CheckCompanionStuck. Written with early RETURNS and nested ifs, never
+// `continue`: the first version looped over both slots with `continue`, and from the
+// first conversation after it was deployed the poll stopped partway at that call on
+// every run (seen live, twice; every other check after it never ran).
+void CheckCompanionSlot(int nIdx, object oLeader, int bSkip, int bNoMove, int nPoll)
+{
+    string sK = IntToString(nIdx);
+    int nStreak = 0;
+    if (KSE_HasData("cs_streak_" + sK)) nStreak = StringToInt(KSE_GetData("cs_streak_" + sK));
+    KSE_SetData("cs_streak_" + sK, "0");
+    if (bSkip) return;
+    object oM = GetPartyMemberByIndex(nIdx);
+    if (!GetIsObjectValid(oM)) return;
+    if (GetIsDead(oM)) return;
+
+    int nAct = GetCurrentAction(oM);
+    int bSameArea = (GetArea(oM) == GetArea(oLeader));
+    float fDist = -1.0;
+    if (bSameArea) fDist = GetDistanceBetween(oM, oLeader);
+    int bIdle = (nAct == ACTION_QUEUEEMPTY || nAct == ACTION_INVALID);
+    string sType = "";
+    int nNeed = 3;
+    if (!bSameArea) sType = "other_area";
+    else if (!GetCommandable(oM)) { sType = "uncommandable"; nNeed = 2; }
+    // Not engaging: the leader fights and this companion does not, whether it stands idle or just
+    // keeps following (seen live in the Star Forge). A passive party AI style is the player's
+    // choice and is left alone.
+    else if (GetIsInCombat(oLeader) && !GetIsInCombat(oM) && (bIdle || nAct == ACTION_FOLLOWLEADER) && fDist < 30.0 && GetPartyAIStyle() != PARTY_AISTYLE_PASSIVE) { sType = "idle_in_combat"; nNeed = 2; }
+    else if (bIdle && fDist > 10.0) sType = "idle_far";
+    if (sType == "") return;
+    // Scenes that park or jump companions on purpose allow only the combat fix, never a move or teleport.
+    if (bNoMove && sType != "idle_in_combat") return;
+
+    nStreak = nStreak + 1;
+    KSE_SetData("cs_streak_" + sK, IntToString(nStreak));
+    int nCool = 0;
+    if (KSE_HasData("cs_cool_" + sK)) nCool = StringToInt(KSE_GetData("cs_cool_" + sK));
+    if (nStreak < nNeed) return;
+    if (nPoll < nCool) return;
+
+    // Stuck again soon after a fix (within 24 polls) or more than 30 m away: jump straight to the leader.
+    int nLastFix = -1000;
+    if (KSE_HasData("cs_fix_" + sK)) nLastFix = StringToInt(KSE_GetData("cs_fix_" + sK));
+    int bEscalate = (nPoll - nLastFix <= 24 || fDist > 30.0);
+    SetCommandable(TRUE, oM);
+    AssignCommand(oM, ClearAllActions());
+    // The spot 2 m from the leader: slot 1 behind-left, slot 2 behind-right of the way the leader
+    // faces, so a teleported companion is next to them, not on them.
+    vector vLead = GetPosition(oLeader);
+    float fSide = 150.0;
+    if (nIdx == 2) fSide = 210.0;
+    float fRad = (GetFacing(oLeader) + fSide) * 0.0174533;
+    vector vJump = Vector(vLead.x + 2.0 * cos(fRad), vLead.y + 2.0 * sin(fRad), vLead.z);
+    if (sType == "idle_in_combat")
+    {
+        object oEnemy = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_ENEMY, oM, 1,
+            CREATURE_TYPE_IS_ALIVE, TRUE, CREATURE_TYPE_PERCEPTION, PERCEPTION_SEEN);
+        if (!GetIsObjectValid(oEnemy))
+            oEnemy = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_ENEMY, oLeader, 1,
+                CREATURE_TYPE_IS_ALIVE, TRUE, CREATURE_TYPE_PERCEPTION, PERCEPTION_SEEN);
+        if (GetIsObjectValid(oEnemy)) AssignCommand(oM, ActionAttack(oEnemy));
+    }
+    else if (sType == "other_area")
+    {
+        // Left behind in the area they came from: only a jump to an object crosses areas. It lands
+        // them on the leader, so a moment later move them to the spot.
+        AssignCommand(oM, JumpToObject(oLeader));
+        DelayCommand(0.5, AssignCommand(oM, ActionJumpToLocation(Location(vJump, GetFacing(oLeader)))));
+    }
+    else if (bEscalate)
+    {
+        AssignCommand(oM, ActionJumpToLocation(Location(vJump, GetFacing(oLeader))));
+    }
+    else if (sType == "idle_far")
+    {
+        AssignCommand(oM, ActionMoveToObject(oLeader, TRUE, 3.0));
+    }
+    KSE_SetData("cs_streak_" + sK, "0");
+    KSE_SetData("cs_fix_" + sK, IntToString(nPoll));
+    KSE_SetData("cs_cool_" + sK, IntToString(nPoll + 6));
+    KSE_Diag(174, "AP|COMPANIONFIX|" + sType + "|" + GetTag(oM) + "|dist=" + IntToString(FloatToInt(fDist))
+        + "|action=" + IntToString(nAct) + "|escalated=" + IntToString(bEscalate));
+}
+
+void CheckCompanionStuck()
+{
+    object oLeader = GetPartyMemberByIndex(0);
+    object oPC = GetFirstPC();
+    // Poll counter for the fix cooldowns below; every caller of the poll (heartbeat and area trampolines) advances it.
+    int nPoll = 0;
+    if (KSE_HasData("cs_poll")) nPoll = StringToInt(KSE_GetData("cs_poll"));
+    nPoll = nPoll + 1;
+    KSE_SetData("cs_poll", IntToString(nPoll));
+    int bSkip = FALSE;
+    int bNoMove = FALSE;
+    if (!GetIsObjectValid(oLeader)) bSkip = TRUE;
+    else if (!GetIsObjectValid(oPC)) bSkip = TRUE;
+    else if (GetPartyMemberCount() < 2) bSkip = TRUE;
+    else if (GetIsDead(oPC)) bSkip = TRUE;
+    else if (GetIsInConversation(oPC)) bSkip = TRUE;
+    else if (!GetCommandable(oPC)) bSkip = TRUE;
+    else if (GetPlayerRestrictMode(oPC)) bSkip = TRUE;
+    else if (ApSceneBusy()) bSkip = TRUE;
+    if (!bSkip)
+    {
+        // The prologue is left entirely alone. Scenes that park or jump party members on purpose
+        // (the Unknown World guide ritual and temple: solo mode, floor-panel puzzle, summit
+        // staging; the Star Forge; the cutscene modules) get only the combat fix, never a move.
+        string sMod = GetStringLowerCase(GetModuleFileName());
+        if (GetStringLeft(sMod, 7) == "end_m01") bSkip = TRUE;
+        else if (sMod == "unk_m41ad") bNoMove = TRUE;
+        else if (GetStringLeft(sMod, 7) == "unk_m44") bNoMove = TRUE;
+        else if (GetStringLeft(sMod, 7) == "sta_m45") bNoMove = TRUE;
+        else if (GetStringLeft(sMod, 5) == "stunt") bNoMove = TRUE;
+    }
+    CheckCompanionSlot(1, oLeader, bSkip, bNoMove, nPoll);
+    CheckCompanionSlot(2, oLeader, bSkip, bNoMove, nPoll);
 }
 
 
@@ -1406,13 +1255,13 @@ void CheckCredits()
     KSE_Diag(29, "AP|CREDITSREPORT|current=" + IntToString(GetGold(oPC)));
 }
 
-// Same stateless design again: ability scores are granted as PERMANENT
-// effects (EffectAbilityIncrease + DURATION_TYPE_PERMANENT), which are
-// tied to the specific character save they were applied to -- a brand
-// new save (or a restarted playthrough) starts with none of them, same
-// as vanilla. Reporting current scores every poll lets the client notice
-// a fresh save is behind what's actually been earned and reapply the
-// missing effects automatically, instead of the player losing progress.
+// Same stateless design again: ability grants are written into the
+// character's base scores, which live in the specific save they were
+// applied to -- a brand new save (or a restarted playthrough) starts
+// without them, same as vanilla. Reporting scores every poll lets the
+// client notice a fresh save is behind what's actually been earned and
+// reapply the missing grants automatically, instead of the player losing
+// progress.
 void CheckAbilityScores()
 {
     object oPC = GetFirstPC();
@@ -1423,6 +1272,12 @@ void CheckAbilityScores()
         + "|wis=" + IntToString(GetAbilityScore(oPC, ABILITY_WISDOM))
         + "|cha=" + IntToString(GetAbilityScore(oPC, ABILITY_CHARISMA));
     KSE_Diag(27, sReport);
+    // GetAbilityScore is the EFFECTIVE score (base + item bonuses + temporary
+    // effects such as combat debuffs). The native selector below logs the six
+    // TRUE base scores as AP|ABILITYBASEREPORT right behind it; the client only
+    // consults them when the effective score drops, to tell a temporary
+    // debuff from a real loss.
+    KSE_SetCreatureField(oPC, KSE_FIELD_REPORT_ABILITY_BASES(), 0);
 }
 
 // Reports current Jedi class levels every poll so the client can check
@@ -1727,6 +1582,65 @@ void CheckCompanionFeats()
     KSE_Diag(139, sReport);
 }
 
+// Roster report for the reconciler's stray-companion cleanup (kotor_
+// reconciliation.py). Reports which of the 9 companions are AVAILABLE (on the
+// roster, whether or not they are in the active party) and whether a scripted
+// scene currently has someone staged on purpose (busy=1): the Leviathan
+// sequence, a conversation, or one of the temporary-companion scenes (PC local
+// booleans 77 Zaalbar's cell scene, 78 Jolee's repulsor field). The reconciler
+// compares it with what the player is ENTITLED to and purges the rest. Nothing
+// is reported in the Endar Spire: slot 0 is Trask there, not Bastila.
+void CheckRoster()
+{
+    object oPC = GetFirstPC();
+    if (!GetIsObjectValid(oPC)) return;
+    if (GetStringLeft(GetStringLowerCase(GetModuleFileName()), 7) == "end_m01") return;
+    int nBusy = 0;
+    if (ApSceneBusy()) nBusy = 1;
+    if (GetIsInConversation(oPC)) nBusy = 1;
+    // The Unknown World finale: its wrapper backfills Carth/Canderous/Mission/T3-M4
+    // as available on purpose. The Star Forge is NOT busy: the reconciler's Star Forge
+    // pass (sf/fc/bp below) cleans the roster there.
+    string sRosterMod = GetStringLowerCase(GetModuleFileName());
+    if (GetStringLeft(sRosterMod, 4) == "unk_") nBusy = 1;
+    string sReport = "AP|ROSTERREPORT|busy=" + IntToString(nBusy);
+    sReport = sReport + "|bastila=" + IntToString(IsAvailableCreature(NPC_BASTILA));
+    sReport = sReport + "|canderous=" + IntToString(IsAvailableCreature(NPC_CANDEROUS));
+    sReport = sReport + "|carth=" + IntToString(IsAvailableCreature(NPC_CARTH));
+    sReport = sReport + "|hk47=" + IntToString(IsAvailableCreature(NPC_HK_47));
+    sReport = sReport + "|jolee=" + IntToString(IsAvailableCreature(NPC_JOLEE));
+    sReport = sReport + "|juhani=" + IntToString(IsAvailableCreature(NPC_JUHANI));
+    sReport = sReport + "|mission=" + IntToString(IsAvailableCreature(NPC_MISSION));
+    sReport = sReport + "|t3m4=" + IntToString(IsAvailableCreature(NPC_T3_M4));
+    sReport = sReport + "|zaalbar=" + IntToString(IsAvailableCreature(NPC_ZAALBAR));
+    // lev = the journal entry of lev_captured (99 once the Leviathan has been
+    // escaped); the reconciler only purges after that.
+    sReport = sReport + "|lev=" + IntToString(GetJournalEntry("lev_captured"));
+    // sf = in a Star Forge module, fc = G_FinalChoice (1 dark, 2 light), bp = Bastila is in
+    // the active party. Used by the reconciler's Star Forge pass.
+    // sf also covers the Ebon Hawk while it is docked at the Star Forge: the galaxy map's
+    // Star Forge entry (k_pebn_starf) sets K_CURRENT_PLANET to 50, and the reconcile then
+    // fires before the player leaves the ship, landing at the transition into the Star Forge.
+    int nSF = (GetStringLeft(sRosterMod, 7) == "sta_m45");
+    if (GetStringLeft(sRosterMod, 4) == "ebo_" && GetGlobalNumber("K_CURRENT_PLANET") == 50) nSF = TRUE;
+    sReport = sReport + "|sf=" + IntToString(nSF)
+        + "|fc=" + IntToString(GetGlobalNumber("G_FinalChoice"))
+        + "|bp=" + IntToString(IsNPCPartyMember(NPC_BASTILA))
+        + "|md=" + IntToString(GetGlobalBoolean("STA_MALAK_DEAD"));
+    // sel = whether each companion can be picked on the party screen (same order as the
+    // availability fields above). Used to fix an entitled companion who is listed but unselectable.
+    sReport = sReport + "|sel=" + IntToString(GetNPCSelectability(NPC_BASTILA) > 0)
+        + IntToString(GetNPCSelectability(NPC_CANDEROUS) > 0)
+        + IntToString(GetNPCSelectability(NPC_CARTH) > 0)
+        + IntToString(GetNPCSelectability(NPC_HK_47) > 0)
+        + IntToString(GetNPCSelectability(NPC_JOLEE) > 0)
+        + IntToString(GetNPCSelectability(NPC_JUHANI) > 0)
+        + IntToString(GetNPCSelectability(NPC_MISSION) > 0)
+        + IntToString(GetNPCSelectability(NPC_T3_M4) > 0)
+        + IntToString(GetNPCSelectability(NPC_ZAALBAR) > 0);
+    KSE_Diag(143, sReport);
+}
+
 // Reports whether the PC currently possesses each of the 8 tracked
 // progression items, so the reconciler can re-grant any that go missing
 // (lost/sold/dropped) without waiting on a full inventory reconciliation --
@@ -1752,7 +1666,100 @@ void CheckProgressionItems()
     sReport = sReport + "|starmap_manaan=" + IntToString(bStarmapManaan);
     int bStarmapKorriban = GetIsObjectValid(GetItemPossessedBy(oPC, "kor_starpad"));
     sReport = sReport + "|starmap_korriban=" + IntToString(bStarmapKorriban);
+    int bVendorSkill = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_vtok_skill"));
+    sReport = sReport + "|vendor_skill=" + IntToString(bVendorSkill);
+    int bVendorAbility = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_vtok_abil"));
+    sReport = sReport + "|vendor_ability=" + IntToString(bVendorAbility);
+    int bVendorFeat = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_vtok_feat"));
+    sReport = sReport + "|vendor_feat=" + IntToString(bVendorFeat);
+    int bVendorPower = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_vtok_power"));
+    sReport = sReport + "|vendor_power=" + IntToString(bVendorPower);
+    int bVendorAlign = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_vtok_align"));
+    sReport = sReport + "|vendor_align=" + IntToString(bVendorAlign);
     KSE_Diag(140, sReport);
+}
+
+void CheckBossDatapads()
+{
+    object oPC = GetFirstPC();
+    int nD = 0;
+    if (KSE_HasData("d_n")) nD = StringToInt(KSE_GetData("d_n"));
+    KSE_SetData("d_n", IntToString(nD + 1));
+    int bFull = (nD % 12 == 0);
+    string sNow = "";
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "ap_dp_calo")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "ap_dp_bandon")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "ap_dp_karath")));
+    string sLast = "";
+    if (KSE_HasData("d_vals")) sLast = KSE_GetData("d_vals");
+    if (sNow == sLast && !bFull) return;
+    KSE_SetData("d_vals", sNow);
+    if (GetSubString(sNow, 0, 1) == "1") KSE_Diag(178, "AP|DATAPAD|calo");
+    if (GetSubString(sNow, 1, 1) == "1") KSE_Diag(178, "AP|DATAPAD|bandon");
+    if (GetSubString(sNow, 2, 1) == "1") KSE_Diag(178, "AP|DATAPAD|karath");
+}
+
+void CheckVisitedMarkers()
+{
+    object oPC = GetFirstPC();
+    int nV = 0;
+    if (KSE_HasData("av_n")) nV = StringToInt(KSE_GetData("av_n"));
+    KSE_SetData("av_n", IntToString(nV + 1));
+    int bFull = (nV % 12 == 0);
+    string sNow = "";
+    int i;
+    for (i = 0; i < 78; i++)
+    {
+        string sIdx = IntToString(i);
+        if (i < 10) sIdx = "0" + sIdx;
+        sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "ap_loc_" + sIdx)));
+    }
+    string sLast = "";
+    if (KSE_HasData("av_vals")) sLast = KSE_GetData("av_vals");
+    if (sNow == sLast && !bFull) return;
+    KSE_SetData("av_vals", sNow);
+    string sList = "";
+    for (i = 0; i < 78; i++)
+    {
+        if (GetSubString(sNow, i, 1) == "1") sList = sList + IntToString(i) + ",";
+    }
+    if (sList != "") KSE_Diag(179, "AP|AREASVISITED|" + sList);
+}
+
+void CheckHideoutCarth()
+{
+    if (GetModuleFileName() != "tar_m02af") return;
+    object oPC = GetFirstPC();
+    string sNow = "carth=" + IntToString(GetIsObjectValid(GetObjectByTag("Carth")))
+        + "|carth02=" + IntToString(GetIsObjectValid(GetObjectByTag("Carth02")))
+        + "|trigger=" + IntToString(GetIsObjectValid(GetObjectByTag("tar02_carstr")))
+        + "|avail=" + IntToString(IsAvailableCreature(NPC_CARTH))
+        + "|inparty=" + IntToString(IsNPCPartyMember(NPC_CARTH))
+        + "|conv=" + IntToString(GetIsInConversation(oPC))
+        + "|party=" + IntToString(GetPartyMemberCount())
+        + "|planet=" + IntToString(GetGlobalNumber("K_CURRENT_PLANET"));
+    string sLast = "";
+    if (KSE_HasData("hd_state")) sLast = KSE_GetData("hd_state");
+    if (sNow == sLast) return;
+    KSE_SetData("hd_state", sNow);
+    KSE_Diag(183, "AP|HIDEOUT|" + sNow);
+}
+
+void CheckPlayerId()
+{
+    object oPC = GetFirstPC();
+    int nP = 0;
+    if (KSE_HasData("pid_n")) nP = StringToInt(KSE_GetData("pid_n"));
+    KSE_SetData("pid_n", IntToString(nP + 1));
+    int bFull = (nP % 12 == 0);
+    string sNow = "NONE";
+    object oId = GetItemPossessedBy(oPC, "ap_pid");
+    if (GetIsObjectValid(oId)) sNow = GetName(oId);
+    string sLast = "";
+    if (KSE_HasData("pid_last")) sLast = KSE_GetData("pid_last");
+    if (sNow == sLast && !bFull) return;
+    KSE_SetData("pid_last", sNow);
+    KSE_Diag(180, "AP|PLAYERID|" + sNow);
 }
 
 void CheckAPTrackerStage()
@@ -1764,8 +1771,47 @@ void CheckAPTrackerStage()
 // currently holds (KSE_GetFeatAcquired is per-id membership only, there's
 // no 'list all feats' native), so the client can pick half at random for
 // the Remove Half Known Feats trap without guessing at what's held.
+//
+// Every poll this checks ONLY the feats the reconciler and the Additional Feats picker use
+// (the Additional Feats pool plus the Jedi class feats, the same ids as the companion scan)
+// -- each KSE_GetFeatAcquired call writes a native log line, and scanning all of them every
+// 5 s was most of kse.log. The full list the Remove Half Known Feats trap needs is reported by
+// CheckFeatsFull() below, about once a minute.
 void CheckFeats()
 {
+    object oPC = GetFirstPC();
+    string sHeld = "";
+    if (KSE_GetFeatAcquired(4, oPC)) sHeld += "4,";
+    if (KSE_GetFeatAcquired(5, oPC)) sHeld += "5,";
+    if (KSE_GetFeatAcquired(6, oPC)) sHeld += "6,";
+    if (KSE_GetFeatAcquired(8, oPC)) sHeld += "8,";
+    if (KSE_GetFeatAcquired(11, oPC)) sHeld += "11,";
+    if (KSE_GetFeatAcquired(14, oPC)) sHeld += "14,";
+    if (KSE_GetFeatAcquired(28, oPC)) sHeld += "28,";
+    if (KSE_GetFeatAcquired(29, oPC)) sHeld += "29,";
+    if (KSE_GetFeatAcquired(30, oPC)) sHeld += "30,";
+    if (KSE_GetFeatAcquired(31, oPC)) sHeld += "31,";
+    if (KSE_GetFeatAcquired(40, oPC)) sHeld += "40,";
+    if (KSE_GetFeatAcquired(42, oPC)) sHeld += "42,";
+    if (KSE_GetFeatAcquired(43, oPC)) sHeld += "43,";
+    if (KSE_GetFeatAcquired(55, oPC)) sHeld += "55,";
+    if (KSE_GetFeatAcquired(60, oPC)) sHeld += "60,";
+    if (KSE_GetFeatAcquired(88, oPC)) sHeld += "88,";
+    if (KSE_GetFeatAcquired(98, oPC)) sHeld += "98,";
+    if (KSE_GetFeatAcquired(101, oPC)) sHeld += "101,";
+    if (KSE_GetFeatAcquired(104, oPC)) sHeld += "104,";
+    if (KSE_GetFeatAcquired(107, oPC)) sHeld += "107,";
+    if (KSE_GetFeatAcquired(116, oPC)) sHeld += "116,";
+    KSE_Diag(135, "AP|FEATREPORT|" + sHeld);
+}
+
+// The full held-feat list, on the first poll after launch and then every 12th poll (~1 min).
+void CheckFeatsFull()
+{
+    int nFull = 0;
+    if (KSE_HasData("ff_n")) nFull = StringToInt(KSE_GetData("ff_n"));
+    KSE_SetData("ff_n", IntToString(nFull + 1));
+    if (nFull % 12 != 0) return;
     object oPC = GetFirstPC();
     string sHeld = "";
     if (KSE_GetFeatAcquired(1, oPC)) sHeld += "1,";
@@ -1890,7 +1936,7 @@ void CheckFeats()
     if (KSE_GetFeatAcquired(122, oPC)) sHeld += "122,";
     if (KSE_GetFeatAcquired(123, oPC)) sHeld += "123,";
     if (KSE_GetFeatAcquired(124, oPC)) sHeld += "124,";
-    KSE_Diag(135, "AP|FEATREPORT|" + sHeld);
+    KSE_Diag(135, "AP|FEATFULL|" + sHeld);
 }
 
 // Same shape as CheckFeats() above, for spells.2da (force powers) --
@@ -1974,9 +2020,16 @@ void CheckCharacterName()
 // is just the reporting half, so the client can be authoritative on what
 // skill ranks the player should have (same as XP/credits/inventory) rather
 // than the game deciding anything for itself.
+//
+// GetSkillRank is NOT the rank -- it adds the ability modifier and any
+// effects, so it moves with abilities, gear and combat debuffs. The native
+// selector below logs the eight TRUE ranks as AP|SKILLBASEREPORT; it runs
+// BEFORE the SKILLREPORT line because SKILLREPORT is the cycle-complete
+// marker that triggers reconciliation, which needs the true ranks in hand.
 void CheckSkills()
 {
     object oPC = GetFirstPC();
+    KSE_SetCreatureField(oPC, KSE_FIELD_REPORT_SKILL_RANKS(), 0);
     string sReport = "AP|SKILLREPORT|computeruse=" + IntToString(GetSkillRank(SKILL_COMPUTER_USE, oPC))
         + "|demolitions=" + IntToString(GetSkillRank(SKILL_DEMOLITIONS, oPC))
         + "|stealth=" + IntToString(GetSkillRank(SKILL_STEALTH, oPC))
@@ -2018,37 +2071,6 @@ void CheckDeath()
     if (GetIsDead(oPC))
     {
         KSE_Diag(64, "AP|CHECK|DEATH");
-    }
-}
-
-// Bounty Card count -- replaces the old AP|INVENTORY-based
-// _bounty_card_count parsing, which relied on CheckInventory()'s giant
-// concatenated string (see the comment above for the 512-byte
-// truncation this hit). This scans for exactly ONE tag and emits a
-// single bounded integer, never a per-item string build, so it can't hit
-// that limit no matter how large the backpack is. Only generated when
-// additional_enemies_mode != 0 for this seed -- bounty carriers don't
-// exist at all otherwise, so the scan would be pure waste.
-void CheckBountyCount()
-{
-    object oPC = GetFirstPC();
-    int nCount = 0;
-    object oItem = GetFirstItemInInventory(oPC);
-    while (GetIsObjectValid(oItem))
-    {
-        if (GetTag(oItem) == "ap_bounty_card") nCount = nCount + GetItemStackSize(oItem);
-        oItem = GetNextItemInInventory(oPC);
-    }
-
-    // Only report on an actual change -- same only-when-it-moves shape as
-    // the rest of this file's stateful checks, avoids re-sending an
-    // unchanged count every 5s for as long as the player holds any cards.
-    int nLast = -1;
-    if (KSE_HasData("bounty_last_count")) nLast = StringToInt(KSE_GetData("bounty_last_count"));
-    if (nCount != nLast)
-    {
-        KSE_SetData("bounty_last_count", IntToString(nCount));
-        KSE_Diag(157, "AP|BOUNTY|COUNT|" + IntToString(nCount));
     }
 }
 
@@ -2120,30 +2142,13 @@ void CheckForce()
         + "|max=" + IntToString(GetMaxForcePoints(oPC)));
 }
 
-void main()
+// Restarts the heartbeat when it is dead (see the comment below). Called FIRST in
+// main(), and again at the end: it used to run only at the end, so a poll that
+// stopped partway on an area entry (seen live, 2026-10-04: polling and the
+// heartbeat stayed dead for almost three minutes until the area was reloaded)
+// never got to restart it.
+void EnsureHeartbeat()
 {
-    CheckQuests();
-    CheckPlot();
-    CheckJournal();
-    CheckXP();
-    CheckCredits();
-    CheckAbilityScores();
-    CheckClasses();
-    CheckCompanionClasses();
-    CheckCompanionFeats();
-    CheckProgressionItems();
-    CheckAPTrackerStage();
-    CheckFeats();
-    CheckForcePowers();
-    CheckCharacterName();
-    CheckSkills();
-    CheckDeath();
-    CheckBountyCount();
-    CheckAlignment();
-    CheckGoal();
-    CheckLevel();
-    CheckForce();
-
     // Self-healing heartbeat restart, staleness-based (not a one-shot flag).
     // Confirmed this session: a same-process in-game Load Game silently kills
     // the heartbeat's DelayCommand chain while leaving KSE's in-session data
@@ -2176,4 +2181,54 @@ void main()
         KSE_SetData("hb_tick_time", IntToString(nNow));
         ExecuteScript("ap_heartbeat", OBJECT_SELF);
     }
+}
+
+void main()
+{
+    // A begin without an end in kse.log marks a poll that stopped partway. The stage markers
+    // s1-s4 (which find WHERE it stopped) are only logged when the previous poll never reached
+    // its end, so a poll that keeps stopping at the same place leaves its trail from the next
+    // poll on without four extra lines on every healthy poll.
+    int bTrace = (KSE_HasData("poll_open") && KSE_GetData("poll_open") == "1");
+    KSE_SetData("poll_open", "1");
+    KSE_Diag(176, "AP|POLLRUN|begin|party=" + IntToString(GetPartyMemberCount()));
+    EnsureHeartbeat();
+    if (bTrace) KSE_Diag(176, "AP|POLLRUN|s1");
+    CheckCompanionStuck();
+    if (bTrace) KSE_Diag(176, "AP|POLLRUN|s2");
+    CheckPartyLevels();
+    if (bTrace) KSE_Diag(176, "AP|POLLRUN|s3");
+    CheckJoleeFieldRevert();
+    if (bTrace) KSE_Diag(176, "AP|POLLRUN|s4");
+    CheckQuests();
+    CheckPlot();
+    CheckJournal();
+    CheckRecruitMarkers();
+    CheckXP();
+    CheckCredits();
+    CheckAbilityScores();
+    CheckClasses();
+    CheckCompanionClasses();
+    CheckCompanionFeats();
+    CheckRoster();
+    CheckProgressionItems();
+    CheckBossDatapads();
+    CheckVisitedMarkers();
+    CheckPlayerId();
+    CheckHideoutCarth();
+    CheckAPTrackerStage();
+    CheckFeats();
+    CheckFeatsFull();
+    CheckForcePowers();
+    CheckCharacterName();
+    CheckSkills();
+    CheckDeath();
+    CheckAlignment();
+    CheckGoal();
+    CheckLevel();
+    CheckForce();
+
+    EnsureHeartbeat();
+    KSE_SetData("poll_open", "0");
+    KSE_Diag(176, "AP|POLLRUN|end");
 }

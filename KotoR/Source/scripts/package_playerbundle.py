@@ -23,6 +23,8 @@ Usage:
 """
 import argparse
 import os
+import json
+import re
 import zipfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -33,7 +35,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # Step 1). No shared constant between the two scripts on purpose: bumping
 # one without the other would be a silent mistake either way, so each
 # script's own default should be updated by hand at release time.
-BUNDLE_VERSION = "0.1.6"
+BUNDLE_VERSION = "0.1.8"
 
 # REMINDER: this list does not update itself. Every time a NEW file (not
 # just an edit to an existing one) becomes something a tester needs to run
@@ -151,6 +153,10 @@ FILES = [
     # TSL Force Power port pilot installer (dev/tester-run by hand only --
     # it needs a local KOTOR 2 install to copy assets from).
     (("scripts", "patch_galactic_shop.py"), "scripts/patch_galactic_shop.py"),
+    # Boss datapads: runs from KotorClient.py on every Connect (apply_boss_datapads()).
+    (("scripts", "patch_boss_datapads.py"), "scripts/patch_boss_datapads.py"),
+    # Player ID: runs from KotorClient.py on every Connect (apply_player_id()).
+    (("scripts", "patch_player_id.py"), "scripts/patch_player_id.py"),
     (("scripts", "patch_tsl_powers.py"), "scripts/patch_tsl_powers.py"),
     # Found missing entirely -- runs automatically from KotorClient.py's
     # Connect handler (apply_shop_item_costs()), universal/not seed-gated,
@@ -159,6 +165,11 @@ FILES = [
     # fix despite it being built and verified once on the dev's own
     # machine. Same class of gap as the ones documented above.
     (("scripts", "patch_shop_item_costs.py"), "scripts/patch_shop_item_costs.py"),
+    # Runs from KotorClient.py's Connect handler (apply_area_poll_hooks()),
+    # universal/not seed-gated: gives areas with no OnEnter script of their
+    # own (Tomb of Marka Ragnos) the poll hook so polling restarts there.
+    # Its handler ap_area_poll ships with extender/scripts_src below.
+    (("scripts", "patch_area_poll_hooks.py"), "scripts/patch_area_poll_hooks.py"),
     # Runs automatically from KotorClient.py's Connect handler
     # (apply_ap_tracker_quest()), universal/not seed-gated, same class of
     # gap as patch_shop_item_costs.py above if missed -- without this file
@@ -212,6 +223,55 @@ DIRS = [
 ]
 
 
+# extender/scripts_src ships whole (the precompiled .ncs files are the fallback when a tester's compiler is missing), but it also
+# holds scripts that were only ever used to probe or test the game. Those are left out of the bundle. Vendor scripts are kept
+# only if the vendor manifest or the packaged dist/Override lists them (older vendor designs left others behind).
+DEV_ONLY_SCRIPT_FAMILIES = re.compile(
+    r"^(ap_(captest|localtest|singletest|test|tv|verify_|simulate_|stress_|castspell_diag|grant_test_items|"
+    r"force_mission_party|prep_companions|set_xp_marker|pending|area_heartbeat|civilbag_open|rubble_open|"
+    r"partpile|pp001|mb001_dist)|ap_heartbeat_)")
+
+
+def _script_stems_in_json(path):
+    names = set()
+
+    def walk(x):
+        if isinstance(x, str):
+            names.add(os.path.splitext(x)[0])
+        elif isinstance(x, dict):
+            for v in list(x.values()) + list(x.keys()):
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            walk(json.load(f))
+    return names
+
+
+def _dev_only_filter():
+    """Returns a function(stem) -> True for scripts_src files that must not ship."""
+    scripts_src = os.path.join(REPO_ROOT, "extender", "scripts_src")
+    keep = _script_stems_in_json(os.path.join(scripts_src, "_vendor_manifest.json"))
+    keep |= _script_stems_in_json(os.path.join(scripts_src, "_location_manifest.json"))
+    dist_override = os.path.join(REPO_ROOT, "dist", "Override")
+    if os.path.isdir(dist_override):
+        keep |= {os.path.splitext(f)[0] for f in os.listdir(dist_override)}
+
+    def is_dev_only(stem):
+        if stem in keep:
+            return False
+        return bool(DEV_ONLY_SCRIPT_FAMILIES.match(stem)) or stem.startswith("ap_v")
+
+    # Guard: nothing the package itself needs may be matched by the families above.
+    wrongly = sorted(k for k in keep if DEV_ONLY_SCRIPT_FAMILIES.match(k))
+    if wrongly:
+        raise SystemExit(f"dev-only filter would drop needed scripts: {wrongly}")
+    return is_dev_only
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", default=BUNDLE_VERSION)
@@ -222,6 +282,8 @@ def main():
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     included = 0
+    left_out = 0
+    is_dev_only = _dev_only_filter()
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for parts, arcname in FILES:
             full = os.path.join(REPO_ROOT, *parts)
@@ -235,15 +297,18 @@ def main():
             if not os.path.isdir(full_root):
                 raise SystemExit(f"Missing expected folder: {full_root}")
             for root, dirs, files in os.walk(full_root):
-                dirs[:] = [d for d in dirs if d != "__pycache__"]
+                dirs[:] = [d for d in dirs if d not in ("__pycache__", "logs")]
                 for fname in files:
+                    if arc_root == "extender/scripts_src" and is_dev_only(os.path.splitext(fname)[0]):
+                        left_out += 1
+                        continue
                     full = os.path.join(root, fname)
                     rel = os.path.relpath(full, full_root).replace(os.sep, "/")
                     zf.write(full, f"{arc_root}/{rel}")
                     included += 1
 
     print(f"Wrote {out_path}")
-    print(f"  {included} files packaged")
+    print(f"  {included} files packaged, {left_out} dev/test script files left out of extender/scripts_src")
 
 
 if __name__ == "__main__":

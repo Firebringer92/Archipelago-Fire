@@ -39,6 +39,7 @@ import Utils
 if __name__ == "__main__":
     Utils.init_logging("KotorClient", exception_logger="Client")
 
+from NetUtils import ClientStatus
 from CommonClient import (
     ClientCommandProcessor,
     CommonContext,
@@ -50,7 +51,7 @@ from CommonClient import (
 
 from kotor_extender_bridge import ExtenderBridge, delivery_state
 from kotor_reconciliation import ReconciliationTracker, CLASS_ARM_TO_KEY
-from entitlement import HEAVY_ARMS, is_heavy_arm
+from entitlement import HEAVY_ARMS, PROGRESSION_ITEM_RESREFS, is_heavy_arm
 from kotor_location_tracker import LocationTracker
 from worlds.kotor.Items import item_table, TRAP_ITEMS
 from worlds.kotor.Locations import location_table
@@ -141,11 +142,11 @@ ADDITIONAL_FEATS_POOL = [
 ]
 
 _GOAL_MALAK_RE = re.compile(r"AP\|CHECK\|GOAL\|MALAK_DEAD")
-# reach_leviathan Goal option -- reuses the same raw journal event the
-# "Leviathan: Captured by the Leviathan" location already fires on
-# (lev_captured, journal_target=99 in Locations.py), no new NWScript/native
-# signal needed.
-_GOAL_LEVIATHAN_RE = re.compile(r"AP\|CHECK\|JOURNAL\|lev_captured\|value=(-?\d+)")
+# reach_leviathan Goal option -- complete on entering the first Leviathan area
+# ("Visited: Leviathan - Prison Block"), the same area event that location
+# fires on. Its index comes from Locations.py so the two can't drift apart.
+_GOAL_LEVIATHAN_AREA_IDX = location_table["Visited: Leviathan - Prison Block"].area_idx
+_GOAL_LEVIATHAN_RE = re.compile(r"AP\|CHECK\|AREA\|" + str(_GOAL_LEVIATHAN_AREA_IDX) + r"(?!\d)")
 _LEVEL_RE = re.compile(r"AP\|LEVELREPORT\|(\d+)")
 # arm_orchestrator.py's own diagnostic -- not written by the KSE DLL, but
 # the log-tail thread relays ANY line in kse.log containing
@@ -155,6 +156,16 @@ _LEVEL_RE = re.compile(r"AP\|LEVELREPORT\|(\d+)")
 # print-only warning never reached the client at all (only this script's
 # own stdout, which the C extender discards on a successful exit).
 _QUEUE_BLOAT_RE = re.compile(r"AP\|WARNING\|QUEUE_BLOAT\|(\d+)")
+# CheckPlayerId() (generate_poll_shared.py): the name of the character's Player ID item, "Player ID: <slot> <hash>",
+# or NONE when the character has no such item. The hash is the LAST space-separated word.
+_PLAYERID_RE = re.compile(r'AP\|PLAYERID\|([^"]+)')
+
+
+def save_id_for(seed_name, slot) -> str:
+    """The short id of a (seed, slot): the first 9 hex characters of sha1("<seed_name>|<slot>"). The Player ID
+    item's name carries it (patch_player_id.py writes the template on every Connect); the poll reports the
+    item the character holds, and _note_player_id() compares the two. Passive: nothing is paused on it."""
+    return hashlib.sha1(f"{seed_name}|{slot}".encode("utf-8")).hexdigest()[:9]
 MAX_LEVEL = 20  # KOTOR's real level cap, per exptable.2da
 
 # Loaded once at import time -- same source of truth Items.py reads to build
@@ -243,6 +254,8 @@ KNOWN_ARM_NAMES = [
 # that stale copy silently dropped every item it didn't recognize,
 # including both filler items, for this entire project's testing so far.
 ITEM_NAME_TO_ARM = {name: data.arm_name for name, data in item_table.items()}
+# arm_name of the four goal-progress items in worlds/kotor/Items.py.
+GOAL_MARKER_ARM = "goal_marker"
 
 # Persistent delivery record, one JSON object per line, append-only across
 # sessions -- both the audit trail AND (for everything except class
@@ -256,12 +269,9 @@ ITEM_NAME_TO_ARM = {name: data.arm_name for name, data in item_table.items()}
 # site in _deliver_item for why the log alone isn't enough for those.
 DELIVERY_LOG_PATH = os.path.join(_CLIENT_DIR, "kotor_delivery_log.jsonl")
 
-# Same default every other setup script in this repo hardcodes
-# (patch_item_suppression.py, patch_door_randomizer.py, setup_game.py,
-# generate_poll_shared.py) -- no shared config file for it yet, so this
-# stays consistent with that convention rather than inventing a new one
-# just for this call site.
-GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
+# The standard Steam location, used only when nothing below names the game
+# folder. GAME_DIR itself is resolved right after _sys_argv_value is defined.
+_DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 
 
 def _sys_argv_value(flag, default):
@@ -276,6 +286,34 @@ def _sys_argv_value(flag, default):
         if a.startswith(flag + "="):
             return a.split("=", 1)[1]
     return default
+
+
+def _resolve_game_dir() -> str:
+    """Where the KOTOR install is, for every script the client launches
+    (--game-dir=). In order: --game-dir on the command line, the
+    KOTOR_GAME_DIR environment variable, the folder install_playerbundle.py
+    recorded in %LOCALAPPDATA%\\KotorAP\\install_manifest.json when it
+    installed (the same record the Launcher button already uses), then the
+    default Steam location. A tester whose game is not on C:\\Program Files
+    (x86)\\Steam would otherwise have every patch step run against a
+    folder that does not exist."""
+    explicit = _sys_argv_value("--game-dir", None) or os.environ.get("KOTOR_GAME_DIR")
+    if explicit:
+        return explicit
+    try:
+        state_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "KotorAP")
+        with open(os.path.join(state_dir, "install_manifest.json"), encoding="utf-8") as f:
+            recorded = json.load(f).get("game_dir")
+        # Only a folder that really holds the game: the record outlives an
+        # uninstall or a test install into a scratch folder.
+        if recorded and os.path.isfile(os.path.join(recorded, "swkotor.exe")):
+            return recorded
+    except Exception:
+        pass
+    return _DEFAULT_GAME_DIR
+
+
+GAME_DIR = _resolve_game_dir()
 
 
 def _detect_repo_root() -> str:
@@ -307,8 +345,11 @@ PATCH_LOOT_DISTURB = os.path.join(REPO_ROOT, "scripts", "patch_loot_disturb.py")
 PATCH_DOOR_RANDOMIZER = os.path.join(REPO_ROOT, "scripts", "patch_door_randomizer.py")
 PATCH_ADDITIONAL_ENEMIES = os.path.join(REPO_ROOT, "scripts", "patch_additional_enemies.py")
 PATCH_GALACTIC_SHOP = os.path.join(REPO_ROOT, "scripts", "patch_galactic_shop.py")
+PATCH_BOSS_DATAPADS = os.path.join(REPO_ROOT, "scripts", "patch_boss_datapads.py")
+PATCH_PLAYER_ID = os.path.join(REPO_ROOT, "scripts", "patch_player_id.py")
 PATCH_NEW_COMPANION_ASSETS = os.path.join(REPO_ROOT, "scripts", "generate_new_companion_assets.py")
 PATCH_SHOP_ITEM_COSTS = os.path.join(REPO_ROOT, "scripts", "patch_shop_item_costs.py")
+PATCH_AREA_POLL_HOOKS = os.path.join(REPO_ROOT, "scripts", "patch_area_poll_hooks.py")
 BUILD_AP_TRACKER_QUEST = os.path.join(REPO_ROOT, "scripts", "build_ap_tracker_quest.py")
 ARM_ORCHESTRATOR = os.path.join(REPO_ROOT, "scripts", "arm_orchestrator.py")
 
@@ -386,7 +427,8 @@ def write_slot_data_for_patch_scripts(
         loot_mode: int, door_mapping: dict | None, area_randomizer: int, starting_class: int,
         additional_enemies_mode: int = 0, seed_name: str | None = None,
         progression_system: bool = False, galactic_shop: bool = False,
-        new_companion: int = 0, door_mapping_repairs: list | None = None) -> None:
+        new_companion: int = 0, door_mapping_repairs: list | None = None,
+        archipelago_vendor: bool = False) -> None:
     """Called on every successful Connect -- see SLOT_DATA_PATH above for
     why this exists. A plain JSON write (not restricted_loads/pickle --
     this project controls both ends, unlike the raw .archipelago format),
@@ -411,6 +453,9 @@ def write_slot_data_for_patch_scripts(
                 # cargo-hold module edit when on, restores the vanilla RIM
                 # when off.
                 "galactic_shop": galactic_shop,
+                # Read by generate_trampoline_batch.py -- spawns the Archipelago Vendor
+                # NPC in the Hawk's trampoline when on.
+                "archipelago_vendor": archipelago_vendor,
                 # Read by generate_trampoline_batch.py at real delivery
                 # time to decide arm 20's (companion_hk47) template string
                 # -- see that file's NEW_COMPANION_TEMPLATE comment.
@@ -484,6 +529,75 @@ def regenerate_makejedi_suppressor(starting_class: int) -> tuple[bool, str]:
         return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
     except Exception as e:
         return False, f"regenerate_makejedi_suppressor raised: {e}"
+
+
+def ensure_vendor_spawn() -> tuple[bool, str]:
+    """See KotorContext._ensure_vendor_and_log. Delegates to arm_orchestrator.py --ensure-vendor."""
+    try:
+        result = subprocess.run(
+            [sys.executable, ARM_ORCHESTRATOR, f"--game-dir={GAME_DIR}", "--ensure-vendor"],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode != 0:
+            return False, f"arm_orchestrator.py --ensure-vendor failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"ensure_vendor_spawn raised: {e}"
+
+
+def purge_queued_deathlinks() -> tuple[bool, str]:
+    """Drops every queued force_death arm (arm 32, incoming DeathLinks) from the trampoline
+    queue. A DeathLink is only meaningful when it arrives; one still queued after a reconnect
+    would kill the player on the next area entry of any save loaded afterwards, and every
+    reload of that save (a death arm stays queued until confirmed applied), which made saves
+    unplayable. Called on every Connect."""
+    try:
+        result = subprocess.run(
+            [sys.executable, ARM_ORCHESTRATOR, f"--game-dir={GAME_DIR}", "--purge-arm=32"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            return False, f"arm_orchestrator.py --purge-arm failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"purge_queued_deathlinks raised: {e}"
+
+
+def clear_staged_queue(everything: bool = False) -> tuple[bool, str]:
+    """Drops staged-but-unapplied entries from the trampoline queue (arm_orchestrator.py --clear-derived, or
+    --clear-all when everything is True). The derived set is what the reconciler recomputes from fresh polls: exact-value
+    XP/credit/level corrections, companion class assignments and the Archipelago Tracker stages. A stale copy of those
+    persists on disk across a game restart and fires at the next area entry, a save load included, before any poll has
+    run; after a reconnect it can also be applied on top of the same correction sent again. Called on every extender
+    (re)connect and every Connect; everything else staged (gear, traps, force powers, plain arms) is kept."""
+    flag = "--clear-all" if everything else "--clear-derived"
+    try:
+        result = subprocess.run(
+            [sys.executable, ARM_ORCHESTRATOR, f"--game-dir={GAME_DIR}", flag],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            return False, f"arm_orchestrator.py {flag} failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"clear_staged_queue raised: {e}"
+
+
+def restore_dropped_queue() -> tuple[bool, str]:
+    """Re-stages the entries an admin /ap_clear_queue dropped that nothing else brings back (gear and item grants, traps,
+    force powers, additional feats, plain arms): arm_orchestrator.py --restore-dropped. The exact-value corrections,
+    companion class assignments, Tracker stages and DeathLink deaths are never journaled, since the reconciler recomputes
+    them or they only matter when they arrive. An entry already staged is not added twice."""
+    try:
+        result = subprocess.run(
+            [sys.executable, ARM_ORCHESTRATOR, f"--game-dir={GAME_DIR}", "--restore-dropped"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            return False, f"arm_orchestrator.py --restore-dropped failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"restore_dropped_queue raised: {e}"
 
 
 def reset_trampolines_if_owner_changed(seed_name: str, slot: str) -> tuple[bool, str]:
@@ -615,7 +729,9 @@ def revert_all_game_files() -> tuple[bool, str]:
     restore())."""
     total_restored = 0
     ok_all = True
-    for script in (PATCH_ITEM_SUPPRESSION, PATCH_LOOT_DISTURB):
+    # The boss datapad patch takes its own datapads back out of the live module files (it must not copy
+    # a backup over them, which would also undo the other patchers' edits), so it goes last.
+    for script in (PATCH_ITEM_SUPPRESSION, PATCH_LOOT_DISTURB, PATCH_BOSS_DATAPADS):
         try:
             result = subprocess.run(
                 [sys.executable, script, "--restore", f"--game-dir={GAME_DIR}"],
@@ -673,6 +789,7 @@ def apply_all_patches() -> tuple[bool, str]:
         ("Progression Checkpoints", apply_item_suppression),
         ("Randomize Areas", apply_door_randomizer),
         ("Additional Enemies", apply_additional_enemies),
+        ("Boss Datapads", apply_boss_datapads),
     ]:
         ok, _msg = fn()
         ok_all = ok_all and ok
@@ -727,6 +844,58 @@ def apply_galactic_shop() -> tuple[bool, str]:
         return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
     except Exception as e:
         return False, f"apply_galactic_shop raised: {e}"
+
+
+def apply_boss_datapads() -> tuple[bool, str]:
+    """Same shape again, for patch_boss_datapads.py: writes the three boss datapad item templates
+    and adds each datapad to every fighting version of Calo Nord, Darth Bandon and Saul Karath.
+    Universal (the boss checks always exist) and idempotent -- it only rewrites a module file whose
+    boss is missing its datapad. Runs after the other module-rim writers on Connect because those
+    rebuild their rims from the pristine backup, which would drop an earlier datapad."""
+    try:
+        result = subprocess.run(
+            [sys.executable, PATCH_BOSS_DATAPADS, f"--game-dir={GAME_DIR}"],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode != 0:
+            return False, f"patch_boss_datapads.py failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, " | ".join(result.stdout.strip().splitlines()[-2:]) if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"apply_boss_datapads raised: {e}"
+
+
+def apply_player_id(save_id: str, slot: str) -> tuple[bool, str]:
+    """Same shape again, for patch_player_id.py: writes this seed's Player ID item template (an item file in
+    Override, no module edit). Runs on every Connect with the current seed's id; the script rewrites the file
+    only when the name changed. A brand-new level-1 character gets the item at the Endar Spire entry."""
+    try:
+        result = subprocess.run(
+            [sys.executable, PATCH_PLAYER_ID, f"--game-dir={GAME_DIR}", f"--save-id={save_id}", f"--slot={slot}"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode != 0:
+            return False, f"patch_player_id.py failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"apply_player_id raised: {e}"
+
+
+def apply_area_poll_hooks() -> tuple[bool, str]:
+    """Same shape again, for patch_area_poll_hooks.py -- gives the area(s)
+    whose module has no OnEnter script of their own (Tomb of Marka Ragnos)
+    the poll hook, so polling restarts there instead of staying dead until
+    the player enters a hooked area. Universal, not seed-gated, idempotent
+    (an already-hooked module is skipped), one module RIM edited in place."""
+    try:
+        result = subprocess.run(
+            [sys.executable, PATCH_AREA_POLL_HOOKS, f"--game-dir={GAME_DIR}"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            return False, f"patch_area_poll_hooks.py failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"apply_area_poll_hooks raised: {e}"
 
 
 def apply_shop_item_costs() -> tuple[bool, str]:
@@ -973,6 +1142,22 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
             self.output(f"Admin: queued {arm_name!r} directly (bypassing AP server).")
         return True
 
+    def _cmd_ap_clear_queue(self) -> bool:
+        """Admin: drops EVERY entry staged for the game but not yet applied (gear and item grants and traps included, not
+        just the ones the reconciler re-derives). For testing, when a stale staged item keeps firing."""
+        ok, msg = clear_staged_queue(everything=True)
+        self.output(("OK: " if ok else "FAILED: ") + msg)
+        if ok:
+            self.output("Gear, traps and other grants that cannot be re-derived were journaled; /ap_restore_queue brings them back.")
+        return ok
+
+    def _cmd_ap_restore_queue(self) -> bool:
+        """Admin: re-stages the entries the last /ap_clear_queue dropped that cannot be re-derived (item grants, traps, force
+        powers, additional feats, plain arms). The reconciler's own corrections and DeathLink deaths are not restored."""
+        ok, msg = restore_dropped_queue()
+        self.output(("OK: " if ok else "FAILED: ") + msg)
+        return ok
+
     def _cmd_ap_regen_poll(self) -> bool:
         """Manual fallback: force-regenerate/compile/deploy ap_poll_shared.ncs
         for this session's already-connected area_randomizer (normally done
@@ -1085,6 +1270,14 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         self.output(("OK: " if ok else "FAILED: ") + msg)
         return ok
 
+    def _cmd_ap_apply_area_poll_hooks(self) -> bool:
+        """Same again, for patch_area_poll_hooks.py (normally run on every
+        Connect -- see on_package)."""
+        self.output("Admin: re-applying the area poll hooks ...")
+        ok, msg = apply_area_poll_hooks()
+        self.output(("OK: " if ok else "FAILED: ") + msg)
+        return ok
+
     def _cmd_ap_apply_shop_item_costs(self) -> bool:
         """Same again, for patch_shop_item_costs.py (normally run on every
         Connect -- see on_package)."""
@@ -1121,13 +1314,18 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         return True
 
     def _cmd_ap_raw(self, *parts: str) -> bool:
-        """TEMPORARY/research: send a raw diagnostic command straight to the
+        """DEVELOPER-ONLY (needs the environment variable KOTOR_AP_DEV=1; refused otherwise):
+        send a raw diagnostic command straight to the
         extender socket, e.g. /ap_raw DUMPMEM:16EBB958:64 (hex address, no
         0x prefix, decimal size). Also READBYTE:<hexaddr>, WRITEBYTE:<hexaddr>:<value>,
         SCANBYTES:<comma-separated-hex-bytes>, SNAPSHOT:<name> -- whatever
         ap_extender.c's ap_dispatch_command understands. Output (e.g. a
         DUMPMEM dump) goes to a file next to kse.log, NOT this console.
         Kept for the Force Powers memory-offset hunt this was built for."""
+        if os.environ.get("KOTOR_AP_DEV") != "1":
+            self.output("/ap_raw is a developer command and is switched off. "
+                        "(Set the environment variable KOTOR_AP_DEV=1 before starting the client to use it.)")
+            return False
         command = " ".join(parts)
         if not command:
             self.output("Usage: /ap_raw <command>, e.g. /ap_raw DUMPMEM:16EBB958:64")
@@ -1162,6 +1360,43 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         self.output("Recently Settled:" if settled else "Recently Settled: none")
         for d in settled:
             self.output(f"  {d.arm_name}: settled ({d.detail})")
+        return True
+
+    def _cmd_ap_autorelease(self, mode: str = "") -> bool:
+        """/ap_autorelease [on|off] -- when your goal is complete, the client tells the server
+        and sends !release for you (if the room's release permission is "goal" or "enabled"; for
+        "auto" the server does it by itself). On by default. With no argument, shows the mode."""
+        mode = mode.strip().lower()
+        if mode in ("on", "off"):
+            self.ctx.auto_release_on_goal = (mode == "on")
+            self.output(f"Auto-release on goal: {mode}.")
+            return True
+        if mode:
+            self.output("Usage: /ap_autorelease [on|off]")
+            return False
+        self.output(f"Auto-release on goal: {'on' if self.ctx.auto_release_on_goal else 'off'} "
+                    f"(release permission: {self.ctx.permissions.get('release')}).")
+        return True
+
+    def _cmd_ap_roster_cleanup(self, mode: str = "") -> bool:
+        """/ap_roster_cleanup [on|log|off] -- the reconciler's cleanup of
+        companions on the roster the player is not entitled to (only active
+        once the Leviathan has been escaped, one-shot per connection). on
+        (default) purges them; log only reports who it WOULD purge; off
+        disables it. With no argument, shows the current mode."""
+        tracker = self.ctx.reconciler
+        mode = mode.strip().lower()
+        if mode in ("on", "log", "off"):
+            tracker.roster_cleanup_mode = mode
+            self.output(f"Roster cleanup: {mode}.")
+            return True
+        if mode:
+            self.output("Usage: /ap_roster_cleanup [on|log|off]")
+            return False
+        self.output(f"Roster cleanup: {tracker.roster_cleanup_mode} "
+                    f"(leviathan done={tracker.roster_leviathan_done}, "
+                    f"cleanup finished={tracker._roster_cleanup_done}, "
+                    f"unentitled on roster={tracker._roster_extras()}).")
         return True
 
     def _cmd_ap_confirm_character(self) -> bool:
@@ -1259,6 +1494,39 @@ def _load_known_characters() -> set:
 _REAL_COMPANION_KEYS = {
     "bastila", "canderous", "carth", "hk47", "jolee", "juhani", "mission", "t3m4", "zaalbar",
 }
+
+
+def _load_trapped_off_companions() -> set:
+    """Every (seed_name, slot, npc_key) a Trap: Remove a Companion has permanently removed. The
+    trap is meant to be permanent, so this record has to survive a client restart and an item
+    replay (the server resends every companion item on each connect, which would otherwise
+    entitle the player to the companion again). Written to the delivery log as arm
+    "trap_removed:<key>" when the trap lands. Read in log order: a LATER settled "sent" entry for
+    that companion's own arm (a real grant or an admin /ap_apply, never a reconciler self-heal,
+    which logs "reconciled") puts them back."""
+    trapped: typing.Set[typing.Tuple[typing.Optional[str], typing.Optional[str], str]] = set()
+    try:
+        with open(DELIVERY_LOG_PATH, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                arm = entry.get("arm", "")
+                ident = (entry.get("seed_name"), entry.get("slot"))
+                if arm.startswith("trap_removed:") and entry.get("outcome") in _SETTLED_OUTCOMES:
+                    key = arm[len("trap_removed:"):]
+                    if key in _REAL_COMPANION_KEYS:
+                        trapped.add((*ident, key))
+                elif (arm.startswith("companion_") and not arm.startswith("companion_class:")
+                      and entry.get("outcome") == "sent"):
+                    trapped.discard((*ident, arm[len("companion_"):]))
+    except FileNotFoundError:
+        pass
+    return trapped
 
 
 def _load_recruited_companions() -> set:
@@ -1580,6 +1848,11 @@ class KotorContext(CommonContext):
         # process) and re-evaluate from scratch, instead of a stale verdict
         # from an earlier character silently carrying over.
         self._character_confirmed_for: typing.Optional[str] = None
+        # The Player ID hash the poll last reported for this character: None = not reported yet,
+        # "" = the character has no Player ID item, else its 9-character hash. Passive: only recorded on
+        # delivery-log lines and compared in _note_player_id(); nothing is paused on it.
+        self.save_player_id: typing.Optional[str] = None
+        self._player_id_verdict_logged: typing.Optional[str] = None
         self.reconciler = ReconciliationTracker(
             send_apply=self._guarded_send_apply,
             send_apply_value=self._guarded_send_apply_value,
@@ -1588,6 +1861,11 @@ class KotorContext(CommonContext):
             send_feats=self._guarded_send_additional_feats,
             on_death=self._on_local_death,
             is_awaiting_confirmation=self._is_arm_awaiting_confirmation,
+            send_purge=self._guarded_send_purge_companion,
+            send_unparty=self._guarded_send_unparty_companion,
+            send_roster_remove=self._guarded_send_roster_remove_companion,
+            send_select=self._guarded_send_select_companion,
+            entitled_companions=self._entitled_companion_keys,
         )
         self.location_tracker = LocationTracker()
         self._delivered_count = 0
@@ -1629,6 +1907,8 @@ class KotorContext(CommonContext):
         # attempts_so_far} for coins currently mid-round-trip with the
         # server (a Get has been sent, or a pop is awaiting its SetReply).
         self.galactic_shop = False
+        # Archipelago Vendor option (slot_data "archipelago_vendor").
+        self.archipelago_vendor = False
         self._galactic_pending: dict = _load_galactic_pending()
         self._galactic_claims_in_flight: typing.Dict[str, int] = {}
         self._galactic_claim_counter = 0
@@ -1654,6 +1934,9 @@ class KotorContext(CommonContext):
         # _check_goal(): sets self.finished_game, which CommonClient's own
         # server loop turns into a real StatusUpdate(CLIENT_GOAL) send.
         self.goal = 0
+        # /ap_autorelease: send !release for the player once the goal is complete (see
+        # _announce_goal). On by default.
+        self.auto_release_on_goal = True
         # asyncio.create_task() returns a Task the event loop only holds a
         # WEAK reference to -- per Python's own docs, an unreferenced task
         # "may get garbage collected at any time, even before it's done."
@@ -1698,6 +1981,10 @@ class KotorContext(CommonContext):
         # capture). Loaded once at startup, updated live by _log_delivery.
         self._recruited_companions: typing.Set[typing.Tuple[typing.Optional[str], typing.Optional[str], str]] = \
             _load_recruited_companions()
+        # Companions a Trap: Remove a Companion has permanently removed (see
+        # _load_trapped_off_companions): not entitled, never re-added by the reconciler.
+        self._trapped_off_companions: typing.Set[typing.Tuple[typing.Optional[str], typing.Optional[str], str]] = \
+            _load_trapped_off_companions()
         self._finalized_companion_classes: typing.Set[typing.Tuple[typing.Optional[str], typing.Optional[str], str]] = \
             _load_finalized_companion_classes()
         self._pc_class_settled: typing.Set[typing.Tuple[typing.Optional[str], typing.Optional[str]]] = \
@@ -1772,6 +2059,9 @@ class KotorContext(CommonContext):
         # and never pass through _do_deliver, so they need their own
         # _log_delivery call rather than inheriting one.
         self._reconciler_light_counter = 0
+        # Thinning of routine per-poll lines in the log (see _log_game_event).
+        self._routine_last: typing.Dict[str, str] = {}
+        self._routine_repeats: typing.Dict[str, int] = {}
 
     def _track_background_task(self, task: "asyncio.Task") -> None:
         """Pairs with self._background_tasks (see __init__) -- keeps the
@@ -1825,6 +2115,10 @@ class KotorContext(CommonContext):
                 self._finalized_companion_classes.add((seed_name, slot, arm_name.split(":", 2)[1]))
             elif arm_name.startswith("companion_"):
                 self._recruited_companions.add((seed_name, slot, arm_name[len("companion_"):]))
+                if outcome == "sent":
+                    # a real grant or an admin /ap_apply puts a trapped-off companion back
+                    # (a reconciler self-heal logs "reconciled" and does not).
+                    self._trapped_off_companions.discard((seed_name, slot, arm_name[len("companion_"):]))
             elif arm_name in ("pc_class_soldier", "pc_class_scout", "pc_class_scoundrel"):
                 self._pc_class_settled.add((seed_name, slot))
         entry = {
@@ -1838,6 +2132,9 @@ class KotorContext(CommonContext):
             "arm": arm_name,
             "outcome": outcome,
         }
+        if self.save_player_id is not None:
+            # The Player ID hash the loaded character carries ("none" = no such item). Audit only.
+            entry["save_id"] = self.save_player_id or "none"
         try:
             with open(DELIVERY_LOG_PATH, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
@@ -2063,7 +2360,16 @@ class KotorContext(CommonContext):
             # SKILLREPORT poll and can be stale relative to the true live
             # rank). params is now just the chosen skill_key; NWScript
             # reads the live rank and computes/guards the decrease itself.
-            eligible = [k for k, v in reconciler.current_skills.items() if v > 0]
+            # Eligibility is judged on the TRUE ranks when they've been
+            # reported: current_skills holds GetSkillRank (rank + ability
+            # modifier + effects), so a skill sitting at rank 0 can still read
+            # above 0 and would be picked for a halving that has nothing to
+            # halve. Falls back to current_skills only for an extender build
+            # that predates SKILLBASEREPORT.
+            rank_source = (reconciler.current_skill_bases
+                           if any(v is not None for v in reconciler.current_skill_bases.values())
+                           else reconciler.current_skills)
+            eligible = [k for k, v in rank_source.items() if v is not None and v > 0]
             if not eligible:
                 self._trap_noop(key, item_name, arm_name, "no skill above 0 to reduce")
                 return
@@ -2071,7 +2377,10 @@ class KotorContext(CommonContext):
             sent = await self.extender.send_trap("reduce_skill", skill_key)
 
         elif trap_type == "remove_half_feats":
-            held = list(reconciler.current_feats)
+            # the full list (FEATFULL, about once a minute); FEATREPORT alone carries only the
+            # reconciler's feats of interest
+            held = list(reconciler.full_feats if reconciler.full_feats is not None
+                        else reconciler.current_feats)
             if len(held) <= 1:
                 self._trap_noop(key, item_name, arm_name, f"only {len(held)} known feat(s)")
                 return
@@ -2105,13 +2414,21 @@ class KotorContext(CommonContext):
             # player who never actually had that companion. See
             # _load_recruited_companions' docstring.
             current_seed_slot = (self.seed_name, getattr(self, "username", None))
+            already_trapped = self._trapped_off_keys()
             candidates = sorted(npc for (sn, sl, npc) in self._recruited_companions
-                                if (sn, sl) == current_seed_slot)
+                                if (sn, sl) == current_seed_slot and npc not in already_trapped)
             if not candidates:
                 self._trap_noop(key, item_name, arm_name, "no companions recruited yet")
                 return
             target = random.choice(candidates)
-            sent = await self.extender.send_trap("remove_companion", target)
+            # purge_companion, not remove_companion: the latter only calls RemoveAvailableNPC,
+            # which ejects an ACTIVE party member from the roster but leaves the creature
+            # object standing in the area. A tester's game froze on the next transition after
+            # that trap landed (and again on every reload of the save made in that state).
+            # purge_companion also takes them out of the party and destroys the standing
+            # objects -- the form the roster cleanup has used live without trouble.
+            # remove_companion stays as the roster-only trap the Star Forge pass needs.
+            sent = await self.extender.send_trap("purge_companion", target)
             if sent:
                 # Untrack immediately, not just on confirmation -- the
                 # companion arms' own untrack-on-confirm equivalent
@@ -2121,6 +2438,14 @@ class KotorContext(CommonContext):
                 # companion_class action target a companion that was
                 # just removed.
                 self._recruited_companions.discard((*current_seed_slot, target))
+                # PERMANENT: record it (delivery log, so it survives a restart and the item
+                # replay on reconnect) and tell the reconciler, which otherwise treats the
+                # companion as entitled (their item was received) and would add them back.
+                self._trapped_off_companions.add((*current_seed_slot, target))
+                self._reconciler_light_counter -= 1
+                self._log_delivery(character, self._reconciler_light_counter,
+                                   f"(trap) permanently removed {target}", f"trap_removed:{target}", "sent")
+                self.reconciler.trapped_off_companions = self._trapped_off_keys()
 
         elif trap_type == "remove_half_inventory":
             # Does not read reconciler.current_inventory (removed along
@@ -2174,6 +2499,11 @@ class KotorContext(CommonContext):
             # even while the game process is already dying, silently
             # never reaching a live extender).
             staged_key = "set_credits" if trap_type == "remove_credits" else f"trap:{trap_type}"
+            if trap_type == "remove_companion":
+                # The wire action is purge_companion (see that branch), so that is the key the extender acks under.
+                # Waiting on the trap's own name never matched: the send was treated as failed and retried, and each
+                # retry removed another companion.
+                staged_key = "trap:purge_companion"
             sent = await self.extender.wait_staged(staged_key)
         if sent:
             logger.info(f"[queued for game] {item_name} -> trap:{trap_type}")
@@ -2429,7 +2759,13 @@ class KotorContext(CommonContext):
         game restart and are only reset by reset_for_new_connection() on
         a genuine new AP slot Connect."""
         self.reconciler.reset_live_state()
+        self.save_player_id = None
+        self._player_id_verdict_logged = None
         game_events_logger.info("[extender] reconnected -- reconciler live-state cleared, waiting for fresh reports.")
+        try:
+            asyncio.get_running_loop().run_in_executor(None, self._clear_staged_and_log)
+        except RuntimeError:
+            self._clear_staged_and_log()
         self._resend_failed_offline_deliveries()
 
     def _resend_failed_offline_deliveries(self) -> None:
@@ -2461,10 +2797,81 @@ class KotorContext(CommonContext):
         game_events_logger.info(
             f"[extender] retrying {len(stuck)} item(s) that failed to deliver during a previous disconnect...")
         for index, (item_name, arm_name) in stuck.items():
-            if not arm_name:
+            if not arm_name or arm_name == GOAL_MARKER_ARM:
                 continue
             self._resent_offline_indices.add(index)
             asyncio.create_task(self._deliver_item(item_name, arm_name, index))
+
+    # Routine per-poll lines (the report lines, the journal/quest/plot/companion checks, alignment and
+    # similar) repeat unchanged every 5 s. They are still handled in full below (the reconciler and
+    # tracker see every one); only the LOG copy is thinned: a routine line is logged when its content
+    # changes and then once per _ROUTINE_REPEAT_EVERY identical repeats, so the log still shows the
+    # poll is alive (a silent death is a missing periodic line) without a thousand copies of the same
+    # state. Event lines (AREA, APPLIED, SAFEGUARD, POLLRUN, ticks, ...) are never thinned.
+    _ROUTINE_MSG_RE = re.compile(
+        r'msg="(AP\|(?:CHECK\|(?:JOURNAL|QUEST|PLOT|COMPANION)\|[^|"]*|[A-Z]*REPORT|ALIGNMENT|PARTYLEVELS|DATAPAD|AREASVISITED|PLAYERID|BOUNTY\|COUNT)[^"]*)"')
+    _ROUTINE_REPEAT_EVERY = 12
+
+    def _log_game_event(self, event: str) -> None:
+        m = self._ROUTINE_MSG_RE.search(event)
+        if m is None:
+            game_events_logger.info(f"[game] {event}")
+            return
+        msg = m.group(1)
+        parts = msg.split("|")
+        key = "|".join(parts[:3]) if parts[1] == "CHECK" else parts[1]
+        last = self._routine_last.get(key)
+        if last == msg:
+            n = self._routine_repeats.get(key, 0) + 1
+            self._routine_repeats[key] = n
+            if n % self._ROUTINE_REPEAT_EVERY:
+                return
+        else:
+            self._routine_last[key] = msg
+            self._routine_repeats[key] = 0
+        game_events_logger.info(f"[game] {event}")
+
+    def _note_player_id(self, event: str) -> None:
+        """Records the Player ID the poll reports for the loaded character and compares it with the connected
+        seed and slot. PASSIVE: it only sets save_player_id (written on delivery-log lines) and logs the verdict
+        once per change; nothing is paused or blocked, and the new-character safeguard is unchanged. A character
+        with no Player ID item (a run started before it existed, or the item was removed) is normal."""
+        m = _PLAYERID_RE.search(event)
+        if m is None:
+            return
+        name = m.group(1).strip()
+        # The shipped placeholder template (patch_player_id.py PLACEHOLDER_NAME) is what a new game is given
+        # when it starts before any seed was ever connected: a real item, but not stamped with a seed.
+        unstamped = name.endswith("no seed yet")
+        found = "" if name == "NONE" else ("unstamped" if unstamped else name.rsplit(" ", 1)[-1])
+        self.save_player_id = found
+        slot = getattr(self, "username", None)
+        if not self.seed_name or not slot:
+            return
+        if not found:
+            verdict = "none"
+        elif unstamped:
+            verdict = "unstamped"
+        elif found == save_id_for(self.seed_name, slot):
+            verdict = "match"
+        else:
+            verdict = "mismatch"
+        if verdict == self._player_id_verdict_logged:
+            return
+        self._player_id_verdict_logged = verdict
+        if verdict == "match":
+            game_events_logger.info(f"[PLAYERID] Player ID {found} matches the connected seed and slot.")
+        elif verdict == "none":
+            game_events_logger.info("[PLAYERID] This character has no Player ID item (started before it existed, "
+                                    "or the item was removed). Passive check only: nothing is paused.")
+        elif verdict == "unstamped":
+            game_events_logger.info("[PLAYERID] This character's Player ID was created before any seed was connected, "
+                                    "so it records no seed. Passive check only: nothing is paused.")
+        else:
+            game_events_logger.warning(
+                f"[PLAYERID] This character carries Player ID {found}, but the connected seed and slot hash to "
+                f"{save_id_for(self.seed_name, slot)}. It may belong to a different seed. Passive check only: "
+                "nothing is paused (the character-name safeguard is the active guard).")
 
     def _on_extender_event(self, event: str) -> None:
         # Surface every AP| marker to its own "Heartbeat" GUI tab (not the
@@ -2473,7 +2880,7 @@ class KotorContext(CommonContext):
         # etc.), useful for debugging but not part of the curated 4-item
         # summary (extender connecting, AP server connecting, checks found,
         # items sent) the main tab is scoped to.
-        game_events_logger.info(f"[game] {event}")
+        self._log_game_event(event)
         # Queue-bloat diagnostic -- see arm_orchestrator.py's
         # _push_queue_bloat_warning_to_client(). Deliberately on the main
         # visible tab (plain `logger`, not game_events_logger) rather than
@@ -2508,6 +2915,7 @@ class KotorContext(CommonContext):
         m = _LEVEL_RE.search(event)
         if m:
             self.current_level = int(m.group(1))
+        self._note_player_id(event)
         self._evaluate_character_safety()
         # Computed once per event (this runs on every single extender
         # event, a real hot path during gameplay) and reused below for
@@ -2645,24 +3053,55 @@ class KotorContext(CommonContext):
         event's up-to-date alignment-extreme state."""
         if self.finished_game:
             return
+        reached = False
         if self.goal == 0:  # defeat_malak
             if _GOAL_MALAK_RE.search(event):
                 game_events_logger.info("[goal] Malak defeated -- goal complete!")
-                self.finished_game = True
+                reached = True
         elif self.goal == 1:  # true_balance
             if self.location_tracker.true_balance_reached(self.checked_locations | self.locations_checked):
                 game_events_logger.info("[goal] True Balance reached (both alignment extremes) -- goal complete!")
-                self.finished_game = True
+                reached = True
         elif self.goal == 2:  # max_level
             m = _LEVEL_RE.search(event)
             if m and int(m.group(1)) >= MAX_LEVEL:
                 game_events_logger.info(f"[goal] Max level ({MAX_LEVEL}) reached -- goal complete!")
-                self.finished_game = True
+                reached = True
         elif self.goal == 3:  # reach_leviathan
-            m = _GOAL_LEVIATHAN_RE.search(event)
-            if m and int(m.group(1)) >= 99:
-                game_events_logger.info("[goal] Captured by the Leviathan -- goal complete!")
-                self.finished_game = True
+            if _GOAL_LEVIATHAN_RE.search(event):
+                game_events_logger.info("[goal] Reached the Leviathan -- goal complete!")
+                reached = True
+        if reached:
+            self.finished_game = True
+            task = asyncio.create_task(self._announce_goal())
+            self._background_tasks.add(task)
+            task.add_done_callback(self._track_background_task)
+
+    async def _announce_goal(self) -> None:
+        """Tells the server the goal is complete, then (if auto_release_on_goal) releases the
+        rest of this world's items.
+
+        Setting finished_game alone does NOT tell the server: CommonContext only reads it to
+        resend the status after a RECONNECT (CommonClient.py's Connected handler). Until this was
+        added a finished run sat at "playing" on the server (nothing released, no goal shown)
+        until the client happened to reconnect.
+
+        Release: with the room's release permission "goal" (manual after goal) the player has to
+        type !release, which is what is sent here; "auto"/"auto_enabled" mean the server does it
+        itself, "disabled" means it is not allowed, so nothing is sent for those. Also skipped
+        when /ap_autorelease is off."""
+        await self.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
+        game_events_logger.info("[goal] Goal status sent to the server.")
+        if not self.auto_release_on_goal:
+            return
+        permission = str(self.permissions.get("release", "disabled"))
+        if permission not in ("goal", "enabled"):
+            game_events_logger.info(f"[goal] Release permission is {permission!r}: no !release sent "
+                                    f"({'the server releases by itself' if permission.startswith('auto') else 'not allowed'}).")
+            return
+        await asyncio.sleep(3.0)  # let the server process the goal status first
+        await self.send_msgs([{"cmd": "Say", "text": "!release"}])
+        game_events_logger.info("[goal] Sent !release -- the remaining items are being released.")
 
     def _on_local_death(self) -> None:
         """Called by ReconciliationTracker once per death episode -- see its
@@ -2729,7 +3168,7 @@ class KotorContext(CommonContext):
             # connected before it in this same process.
             self._delivered_count = 0
             # Same bug, generalized: self.reconciler's own internal state
-            # (expected_scalar/expected_skills/expected_companions,
+            # (expected_scalar/_skill_baseline/expected_companions,
             # current_classes/current_character_name, every in-flight dedup
             # guard) had the identical "only ever set in __init__" flaw --
             # see reset_for_new_connection()'s own docstring for the full
@@ -2760,8 +3199,15 @@ class KotorContext(CommonContext):
                 bool(slot_data.get("progression_system", False)),
                 bool(slot_data.get("galactic_shop", False)),
                 slot_data.get("new_companion", 0),
-                slot_data.get("door_mapping_repairs", []))
+                slot_data.get("door_mapping_repairs", []),
+                bool(slot_data.get("archipelago_vendor", False)))
+            self.archipelago_vendor = bool(slot_data.get("archipelago_vendor", False))
             self.companion_mode = slot_data.get("companion_mode", 0)
+            # Roster cleanup entitlement: under normal mode a story-recruited
+            # companion is entitled by their recruit marker (see
+            # ReconciliationTracker._roster_extras); gated/none never.
+            self.reconciler.trust_recruit_markers = (self.companion_mode == 1)
+            self.reconciler.trapped_off_companions = self._trapped_off_keys()
             self.companion_class_rolls = slot_data.get("companion_class_rolls", {})
             self.companion_class_mode = slot_data.get("companion_class_mode", 0)
             # "Companion Recruited: HK-47" and "Companion Recruited: New
@@ -2775,7 +3221,7 @@ class KotorContext(CommonContext):
             # name for every companion_idx=3 check under whichever choice
             # didn't win the dict-iteration-order default.
             self.location_tracker.set_new_companion(bool(slot_data.get("new_companion", False)))
-            asyncio.get_event_loop().run_in_executor(None, self._apply_new_companion_assets_and_log)
+            # (runs inside _apply_module_rim_patches_in_order below, not as its own task)
             self.reconciler.experience_mode = slot_data.get("experience_mode", 0)
             self.reconciler.experience_limiter = slot_data.get("experience_limiter", 600)
             self.reconciler.experience_item = slot_data.get("experience_item", 4000)
@@ -2810,10 +3256,12 @@ class KotorContext(CommonContext):
             self.traps_mode = int(slot_data.get("traps_mode", 0))
             asyncio.create_task(self.update_trap_link(self.trap_link))
             self.galactic_shop = bool(slot_data.get("galactic_shop", False))
-            asyncio.get_event_loop().run_in_executor(None, self._apply_galactic_shop_and_log)
+            # (Galactic Shop's module edit also runs inside _apply_module_rim_patches_in_order)
             # Universal, not gated by any option -- see apply_shop_item_costs()'s
             # own docstring for why this always runs regardless of slot_data.
             asyncio.get_event_loop().run_in_executor(None, self._apply_shop_item_costs_and_log)
+            # Also universal -- see apply_area_poll_hooks().
+            # (runs inside _apply_module_rim_patches_in_order -- it edits a module file)
             # Also universal -- see apply_ap_tracker_quest()'s own docstring
             # for why this must run against THIS install's dialog.tlk on
             # every Connect rather than shipping a pre-baked global.jrl.
@@ -2918,7 +3366,37 @@ class KotorContext(CommonContext):
             await asyncio.sleep(1.0)
         await self.extender.send_shop_stock(planet_stock)
 
+    def _reseed_expected_state(self, arm_name: str) -> None:
+        """Rebuilds the reconciler's "what should I have" memory from an item that was delivered in
+        an earlier client session. The reconciler fills expected_companions, expected_pc_class and
+        expected_progression_items only through note_item_received(), which _deliver_item calls when
+        it actually sends; after a client restart the server replays every item, each already-settled
+        one returns early, and those three would stay empty -- so the missing-companion resend, the
+        PC-class self-heal (all six class arms) and the progression-item re-grant would do nothing
+        until a fresh item arrived. Only these three groups are re-noted. Skills and abilities are
+        NOT: their expected values are bootstrapped from the live game on the first poll, so
+        re-adding every past grant would double count; xp and credits already have their own replay.
+        Nothing is sent and none of the new-recruit follow-ups run -- this only restores memory.
+        A companion removed by the Remove a Companion trap stays out (reconciler.trapped_off_companions)."""
+        if arm_name.startswith("companion_") and not arm_name.startswith("companion_class:"):
+            self.reconciler.note_item_received(arm_name)
+        elif arm_name in ("class_guardian", "class_consular", "class_sentinel",
+                          "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel"):
+            self.reconciler.note_item_received(arm_name)
+        elif arm_name.startswith("give_item:"):
+            resref = arm_name.split(":")[1] if ":" in arm_name else ""
+            if resref in PROGRESSION_ITEM_RESREFS.values():
+                self.reconciler.note_item_received(arm_name)
+
     async def _deliver_item(self, item_name: str, arm_name: str, index: int) -> None:
+        # Goal markers ("Reached Level 20", "Malak Defeated", ...) are real
+        # items so the goal can be a generation-time completion condition,
+        # but there is nothing to apply in game. Sending one to the extender
+        # only produces "ERROR:unknown item", and while the extender is
+        # offline it would be logged as an undelivered grant.
+        if arm_name == GOAL_MARKER_ARM:
+            game_events_logger.info(f"[goal marker] {item_name} -- progress marker, nothing to apply in game")
+            return
         # Wait for the first NAMEREPORT -- the delivery-log gate below needs
         # a character name to key on, and there's no sound fallback if we
         # don't have one (a bounded timeout here previously "failed open"
@@ -2975,6 +3453,7 @@ class KotorContext(CommonContext):
         # doesn't replay it. See _log_delivery's docstring for why the key
         # is (seed_name, slot), not character.
         if (self.seed_name, getattr(self, "username", None), index) in self._delivered_keys:
+            self._reseed_expected_state(arm_name)
             game_events_logger.info(f"[already delivered] {item_name} -> {arm_name} (character {character!r}, item #{index})")
             return
 
@@ -3193,12 +3672,60 @@ class KotorContext(CommonContext):
         docs/MODE_DEPENDENCIES.md documents Override as a GLOBAL, no-
         module-scoping surface where an unordered second writer is exactly
         the class of race this method exists to prevent for the 4 patches
-        above. Same reasoning applies to a 5th writer."""
+        above. Same reasoning applies to a 5th writer.
+
+        Galactic Shop, the New Companion assets and the area poll hooks used to be dispatched as
+        their own unordered tasks at Connect. They write module files (Galactic Shop retargets
+        ebo_m12aa's module, the poll hook edits korr_m38aa's) or read module resources while the four
+        patches above are mid-write -- a live Connect failed with "Failed to determine the format of
+        the GFF file" reading a resource another patch was rewriting. They now run here, after the
+        four heavy patches have finished, so (a) nothing reads a half-written module and (b) a module
+        edit that the loot patch rebuilt from its backup copy is applied again afterwards. The boss
+        datapad patch stays after them so its items are the last thing written."""
+        # First, not last: it is a one-file write that takes no time, and a new game started while the slower
+        # patches below are still running must already be given this seed's Player ID, not the previous seed's.
+        self._apply_player_id_and_log()
         self._apply_loot_disturb_and_log(gate_key, force)
         self._apply_item_suppression_and_log(gate_key, force)
         self._apply_door_randomizer_and_log(gate_key, force)
         self._apply_additional_enemies_and_log(gate_key, force)
+        self._apply_galactic_shop_and_log()
+        self._apply_new_companion_assets_and_log()
+        self._apply_area_poll_hooks_and_log()
+        self._apply_boss_datapads_and_log()
         self._reset_trampolines_and_log()
+        self._purge_queued_deathlinks_and_log()
+        self._clear_staged_and_log()
+        self._ensure_vendor_and_log()
+
+    def _ensure_vendor_and_log(self) -> None:
+        """Regenerates the Hawk's trampoline so the Archipelago Vendor NPC is (or is no longer)
+        spawned according to this seed's archipelago_vendor option -- the spawn lives in the
+        trampoline, which is otherwise only rebuilt when an arm happens to be queued for that
+        area. Also removes a vendor left over from a previous seed that had it on."""
+        ok, msg = ensure_vendor_spawn()
+        if ok:
+            game_events_logger.info(f"[vendor] {msg}")
+        else:
+            game_events_logger.warning(f"[vendor] FAILED -- {msg}")
+
+    def _clear_staged_and_log(self) -> None:
+        """See clear_staged_queue(): drops the staged entries the reconciler re-derives, so a fresh poll decides what is
+        sent. Runs in an executor (a blocking subprocess)."""
+        ok, msg = clear_staged_queue()
+        if ok:
+            game_events_logger.info(f"[staged queue] {msg}")
+        else:
+            game_events_logger.warning(f"[staged queue] clear FAILED -- {msg}")
+
+    def _purge_queued_deathlinks_and_log(self) -> None:
+        """See purge_queued_deathlinks(). After the owner check for the same single-writer
+        reason as above."""
+        ok, msg = purge_queued_deathlinks()
+        if ok:
+            game_events_logger.info(f"[deathlink purge] {msg}")
+        else:
+            game_events_logger.warning(f"[deathlink purge] FAILED -- {msg}")
 
     def _apply_item_suppression_and_log(self, gate_key: str | None, force: bool = False) -> None:
         """Runs apply_item_suppression() (a blocking subprocess call,
@@ -3219,6 +3746,26 @@ class KotorContext(CommonContext):
         """Same shape as _apply_item_suppression_and_log, for
         apply_door_randomizer()."""
         self._apply_seed_patch_if_new("door_randomizer", gate_key, apply_door_randomizer, force)
+
+    def _apply_boss_datapads_and_log(self) -> None:
+        """apply_boss_datapads() on every Connect (not seed-gated), last of the module-rim writers."""
+        ok, msg = apply_boss_datapads()
+        if ok:
+            game_events_logger.info(f"[boss datapads] {msg}")
+        else:
+            game_events_logger.warning(f"[boss datapads] PATCH FAILED -- {msg}")
+
+    def _apply_player_id_and_log(self) -> None:
+        """apply_player_id() on every Connect: writes this seed's Player ID item template. Needs the seed name and
+        slot, so it does nothing before they are known."""
+        slot = getattr(self, "username", None)
+        if not self.seed_name or not slot:
+            return
+        ok, msg = apply_player_id(save_id_for(self.seed_name, slot), slot)
+        if ok:
+            game_events_logger.info(f"[player id] {msg}")
+        else:
+            game_events_logger.warning(f"[player id] PATCH FAILED -- {msg}")
 
     def _apply_additional_enemies_and_log(self, gate_key: str | None, force: bool = False) -> None:
         """Same shape again, for apply_additional_enemies()."""
@@ -3265,6 +3812,16 @@ class KotorContext(CommonContext):
         else:
             game_events_logger.warning(f"[galactic shop] PATCH FAILED -- {msg}\n"
                                        f"  (run /ap_apply_galactic_shop to retry once fixed)")
+
+    def _apply_area_poll_hooks_and_log(self) -> None:
+        """apply_area_poll_hooks() on every Connect -- universal, not
+        seed-gated. Runs in an executor like the other patch scripts."""
+        ok, msg = apply_area_poll_hooks()
+        if ok:
+            game_events_logger.info(f"[area poll hooks] {msg}")
+        else:
+            game_events_logger.warning(f"[area poll hooks] PATCH FAILED -- {msg}\n"
+                                       f"  (run /ap_apply_area_poll_hooks to retry once fixed)")
 
     def _apply_shop_item_costs_and_log(self) -> None:
         """apply_shop_item_costs() on every Connect -- universal, not
@@ -3430,6 +3987,95 @@ class KotorContext(CommonContext):
             arm_name = f"additional_feats:{character_key}"
             self._log_delivery(self.reconciler.current_character_name, self._reconciler_light_counter,
                                 f"(reconciler self-heal) {arm_name}:{feat_ids}", arm_name, "reconciled")
+        return ok
+
+    def _trapped_off_keys(self) -> typing.Set[str]:
+        """Companions a Trap: Remove a Companion has permanently removed, for the CURRENT
+        (seed_name, slot)."""
+        seed_slot = (self.seed_name, getattr(self, "username", None))
+        return {npc for (sn, sl, npc) in self._trapped_off_companions if (sn, sl) == seed_slot}
+
+    def _server_entitled_companions(self) -> typing.Set[str]:
+        """Companion keys whose item the multiworld server has sent to THIS
+        slot. self.items_received is CommonContext's list for the current
+        connection only (the server resends the whole list from index 0 on
+        every connect and the context replaces it), so this is correct for
+        any seed, slot or player with no identity to match, and it is
+        rebuilt from scratch on every reconnect. That includes items
+        delivered in an earlier session, which _deliver_item skips (so
+        reconciler.expected_companions never sees them after a restart).
+        Item names map to arms through the same table the delivery path
+        uses; "Companion: New Companion" shares companion_hk47's slot."""
+        keys: typing.Set[str] = set()
+        for network_item in self.items_received:
+            item_name = self.item_names.lookup_in_game(network_item.item, self.game)
+            arm_name = ITEM_NAME_TO_ARM.get(item_name)
+            if not arm_name or not arm_name.startswith("companion_") or arm_name.startswith("companion_class:"):
+                continue
+            key = arm_name[len("companion_"):]
+            if key in _REAL_COMPANION_KEYS:
+                keys.add(key)
+        return keys - self._trapped_off_keys()
+
+    def _entitled_companion_keys(self) -> typing.Set[str]:
+        """Who the player is entitled to have on the roster, for the
+        reconciler's roster cleanup (ReconciliationTracker._roster_extras):
+        every companion item the server has sent this slot, plus every
+        companion granted for the CURRENT (seed_name, slot) per the delivery
+        log (covers an admin grant, and is a second record if the server
+        list is ever empty because the connection is still syncing)."""
+        seed_slot = (self.seed_name, getattr(self, "username", None))
+        from_log = {npc for (sn, sl, npc) in self._recruited_companions if (sn, sl) == seed_slot}
+        return (self._server_entitled_companions() | from_log) - self._trapped_off_keys()
+
+    async def _guarded_send_purge_companion(self, npc_key: str) -> bool:
+        """Wired to ReconciliationTracker as send_purge: removes a companion
+        who is on the roster without being entitled to it (a temporary
+        scene staging left behind, a vanilla leak). The purge_companion trap
+        (generate_trampoline_batch.py) drops them from the roster and the
+        active party and destroys their standing object. Same character
+        guard as the other reconciler sends."""
+        if self._character_confirmed is False:
+            game_events_logger.warning(f"[SAFEGUARD] Skipping reconciliation send "
+                            f"(purge_companion:{npc_key}) -- unrecognized character, "
+                            f"run /ap_confirm_character first if this is intentional.")
+            return False
+        ok = await self.extender.send_trap("purge_companion", npc_key)
+        if ok:
+            self._reconciler_light_counter -= 1
+            self._log_delivery(self.reconciler.current_character_name, self._reconciler_light_counter,
+                                f"(reconciler) purge_companion {npc_key}", f"purge_companion:{npc_key}", "reconciled")
+        return ok
+
+    async def _guarded_send_unparty_companion(self, npc_key: str) -> bool:
+        """Star Forge pass (ReconciliationTracker._starforge_actions): takes a companion out
+        of the active party and destroys their standing objects, keeping the roster entry
+        (the unparty_companion trap, generate_trampoline_batch.py)."""
+        return await self._send_roster_trap("unparty_companion", npc_key)
+
+    async def _guarded_send_roster_remove_companion(self, npc_key: str) -> bool:
+        """Star Forge pass: roster-only removal (the existing remove_companion trap:
+        RemoveAvailableNPC), for a non-entitled Bastila on the dark path after the game's
+        own script has taken her out of the party; her object keeps standing."""
+        return await self._send_roster_trap("remove_companion", npc_key)
+
+    async def _guarded_send_select_companion(self, npc_key: str) -> bool:
+        """Roster fix (ReconciliationTracker._unselectable_entitled): an entitled companion who is
+        listed but cannot be picked on the party screen is made selectable (the select_companion
+        trap, generate_trampoline_batch.py)."""
+        return await self._send_roster_trap("select_companion", npc_key)
+
+    async def _send_roster_trap(self, trap_type: str, npc_key: str) -> bool:
+        if self._character_confirmed is False:
+            game_events_logger.warning(f"[SAFEGUARD] Skipping reconciliation send "
+                            f"({trap_type}:{npc_key}) -- unrecognized character, "
+                            f"run /ap_confirm_character first if this is intentional.")
+            return False
+        ok = await self.extender.send_trap(trap_type, npc_key)
+        if ok:
+            self._reconciler_light_counter -= 1
+            self._log_delivery(self.reconciler.current_character_name, self._reconciler_light_counter,
+                                f"(reconciler) {trap_type} {npc_key}", f"{trap_type}:{npc_key}", "reconciled")
         return ok
 
     async def _guarded_send_delevel(self, new_level: int, new_xp: int, new_force: int) -> bool:
@@ -3751,7 +4397,11 @@ class KotorContext(CommonContext):
                 else:
                     self.character_label.text = ""
                 checked = len(self.ctx.checked_locations)
-                total = len([lid for lid in self.ctx.location_names[self.ctx.game] if lid >= 0])
+                # This slot's own locations (the server's list), not the game's whole location table:
+                # options such as new_companion remove some locations from a slot, which made a
+                # finished run read 259 / 261.
+                slot_locations = self.ctx.server_locations or set(lid for lid in self.ctx.location_names[self.ctx.game] if lid >= 0)
+                total = len(slot_locations)
                 self.checks_label.text = f"Checks: {checked} / {total}"
 
                 pending = ext.pending_deliveries()
@@ -3826,6 +4476,10 @@ def launch():
 
     parser = get_base_parser(description="KotOR Archipelago client (Phase 1: real extender bridge).")
     parser.add_argument("--name", default=None, help="Slot name to connect as (skips the interactive prompt).")
+    parser.add_argument("--game-dir", default=None,
+                         help="Path to the KOTOR install (the folder with swkotor.exe). Normally not needed: it is "
+                              "read from the installer's record, or defaults to the standard Steam location. Read "
+                              "via an early sys.argv scan (see GAME_DIR above), listed here so argparse recognizes it.")
     parser.add_argument("--repo-root", default=None,
                          help="Path to your PlayerBundle folder (the one with scripts\\generate_poll_shared.py "
                               "and scripts\\generate_makejedi_suppressor.py in it). Auto-detected in the two common "

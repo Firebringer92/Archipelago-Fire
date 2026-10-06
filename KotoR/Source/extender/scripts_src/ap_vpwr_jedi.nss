@@ -3,5 +3,5 @@
 int StartingConditional()
 {
     object oPC = GetPCSpeaker();
-    return (GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC) > 0 || GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC) > 0 || GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC) > 0);
+    return GetIsObjectValid(GetItemPossessedBy(GetPCSpeaker(), "ap_vtok_power")) && (GetLevelByClass(CLASS_TYPE_JEDIGUARDIAN, oPC) > 0 || GetLevelByClass(CLASS_TYPE_JEDICONSULAR, oPC) > 0 || GetLevelByClass(CLASS_TYPE_JEDISENTINEL, oPC) > 0);
 }

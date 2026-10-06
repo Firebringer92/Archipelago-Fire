@@ -134,6 +134,13 @@ PROGRESSION_ITEM_RESREFS: typing.Dict[str, str] = {
     "starmap_kashyyyk": "kas_starpad",
     "starmap_manaan": "man_starpad",
     "starmap_korriban": "kor_starpad",
+    # Archipelago Vendor passes (Items.py's VENDOR_UNLOCK_ITEMS, generate_ap_vendor.py's VENDOR_TOKENS).
+    # Only re-granted once the matching AP item has actually been received.
+    "vendor_skill": "ap_vtok_skill",
+    "vendor_ability": "ap_vtok_abil",
+    "vendor_feat": "ap_vtok_feat",
+    "vendor_power": "ap_vtok_power",
+    "vendor_align": "ap_vtok_align",
 }
 
 

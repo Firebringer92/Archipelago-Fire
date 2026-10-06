@@ -15,6 +15,7 @@ Requires nwnnsscomp.exe (KotOR Scripting Tool) to compile the wrappers.
 """
 import os
 import subprocess
+import sys
 from pykotor.resource.formats.rim import read_rim
 from pykotor.resource.type import ResourceType
 
@@ -44,6 +45,31 @@ COMPANIONS = [
     ("zaalbar", "tar_m05aa", "k_ptar_addzaal",   "NPC_ZAALBAR", 35, 8),
 ]
 
+# Per-companion extras layered on top of the shared wrapper. Kept out of
+# COMPANIONS because other scripts (package_dist.py) unpack that tuple by
+# position. Value: (include name, call made after the check fires).
+EXTRA_HOOKS = {
+    # Zaalbar's recruit node is the end of the cell-door conversation; this
+    # reverts the Mission that k_ptar_trigdoor staged so the scene could run.
+    # See extender/scripts_src/ap_zaal_mission.nss.
+    "zaalbar": ("ap_zaal_mission", "ZaalbarSceneComplete();"),
+}
+
+# Companions whose vanilla recruit script is NOT run by the wrapper, with the
+# lines run in its place. Jolee's original ends by opening the party-selection
+# screen with Jolee as a forced member (ShowPartySelectionGUI("", -1, NPC_JOLEE))
+# after queuing it; the wrapper revokes his availability straight after, so the
+# screen opened with a forced companion that no longer exists and the game
+# crashed (access violation in swkotor.exe, five seconds after the recruit).
+# What the original does besides that is set the story flag and remove his
+# placed hut instance, which is all that is reproduced here.
+REPLACE_ORIGINAL = {
+    "jolee": [
+        'SetGlobalBoolean("G_JoleeJoined", TRUE);',
+        'DelayCommand(1.0, DestroyObject(OBJECT_SELF));',
+    ],
+}
+
 WRAPPER_TEMPLATE = """// Suppression wrapper for {name}'s real story recruitment script
 // (originally {module}'s {resref}, preserved as apo_{name}_orig).
 //
@@ -63,12 +89,13 @@ WRAPPER_TEMPLATE = """// Suppression wrapper for {name}'s real story recruitment
 // either way below, since reaching this trigger is the check regardless
 // of whether recruitment logic needs to run.
 #include "kse"
-
+#include "ap_recruit_marker"
+{hook_include}
 void main()
 {{
     if (!IsAvailableCreature({npc_const}))
     {{
-        ExecuteScript("apo_{name}_orig", OBJECT_SELF);
+{run_original}
         RemoveAvailableNPC({npc_const});
         KSE_Diag({diag_code}, "AP|SUPPRESSED|companion_{name}");
     }}
@@ -80,13 +107,18 @@ void main()
     // script call -- no other script (including the regular poll's
     // CheckCompanions()) needs to observe anything here. Report the AP
     // location check directly from here, the only place that reliably
-    // knows recruitment was just reached.
-    KSE_Diag(22, "AP|CHECK|COMPANION|{npc_idx}");
-}}
+    // knows recruitment was just reached. RecordRecruit also writes the
+    // persistent journal marker for this recruit (ap_recruit_marker.nss) so
+    // the check survives a missed relay.
+    RecordRecruit("{name}", {npc_idx});
+{hook_call}}}
 """
 
 def main():
+    only = next((a.split("=", 1)[1].split(",") for a in sys.argv[1:] if a.startswith("--only=")), None)
     for name, module, resref, npc_const, diag_code, npc_idx in COMPANIONS:
+        if only and name not in only:
+            continue
         print(f"--- {name} ({module}:{resref}) ---")
 
         r = read_rim(os.path.join(MOD_DIR, f"{module}_s.rim"))
@@ -104,11 +136,21 @@ def main():
             f.write(data)
         print(f"  preserved original -> {orig_path} ({len(data)} bytes)")
 
+        replacement = REPLACE_ORIGINAL.get(name)
+        if replacement:
+            run_original = "\n".join(f"        {line}" for line in replacement)
+        else:
+            run_original = f'        ExecuteScript("apo_{name}_orig", OBJECT_SELF);'
+        hook = EXTRA_HOOKS.get(name)
+        hook_include = f'#include "{hook[0]}"\n' if hook else ""
+        hook_call = f"    {hook[1]}\n" if hook else ""
+
         nss_path = os.path.join(SRC_DIR, f"{resref}.nss")
         with open(nss_path, "w") as f:
             f.write(WRAPPER_TEMPLATE.format(
                 name=name, module=module, resref=resref,
                 npc_const=npc_const, diag_code=diag_code, npc_idx=npc_idx,
+                hook_include=hook_include, hook_call=hook_call, run_original=run_original,
             ))
         print(f"  wrote wrapper source -> {nss_path}")
 

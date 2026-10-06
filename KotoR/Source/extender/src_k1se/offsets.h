@@ -546,6 +546,35 @@ static const uintptr_t KSE_ADD_KNOWN_SPELL_RVA = 0x005aa9b0u - 0x00400000u; // 0
 // from the stat block at the moment of the call. nValue is unused.
 #define KSE_FIELD_HALVE_MAX_HP_VIA_CON 28
 
+// Read-only: logs the creature's six TRUE base ability bytes (STR/DEX/CON/
+// INT/WIS/CHA, same KSE_STATS_*_BASE_OFF offsets the increment/halve fields
+// read) as one `AP|ABILITYBASEREPORT|str=..|dex=..|con=..|int=..|wis=..|cha=..`
+// line in KSE_Diag's own log shape (code 170), which the extender's
+// kse.log tailer relays like any other AP| marker. NWScript's
+// GetAbilityScore only returns the EFFECTIVE score (base + item bonuses +
+// temporary effects), so this is the only way a script can learn the base.
+// Writes nothing. nValue is unused.
+#define KSE_FIELD_REPORT_ABILITY_BASES 29
+#define KSE_DIAG_CODE_ABILITY_BASE_REPORT 170
+
+// Read-only: logs the creature's eight TRUE skill ranks (the raw bytes of the
+// skill-rank array at statBlock+KSE_STATS_SKILLARRAY_OFF -- the same array
+// KSE_AdjustCreatureSkills writes) as one
+// `AP|SKILLBASEREPORT|computeruse=..|demolitions=..|stealth=..|awareness=..|persuade=..|repair=..|security=..|treatinjury=..`
+// line (KSE_Diag shape, code 171). GetSkillRank is NOT the rank: it adds the
+// ability modifier and any effects, so it moves whenever abilities, gear or
+// debuffs change. Writes nothing. nValue is unused.
+#define KSE_FIELD_REPORT_SKILL_RANKS 30
+#define KSE_DIAG_CODE_SKILL_BASE_REPORT 171
+
+// Halves one skill's TRUE rank: reads the raw rank byte, then lowers it by
+// rank - rank/2 (so a rank of 7 ends at 3, the same arithmetic the
+// reduce_skill trap always used, just applied to the real rank instead of
+// the effective GetSkillRank value). nValue = skill index (SKILL_* 0-7).
+// No-ops at rank <= 0. The write goes through the same guarded, clamped path
+// as KSE_AdjustCreatureSkills.
+#define KSE_FIELD_HALVE_SKILL_RANK 31
+
 // TEMPORARY RESEARCH DIAGNOSTIC (2026-09-20) -- retire once the offset
 // below is confirmed and wired into a real fix. Investigating why a
 // force power/feat correctly granted and PERSISTED on the server side

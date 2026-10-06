@@ -126,6 +126,13 @@ COMPANION_SUBPLOT_LOCATIONS = {
 # other location type, filtering happens at the world level not here.
 BOUNTY_CARD_COUNT = 40
 
+# (location name, datapad key) -- see scripts/patch_boss_datapads.py.
+BOSS_DATAPAD_LOCATIONS = [
+    ("Boss: Calo Nord", "calo"),
+    ("Boss: Darth Bandon", "bandon"),
+    ("Boss: Saul Karath", "karath"),
+]
+
 # NPC_* index -> display name, matching nwscript.nss's NPC_BASTILA=0 etc.
 COMPANIONS = [
     (0, "Bastila Shan"), (1, "Canderous Ordo"), (2, "Carth Onasi"),
@@ -223,6 +230,10 @@ def main():
     lines.append("    # carrying (1-40) -- a plain count threshold, same shape as level_value,")
     lines.append("    # just driven by inventory count instead of character level.")
     lines.append("    bounty_value: int = -1")
+    lines.append("    # datapad: which boss datapad (\"calo\"/\"bandon\"/\"karath\") must be in the player's")
+    lines.append("    # inventory -- dropped by that boss on death (scripts/patch_boss_datapads.py),")
+    lines.append("    # reported by CheckBossDatapads() as AP|DATAPAD|<key>.")
+    lines.append('    datapad_key: str = ""')
     lines.append("")
     lines.append("")
     lines.append("class KotorLocation(Location):")
@@ -329,6 +340,19 @@ def main():
         lines.append(
             f'    "{display}": LocationData(base_id + {idx_counter}, region="Additional Enemies", '
             f'location_type="bounty", bounty_value={n}),'
+        )
+        idx_counter += 1
+
+    # Boss datapads: always present (not tied to any option), never able to hold a progression item
+    # (Rules.py's NON_PROGRESSION_LOCATION_TYPES). One check per boss however many planets he is
+    # fought on -- see patch_boss_datapads.py.
+    # base_id + 260 is "Companion Recruited: New Companion" (a hand-added row); the boss rows start
+    # after it so no two locations share an id.
+    idx_counter += 1
+    for display, key in BOSS_DATAPAD_LOCATIONS:
+        lines.append(
+            f'    "{display}": LocationData(base_id + {idx_counter}, region="Bosses", '
+            f'location_type="datapad", datapad_key="{key}"),'
         )
         idx_counter += 1
 

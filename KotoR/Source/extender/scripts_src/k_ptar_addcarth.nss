@@ -17,6 +17,7 @@
 // either way below, since reaching this trigger is the check regardless
 // of whether recruitment logic needs to run.
 #include "kse"
+#include "ap_recruit_marker"
 
 void main()
 {
@@ -35,5 +36,5 @@ void main()
     // CheckCompanions()) needs to observe anything here. Report the AP
     // location check directly from here, the only place that reliably
     // knows recruitment was just reached.
-    KSE_Diag(22, "AP|CHECK|COMPANION|2");
+    RecordRecruit("carth", 2);
 }

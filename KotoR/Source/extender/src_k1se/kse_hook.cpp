@@ -846,7 +846,7 @@ static int Kse8_Core(int op, int* ok)
         int idx = ds_slot_for(key);
         if (idx < 0) { Log("K1SE ds SETDATA key=\"%s\": store full (%d) -> sentinel", key, g_storeUsed); *ok = 0; return KSE_DS_ERR; }
         g_store[idx].type = KSE_T_STR; ds_copy(g_store[idx].sval, KSE_DS_VALBUF, val);
-        Log("K1SE ds SETDATA key=\"%s\" val=\"%s\" -> ok (%d keys)", key, val, g_storeUsed);
+        LogDiag("K1SE ds SETDATA key=\"%s\" val=\"%s\" -> ok (%d keys)", key, val, g_storeUsed);
         return 1;
     }
     case DSOP_SETINT: {
@@ -857,7 +857,7 @@ static int Kse8_Core(int op, int* ok)
         int idx = ds_slot_for(key);
         if (idx < 0) { Log("K1SE ds SETINT key=\"%s\": store full (%d) -> sentinel", key, g_storeUsed); *ok = 0; return KSE_DS_ERR; }
         g_store[idx].type = KSE_T_INT; g_store[idx].ival = val;
-        Log("K1SE ds SETINT key=\"%s\" val=%d -> ok (%d keys)", key, val, g_storeUsed);
+        LogDiag("K1SE ds SETINT key=\"%s\" val=%d -> ok (%d keys)", key, val, g_storeUsed);
         return 1;
     }
     case DSOP_GETINT: {
@@ -880,7 +880,7 @@ static int Kse8_Core(int op, int* ok)
         const char* key = g_dsOps[0].sval;
         int idx = ds_find(key);
         if (idx >= 0) { g_store[idx].used = false; --g_storeUsed; }
-        Log("K1SE ds DELETE key=\"%s\" -> %d (%d keys)", key, idx >= 0 ? 1 : 0, g_storeUsed);
+        LogDiag("K1SE ds DELETE key=\"%s\" -> %d (%d keys)", key, idx >= 0 ? 1 : 0, g_storeUsed);
         return idx >= 0 ? 1 : 0;
     }
     case DSOP_REPORT: {
@@ -2061,6 +2061,99 @@ static void KseHalveMaxHpViaCon(void* statBlock)
     KseSetConBase(statBlock, con - bestDecrease);
 }
 
+// Read-only report of the six TRUE base ability scores -- see offsets.h's
+// KSE_FIELD_REPORT_ABILITY_BASES comment. The line is shaped exactly like
+// a KSE_Diag line so the kse.log tailer relays it unchanged. The reads are
+// guarded: a bad stat-block pointer reports nothing rather than faulting
+// inside the game's script thread.
+static void KseReportAbilityBases(void* statBlock)
+{
+    int str, dex, con, intl, wis, cha;
+    __try {
+        BYTE* p = reinterpret_cast<BYTE*>(statBlock);
+        str = (int)p[KSE_STATS_STR_BASE_OFF];
+        dex = (int)p[KSE_STATS_DEX_BASE_OFF];
+        con = (int)p[KSE_STATS_CON_BASE_OFF];
+        intl = (int)p[KSE_STATS_INT_BASE_OFF];
+        wis = (int)p[KSE_STATS_WIS_BASE_OFF];
+        cha = (int)p[KSE_STATS_CHA_BASE_OFF];
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE ANOMALY field: REPORT_ABILITY_BASES faulted reading the stat block; no report");
+        return;
+    }
+    Log("K1SE DIAG: code=%d msg=\"AP|ABILITYBASEREPORT|str=%d|dex=%d|con=%d|int=%d|wis=%d|cha=%d\"",
+        KSE_DIAG_CODE_ABILITY_BASE_REPORT, str, dex, con, intl, wis, cha);
+}
+
+// Returns a pointer to the true rank byte for nSkill, or null if any guard
+// fails. Same trust chain Kse11_Core uses for its own write: the skill count
+// comes from the engine's rules manager (null manager -> refuse, never an
+// invented bound), and the array pointer is null-checked before it is indexed.
+static signed char* KseSkillRankSlot(void* statBlock, int nSkill, const char** why)
+{
+    BYTE* base = KseImageBase();
+    void* rules = *reinterpret_cast<void**>(base + KSE_RULES_MGR_RVA);
+    if (!rules) { *why = "rules manager null"; return nullptr; }
+    int skillCount = (int)*(reinterpret_cast<BYTE*>(rules) + KSE_RULES_SKILLCOUNT_OFF);
+    if (nSkill < 0 || nSkill >= skillCount) { *why = "skill index out of range"; return nullptr; }
+    signed char* ranks = *reinterpret_cast<signed char**>(
+        reinterpret_cast<BYTE*>(statBlock) + KSE_STATS_SKILLARRAY_OFF);
+    if (!ranks) { *why = "skill array null"; return nullptr; }
+    return ranks + nSkill;
+}
+
+// Read-only report of the eight TRUE skill ranks -- see offsets.h's
+// KSE_FIELD_REPORT_SKILL_RANKS comment. Shaped like a KSE_Diag line so the
+// kse.log tailer relays it unchanged. Reports nothing (rather than a
+// partial line) if any of the eight reads is refused or faults.
+static void KseReportSkillRanks(void* statBlock)
+{
+    int r[8];
+    const char* why = "";
+    __try {
+        for (int i = 0; i < 8; i++) {
+            signed char* slot = KseSkillRankSlot(statBlock, i, &why);
+            if (!slot) {
+                Log("K1SE ANOMALY field: REPORT_SKILL_RANKS skill %d: %s; no report", i, why);
+                return;
+            }
+            r[i] = (int)*slot;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE ANOMALY field: REPORT_SKILL_RANKS faulted reading the skill array; no report");
+        return;
+    }
+    Log("K1SE DIAG: code=%d msg=\"AP|SKILLBASEREPORT|computeruse=%d|demolitions=%d|stealth=%d|awareness=%d|persuade=%d|repair=%d|security=%d|treatinjury=%d\"",
+        KSE_DIAG_CODE_SKILL_BASE_REPORT, r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]);
+}
+
+// Halves one skill's TRUE rank -- see offsets.h's KSE_FIELD_HALVE_SKILL_RANK
+// comment. Reads the real rank, then writes through Kse11_Core (the guarded,
+// clamped, logged skill-write path) rather than poking the byte itself.
+static void KseHalveSkillRank(void* statBlock, int nSkill)
+{
+    const char* why = "";
+    int rank = 0;
+    __try {
+        signed char* slot = KseSkillRankSlot(statBlock, nSkill, &why);
+        if (!slot) {
+            Log("K1SE ANOMALY field: HALVE_SKILL_RANK skill %d: %s; no write", nSkill, why);
+            return;
+        }
+        rank = (int)*slot;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE ANOMALY field: HALVE_SKILL_RANK faulted reading the skill array; no write");
+        return;
+    }
+    if (rank <= 0) {
+        Log("K1SE SetCreatureField HALVE_SKILL_RANK skill=%d : rank %d already minimal; no-op", nSkill, rank);
+        return;
+    }
+    int decrease = rank - (rank / 2);
+    Log("K1SE SetCreatureField HALVE_SKILL_RANK skill=%d : rank %d -> %d", nSkill, rank, rank - decrease);
+    Kse11_Core(statBlock, nSkill, -decrease);
+}
+
 // TEMPORARY RESEARCH DIAGNOSTIC -- see offsets.h's KSE_FIELD_DIAG_SCAN_
 // CLIENT_STATS comment. Scans the client object's own memory for a
 // pointer whose target starts with CSWCCreatureStats's own known vtable
@@ -2303,6 +2396,27 @@ extern "C" int __stdcall KseSetCreatureField(int argCount)
         void* block = KseField_StatBlock(objId, &why);
         if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
         KseHalveMaxHpViaCon(block);
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_REPORT_ABILITY_BASES) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no report performed", why); return 0; }
+        KseReportAbilityBases(block);
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_REPORT_SKILL_RANKS) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no report performed", why); return 0; }
+        KseReportSkillRanks(block);
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_HALVE_SKILL_RANK) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        KseHalveSkillRank(block, nValue);
         return 0;
     }
 
@@ -2955,7 +3069,9 @@ extern "C" int __stdcall KseFeatRead(int argCount)
     int  present = KseFeatPresent(block, nFeat);
     bool inA = KseFeatInList(block, KSE_SB_FEATA_PTR_OFF, KSE_SB_FEATA_COUNT_OFF, 2, nFeat);
     bool inB = KseFeatInList(block, KSE_SB_FEATB_PTR_OFF, KSE_SB_FEATB_COUNT_OFF, 2, nFeat);
-    Log("K1SE GetFeatAcquired feat=%d -> %d (inA=%d inB=%d A.ptr=%p A.count=%d) [aread #%ld]",
+    // Per-call trace: silent unless the KSE_DIAGNOSTIC marker file is present. It used to be written on
+    // every call (about 126 lines per 5 s poll, 58% of kse.log); the failures above stay unconditional.
+    LogDiag("K1SE GetFeatAcquired feat=%d -> %d (inA=%d inB=%d A.ptr=%p A.count=%d) [aread #%ld]",
         nFeat, present, inA ? 1 : 0, inB ? 1 : 0,
         *reinterpret_cast<void**>(reinterpret_cast<BYTE*>(block) + KSE_SB_FEATA_PTR_OFF),
         *reinterpret_cast<int*>(reinterpret_cast<BYTE*>(block) + KSE_SB_FEATA_COUNT_OFF),

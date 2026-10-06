@@ -10,14 +10,20 @@ class CompanionMode(Choice):
     ap_gated: companions are real AP checks/items. Their vanilla recruit
     trigger is suppressed; the moment would-be-recruit is still reported as
     a completed check, but the companion only actually joins once you
-    receive that companion's item from the multiworld.
+    receive that companion's item from the multiworld. Mission's item is
+    always placed on a Taris or Endar Spire check (Zaalbar's recruit needs
+    her), and each companion's own Ebon Hawk quest check needs that
+    companion's item.
 
-    normal: companions join exactly like stock KOTOR, with no AP gating --
+    normal (default): companions join exactly like stock KOTOR, with no AP gating --
     the recruit moment still registers as a completed check (for tracking),
     but it self-fulfills instantly instead of waiting on a received item.
 
-    none: companions never join at all. Their 9 locations are removed
-    from the pool entirely rather than left permanently uncompletable.
+    none: companions never join at all. Their 9 recruit locations and the
+    10 companion-specific Ebon Hawk quest locations (Bastila, Bastila's
+    Mother, Canderous, Jagi's Challenge, Carth, HK-47, Jolee Bindo, Juhani,
+    Threat from Xor, Mission's Brother) are removed from the pool entirely
+    rather than left permanently uncompletable.
     """
     display_name = "Companion Mode"
     option_ap_gated = 0
@@ -47,7 +53,7 @@ class NewCompanion(Choice):
     AP item/location identity.
 
     Both are also folded into companion_class and additional_feats
-    exactly like the other 7 non-droid companions (no_jedi/randomize_all
+    exactly like the 7 non-droid companions (so 8 companions in total; no_jedi/randomize_all
     can reroll them; jedi_companion is unaffected -- neither is one of
     its 4 target companions).
 
@@ -57,7 +63,9 @@ class NewCompanion(Choice):
     reference/easter egg).
 
     malak: Darth Malak, a Jedi Guardian, using his real unique in-game
-    appearance/model."""
+    appearance/model. Because of that model he cannot equip robes, body
+    armor, helmets/masks or gloves (weapons, belts, implants and forearm
+    gear are fine)."""
     display_name = "New Companion"
     option_off = 0
     option_mystery = 1
@@ -87,10 +95,8 @@ class StartingClass(Choice):
     is independently rolled to any of all 6 classes (Soldier/Scout/
     Scoundrel/Guardian/Consular/Sentinel), applied immediately at the
     start of the game like "jedi_start" above, not item-gated. A Jedi roll
-    becomes a real multiclass exactly like jedi_start/jedi_granted
-    (AddMultiClass); a base-class roll REPLACES your character-creation
-    class instead, using the same direct class-write mechanism
-    CompanionClass already uses for companions.
+    becomes a real multiclass exactly like jedi_start/jedi_granted; a
+    base-class roll REPLACES your character-creation class instead.
 
     Under any mode except "off", Dantooine's real trial-completion script
     is suppressed so simply playing through it normally can't ALSO grant
@@ -156,8 +162,7 @@ class AdditionalFeats(Toggle):
     companion_mode is "none", otherwise the PC plus all 7 non-droid
     companions (Bastila, Canderous, Carth, Jolee, Juhani, Mission,
     Zaalbar -- HK-47 and T3-M4 are droids and never eligible; if
-    new_companion is on, the replacement character is eligible in his
-    place).
+    new_companion is on, the replacement character is eligible too).
 
     Receiving one doesn't grant anything immediately -- which 3 feats it
     grants is decided later, once that character is actually recruited
@@ -176,26 +181,26 @@ class ProgressionSystem(Toggle):
     """Gates 8 real main-questline items (Sith Armor, Sith Papers, Taris
     Shield Codes, Manaan Enviro Suit, and 4 Star Maps -- Tatooine/
     Kashyyyk/Manaan/Korriban) behind real AP checks instead of their
-    normal vanilla pickup. (Tatooine Desert Map and the Dantooine Star
-    Map were dropped from an original 10-item design after tracing each
-    item's real vanilla gate -- neither one turned out to gate anything
-    at all.)
+    normal vanilla pickup. (The Tatooine Desert Map and the Dantooine Star
+    Map gate nothing in vanilla, so they are not included.)
 
     Two different mechanisms depending on the item: Sith Armor/Papers/
     Shield Codes/Enviro Suit are suppressed at their normal vanilla
-    acquisition point and granted once the paired check clears, same as
-    before. The 4 Star Maps use a DIFFERENT mechanism -- vanilla KOTOR
-    has no travel restriction to any planet at all (confirmed via the
-    real galaxy-map script), so this option creates an artificial one:
-    Tatooine/Kashyyyk/Manaan/Korriban are unreachable via the galaxy map
-    until that planet's Star Map check clears.
+    acquisition point and instead exist as items in the multiworld; you
+    get each one when it is received, wherever it was placed (the first
+    three are always placed on Taris or Endar Spire checks). The 4 Star
+    Maps use a DIFFERENT mechanism -- vanilla KOTOR has no travel
+    restriction to any planet at all, so this option creates an
+    artificial one: Tatooine/Kashyyyk/Manaan/Korriban are unreachable via
+    the galaxy map until that planet's Star Map item is received.
 
     A real access-rule layer rides on this (see Rules.py): Taris' Lower
     City and everything past it requires Sith Armor, the Sith Base
     additionally requires Sith Papers, Escaping Taris requires the Shield
     Codes, Manaan's Hrakert Rift (and its own Star Map) requires the
-    Enviro Suit, EVERY location on the 4 travel-gated planets requires
-    that planet's own Star Map item, and Leviathan/Unknown World/Star
+    Enviro Suit, every other location on the 4 travel-gated planets
+    (each planet's own Star Map check is exempt) requires that planet's
+    own Star Map item, and Leviathan/Unknown World/Star
     Forge/the ending require ALL 4 Star Maps. This is a REAL logic layer,
     not flavor -- Archipelago's own generation-time reachability sweep
     uses it to guarantee the seed is actually completable, the same
@@ -215,9 +220,7 @@ class ProgressionSystem(Toggle):
     Also REQUIRES goal to be defeat_malak or reach_leviathan -- true_balance
     and max_level don't require ever reaching the Leviathan or later, so a
     player could legitimately "win" without needing (or ever finding) the
-    Star Maps this option gates -- confirmed live: a real seed left 2 of 4
-    Star Maps permanently unfound with no narrative pull to go get them.
-    Enabling progression_system with an incompatible goal raises an error
+    Star Maps this option gates. Enabling progression_system with an incompatible goal raises an error
     at generation time, same as the area_randomizer check above."""
     display_name = "Progression System"
     default = False
@@ -253,7 +256,10 @@ class Traps(Choice):
     known skill, halved), Remove Half Known Feats, Remove Half Known Force
     Powers, Cut Max Health (as close to half as the character's build
     allows -- see below), Remove a Companion (a random currently-recruited
-    one; does nothing if none are recruited yet), Remove Half Inventory
+    companion is removed permanently: they leave your party and roster for
+    the rest of the run and are not brought back by the client's repair
+    logic or by the item being sent again after a reconnect; does nothing
+    if none are recruited yet), Remove Half Inventory
     Items (backpack only, equipped gear is safe, quest items are never
     eligible), and one dedicated item per remaining ability score
     (Strength/Dexterity/Intelligence/Wisdom/Charisma) that halves that
@@ -261,14 +267,6 @@ class Traps(Choice):
     Health in Half already works by reducing it (the only lever this
     engine has for Max HP at all), so a separate CON trap would just
     overlap.
-
-    "Cut Level (and XP) in Half" was retired: the engine's SetXP silently
-    refuses to reduce XP below whatever the character's CURRENT level
-    already requires (same no-op class as TakeGoldFromCreature), leaving
-    the level field dropped but the XP unchanged -- an inconsistent
-    character. Replaced by Reduce a Skill, which reuses the same
-    EffectSkillDecrease approach already proven live for the 5 ability
-    traps above (a plain vanilla effect, no threshold to fight).
 
     Several are decided at the moment of delivery, not at generation
     time, since they depend on the character's real current state: which
@@ -295,7 +293,7 @@ class Traps(Choice):
 
 class TrapWeight(Range):
     """Relative weight for Trap items in the distributed pool. Only
-    consulted when item_distribution_type is player_decided AND traps
+    consulted when item_distribution_type is player_decided AND enable_traps
     is item_filler (the fixed_amount mode ignores weights entirely; off
     has no trap items at all). Kept low by default -- same "show up
     occasionally" tier as Skills/Abilities."""
@@ -315,12 +313,13 @@ class TrapLink(Toggle):
     the same trigger usually get two different traps, and a linked
     non-KotOR game's trap is just "a trap" as far as this side cares.
 
-    Linked traps resolve the same way a received Trap item does (next
-    poll cycle, from your live character state, safe no-op if there's
+    Linked traps resolve the same way a received Trap item does (within a
+    few seconds, from your live character state, safe no-op if there's
     nothing to halve). They are never sent back out again, so a linked
-    trap can't ping-pong between two players forever.
+    trap can't ping-pong between two players forever. A trap that does
+    nothing for you (nothing to halve) does not trigger the link.
 
-    If traps is off for you, an incoming linked trap is ignored (no
+    If enable_traps is off for you, an incoming linked trap is ignored (no
     trap types are enabled for this slot) -- matching DeathLink's own
     "nothing to do" precedent rather than inventing a fallback."""
     display_name = "TrapLink"
@@ -336,7 +335,9 @@ class GalacticShop(Toggle):
     and you get a random item that some OTHER KotOR player deposited
     (never one of your own -- the whole point is that you can't dump junk
     and immediately reclaim it). If nobody else has anything in the pool
-    right now, you get a Medpac instead of nothing.
+    right now, you get two Medpacs instead of nothing. Only other KotOR
+    players' deposits can come back, so with one KotOR player in the
+    multiworld you will only ever get the Medpacs.
 
     What comes back is delivered exactly like any other AP item grant --
     on your next area transition, not instantly -- because the pool
@@ -350,23 +351,56 @@ class GalacticShop(Toggle):
     default = False
 
 
+class ArchipelagoVendor(Toggle):
+    """Puts the Archipelago Vendor on the Ebon Hawk from the very start: a
+    purchase NPC (beside the repair bench in the main hold) who sells
+    training for credits. Unlike Galactic Shop, this is its own option.
+
+    Each of the vendor's menus is locked behind an item you have to find
+    in the multiworld -- five "Vendor Pass" items, one per menu: Skill
+    Training, Ability Training, Feat Training, Force Power Training and
+    Alignment Change. A menu stays hidden until you hold its pass. Prices:
+    Skill Training 1,000 credits each and Ability Training 4,000 each (5
+    purchases of each in total), Feat Training and Force Power Training
+    3,000 each (each feat or power once), and Alignment Change 10 points
+    toward the dark side for a gain of 1,000 credits, or 10 points toward
+    the light side for 5,000 credits.
+
+    Character Respec is the one thing that is always available: 6,000
+    credits, up to 5 times. It resets your character to level 1 with no
+    feats or Force powers, all abilities at 10 and all skills at 0, and
+    your XP is kept so you re-level.
+
+    The passes are useful items (never required to complete the seed) and
+    take the place of 5 items from the normal weighted draw, so the pool
+    size is unchanged.
+
+    Off (default): no vendor on the ship, no passes in the pool."""
+    display_name = "Archipelago Vendor"
+    default = False
+
+
 class AdditionalEnemies(Choice):
     """Adds brand-new hostile creatures alongside whatever's already
     placed in an area -- existing enemies/scripts/encounters are never
     touched or removed, this only adds more. Locations are fixed per
-    module (precomputed, safety-checked spots -- see
-    extender/area_trampolines/_enemy_spawn_points.json), only WHICH
-    creature goes in each slot is decided per seed.
+    module (precomputed, safety-checked spots), only WHICH creature goes
+    in each slot is decided per seed.
+
+    When on, one of the new enemies in each of 40 areas carries a Bounty
+    Datapad. Looting them adds 40 extra checks (Bounty Card #1-#40, checked
+    by how many datapads you hold); with this option off those checks do
+    not exist.
 
     off (default): vanilla, no additions.
 
-    area_appropriate: each new creature is drawn only from OTHER
-    creatures native to that area's own planet, matched to roughly that
-    area's own existing difficulty range -- e.g. Endar Spire would only
-    ever get more Sith troopers/soldiers, never something from a
-    completely different planet.
+    area_appropriate: each new creature is drawn only from the type of
+    creature that dominates that area (beasts, Sith military, droids,
+    gangsters, mercenaries, ...), matched to roughly that area's own
+    existing difficulty range -- e.g. an area full of Sith soldiers only
+    gets more Sith military.
 
-    random_sane: any creature from the safe pool (any planet), but still
+    random_sane: any creature from the safe pool (any type or planet), but still
     matched to roughly that specific area's own existing CR (challenge
     rating) range -- more variety than area_appropriate, but still
     difficulty-consistent with where you actually are.
@@ -402,6 +436,12 @@ class ExperienceMode(Choice):
     ap_gated: XP comes from "Experience Points" items received through the
     multiworld. Each item is worth experience_item XP. Your level is gated
     on what other players send you, same as any other AP item.
+
+    The clamp also caps your level, so the XP values below decide how far
+    you can get. The defaults are set so that level 20 (190,000 XP) is
+    reached after about 80% of your checks (with Additional Enemies on);
+    lowering experience_limiter or experience_item makes the Level 17-20
+    checks and the max_level goal harder or impossible to complete.
     """
     display_name = "EXP Mode"
     option_off = 0
@@ -413,54 +453,50 @@ class ExperienceMode(Choice):
 class ExperienceLimiter(Range):
     """XP granted per YOUR OWN completed check, when experience_mode is
     "ap_limited". Total expected XP = (your own checks completed) x this
-    value, recalculated as you complete more checks, up to ~200 real
-    locations at full completion. Max matches experience_item's own max
-    (both are per-unit values multiplied by essentially the same ~200-item/
-    check ceiling, so equal maxes keep the two modes' total-XP ceilings
-    equivalent). Default of 600 lands a full-completion run around
-    120,000 XP (level 16 per exptable.2da), matching experience_item's own
-    default outcome under the default 7-category item distribution."""
+    value, recalculated as you complete more checks. There are about 220
+    locations by default and about 260 with additional_enemies. The default
+    of 905 reaches level 20 (190,000 XP) after about 210 checks, which is
+    80% of the checks with additional_enemies on (about 94% without it), and a
+    full-completion run ends around 238,000 XP with additional_enemies. Lower
+    it to make leveling scarcer; level 20 and the max_level goal need your
+    checks times this value to reach 190,000."""
     display_name = "EXP Limiter"
     range_start = 1
     range_end = 20000
-    default = 600
+    default = 905
 
 
 class ExperienceItem(Range):
     """How much XP each "Experience Points" item grants, when
     experience_mode is "ap_gated". Grounded in KOTOR's real cumulative
-    level table (exptable.2da: level 10 = 45000, level 15 = 105000,
-    level 16 = 120000, level 20/cap = 190000). With the default 7-category
-    item distribution (Weapon 30/Armor 20/Consumable 30/EXP 20/Credit 10/
-    Skill 5/Ability 5), a full playthrough lands around 32 Experience
-    Points items -- the default of 4000 puts that at ~128,000 total XP,
-    comfortably in the level 16-17 range, not a forced grind to the
-    level-20 cap and not a stalled-out early game either. Raise it for a
-    faster/easier power curve, lower it to make leveling scarcer. Note:
-    the actual item count varies with your other options (gear/credits
-    toggles, item_distribution_type) since it's drawn from a weighted
-    pool, not a fixed count -- this default is calibrated against the
-    "everything enabled, normal distribution" baseline specifically."""
+    level table (level 10 = 45000, level 15 = 105000, level 16 = 120000,
+    level 20/cap = 190000). With every item category available and the
+    default distribution (Weapon 30/Armor 20/Consumable 30/EXP 20/Credit
+    10/Skill 5/Ability 5), a full playthrough with additional_enemies on
+    contains about 43 Experience Points items, and the default of 5500
+    reaches level 20 after about 35 of them, which is 80% of the items.
+    Without additional_enemies (about 37 items) it takes about 95% of them.
+    With fewer item categories enabled the EXP share of the pool is larger,
+    so level 20 comes sooner. Raise it for a faster power curve, lower it to
+    make leveling scarcer. Note: the actual item count varies with your other
+    options (gear/credits toggles, item_distribution_type, additional_enemies)
+    since it's drawn from a weighted pool, not a fixed count."""
     display_name = "EXP Item"
     range_start = 1
     range_end = 20000
-    default = 4000
+    default = 5500
 
 
 class CreditMode(Choice):
     """Controls how (and whether) you receive AP-driven credits. Mirrors
     experience_mode's shape exactly -- both ap_limited and ap_gated clamp
     vanilla credit gains (loot, quest rewards, selling items) down to an
-    "expected" total, correcting once per poll rather than once per area
-    transition (spending is granular enough -- shop purchases especially --
+    "expected" total, correcting continuously rather than only on area
+    transitions (spending is granular enough -- shop purchases especially --
     that waiting for a transition would be too coarse). A real spend
     (credits going down) is never fought -- detected and treated as
     legitimate, lowering the expected total by the same amount instead of
-    trying to "restore" money you just spent. Credits can be set to an
-    exact value in either direction (not just topped up -- see
-    KSE_SetCredits), which is what makes this clamp-down design possible
-    at all; the old GiveGoldToCreature/TakeGoldFromCreature mechanism
-    could only ever increase credits.
+    trying to "restore" money you just spent.
 
     off (default): pure vanilla credits, completely untouched -- no
     clamping, no items, credits behave exactly like stock KOTOR.
@@ -496,9 +532,7 @@ class CreditLimiter(Range):
 
 class CreditItem(Range):
     """How many credits each "Republic Credits" item grants, when
-    credit_mode is "ap_gated". Mirrors experience_item's shape exactly.
-    Replaces the old fixed 5000-per-item amount with a configurable
-    value."""
+    credit_mode is "ap_gated". Mirrors experience_item's shape exactly."""
     display_name = "Credit Item"
     range_start = 1
     range_end = 20000
@@ -570,7 +604,8 @@ class StartingCharisma(Range):
 
 
 class StartingComputerUse(Range):
-    """Extra Computer Use skill ranks granted at game start."""
+    """Extra Computer Use skill ranks granted at game start, in steps of 2 (an odd
+    value is rounded up to the next even number)."""
     display_name = "Starting Computer Use Boost"
     range_start = 0
     range_end = 9
@@ -578,7 +613,8 @@ class StartingComputerUse(Range):
 
 
 class StartingDemolitions(Range):
-    """Extra Demolitions skill ranks granted at game start."""
+    """Extra Demolitions skill ranks granted at game start, in steps of 2 (an odd
+    value is rounded up to the next even number)."""
     display_name = "Starting Demolitions Boost"
     range_start = 0
     range_end = 9
@@ -586,7 +622,8 @@ class StartingDemolitions(Range):
 
 
 class StartingStealth(Range):
-    """Extra Stealth skill ranks granted at game start."""
+    """Extra Stealth skill ranks granted at game start, in steps of 2 (an odd
+    value is rounded up to the next even number)."""
     display_name = "Starting Stealth Boost"
     range_start = 0
     range_end = 9
@@ -594,7 +631,8 @@ class StartingStealth(Range):
 
 
 class StartingAwareness(Range):
-    """Extra Awareness skill ranks granted at game start."""
+    """Extra Awareness skill ranks granted at game start, in steps of 2 (an odd
+    value is rounded up to the next even number)."""
     display_name = "Starting Awareness Boost"
     range_start = 0
     range_end = 9
@@ -602,7 +640,8 @@ class StartingAwareness(Range):
 
 
 class StartingPersuade(Range):
-    """Extra Persuade skill ranks granted at game start."""
+    """Extra Persuade skill ranks granted at game start, in steps of 2 (an odd
+    value is rounded up to the next even number)."""
     display_name = "Starting Persuade Boost"
     range_start = 0
     range_end = 9
@@ -610,7 +649,8 @@ class StartingPersuade(Range):
 
 
 class StartingRepair(Range):
-    """Extra Repair skill ranks granted at game start."""
+    """Extra Repair skill ranks granted at game start, in steps of 2 (an odd
+    value is rounded up to the next even number)."""
     display_name = "Starting Repair Boost"
     range_start = 0
     range_end = 9
@@ -618,7 +658,8 @@ class StartingRepair(Range):
 
 
 class StartingSecurity(Range):
-    """Extra Security skill ranks granted at game start."""
+    """Extra Security skill ranks granted at game start, in steps of 2 (an odd
+    value is rounded up to the next even number)."""
     display_name = "Starting Security Boost"
     range_start = 0
     range_end = 9
@@ -626,7 +667,8 @@ class StartingSecurity(Range):
 
 
 class StartingTreatInjury(Range):
-    """Extra Treat Injury skill ranks granted at game start."""
+    """Extra Treat Injury skill ranks granted at game start, in steps of 2 (an odd
+    value is rounded up to the next even number)."""
     display_name = "Starting Treat Injury Boost"
     range_start = 0
     range_end = 9
@@ -635,12 +677,13 @@ class StartingTreatInjury(Range):
 
 class ReceiveInventoryItems(Toggle):
     """Whether curated gear items (weapons, armor, and other equipment
-    flagged as included_as_item in gear_items.json) are ELIGIBLE to appear
+    from the curated gear list) are ELIGIBLE to appear
     in the AP item pool at all -- this doesn't guarantee any specific gear
     item, it just makes the Weapons/Armor/Consumables categories in
-    item_distribution_type available to draw from. Off means the gear
-    system is completely inert -- no gear items in the pool, no shop
-    stocking either."""
+    item_distribution_type available to draw from. Off means no gear items
+    are placed in the item pool. This only controls what the multiworld can
+    send you: shop_randomizer and loot_mode are separate options and work
+    the same whether this is on or off."""
     display_name = "Receive Inventory Items"
     default = False
 
@@ -667,19 +710,21 @@ class ShopRandomizer(Toggle):
     """Whether shops get restocked with a curated random selection at all.
     Off (default): every shop keeps its normal vanilla inventory,
     untouched. On: shop_item_count items get drawn from the curated
-    shop_randomize pool and stocked in every covered shop, replacing its
-    vanilla inventory on first visit."""
+    shop_randomize pool, separately for each of 6 planets (Taris,
+    Dantooine, Kashyyyk, Manaan, Korriban, Tatooine); every shop on that
+    planet sells that planet's list, replacing its vanilla inventory on
+    first visit. Shops elsewhere (for example Yavin Station) are
+    unchanged."""
     display_name = "Shop Randomizer"
     default = False
 
 
 class ShopItemCount(Range):
     """How many items to stock in each shop, drawn randomly from the
-    curated shop_randomize pool in gear_items.json, replacing that shop's
+    curated shop pool, replacing that shop's
     entire vanilla inventory. Only consulted when shop_randomizer is On.
-    Capped at 30, the batch size already proven safe for a single
-    trampoline firing this session; this is a one-time restock on each
-    shop's first visit, not a repeating reroll."""
+    Capped at 30; this is a one-time restock on each shop's first visit,
+    not a repeating reroll."""
     display_name = "Shop Item Count"
     range_start = 1
     range_end = 30
@@ -701,17 +746,18 @@ class AreaRandomizer(Choice):
     wired this way; the remaining 8 (no real return path anywhere in
     vanilla data) always keep their normal vanilla destination, as do a
     handful of story-critical zones (Endar Spire, the Leviathan, the Star
-    Forge, Unknown World) excluded from shuffling entirely. On the rare
+    Forge, Unknown World), the Taris hideout exit and the six ramps into
+    the Ebon Hawk, excluded from shuffling entirely. On the rare
     seed where the shuffle can't fully resolve on its own, a small repair
     step guarantees every area still has a real way in, at the cost of that
     one connection not necessarily leading back the way you came.
 
-    decoupled: every one of the 118 eligible entries (including the 8 with
-    no identifiable reverse -- decoupled mode doesn't need one) is shuffled
-    completely independently. Walking through a door tells you nothing
-    about what walking back through whatever door is physically on the
-    other side will do -- it may lead somewhere else entirely, or nowhere
-    near where you came from. A real, more traditional entrance-randomizer
+    decoupled: the same 110 entries as coupled are shuffled, but each side
+    of a door is placed independently, so walking through a door tells you
+    nothing about what walking back through whatever door is physically on
+    the other side will do -- it may lead somewhere else entirely, or
+    nowhere near where you came from. The 8 entries with no reverse door
+    stay vanilla in both modes. A real, more traditional entrance-randomizer
     "you don't know where anything leads, in either direction" experience,
     at the cost of the coupled round-trip guarantee. Reachability is still
     guaranteed (the same class of repair step coupled mode uses), just not
@@ -719,11 +765,11 @@ class AreaRandomizer(Choice):
 
     In both non-off modes, the same handful of story-critical zones stay
     excluded, and the mapping is fixed once per seed: every door leads to
-    the same shuffled destination for the whole playthrough. Like item
-    suppression, this is a real, game-file-level patch applied once by a
-    standalone script (not something the live AP client toggles), so this
-    option's actual effect depends on that patch step having been run for
-    the seed you're playing."""
+    the same shuffled destination for the whole playthrough. The client
+    edits the game's files for this the first time you connect to a seed;
+    the new layout appears when the game next loads those areas.
+
+    Cannot be combined with progression_system (generation fails)."""
     display_name = "Area Randomizer"
     option_off = 0
     option_coupled = 1
@@ -732,48 +778,33 @@ class AreaRandomizer(Choice):
 
 
 class LootMode(Choice):
-    """What happens to a picked-up item NOT on the AP-allowed whitelist
-    (quest_dependent items are always left alone regardless of this
-    option -- see scripts/patch_loot_disturb.py). Replaces the earlier
-    two-toggle randomize_loot/allow_normal_loot design (2 booleans
-    producing 4 behaviors was more confusing than one 4-way choice for the
-    same thing) -- same 4 behaviors, one option:
+    """What happens to the ordinary gear found lying around the world: loot in
+    containers and on enemies. Quest-critical items are always left alone.
+    This is a patch applied to the game's data files when you connect, before
+    the game loads -- nothing in the game watches pickups, and the edited data
+    is simply what each area contains when it loads.
 
-      normal (default): untouched -- pure vanilla, nothing wired up at all.
-      destroy: the pickup is destroyed immediately, no replacement.
-      bonus: the pickup is kept as normal, and every loot-bearing
-        placeable/creature also gets one extra random item (drawn from
-        the shop_randomize pool) baked directly into its item list.
-      replace: every non-whitelisted item is replaced with one random
-        item from the same pool, one-for-one.
+      normal (default): nothing is changed.
+      destroy: ordinary gear is removed from containers. Enemies keep and
+        still use the gear they carry or wear, but it no longer drops, so
+        there is nothing to loot from them.
+      bonus: everything stays, and every container, and every enemy that
+        carries at least one item in its pack (gear it only wears does not
+        count), gets one extra random item drawn from the same pool that
+        stocks shops (shop_randomize).
+      replace: ordinary gear in containers is swapped one-for-one for a
+        random item from that pool. Enemies keep and use their own gear;
+        what they drop is a random item from the pool instead (enemies
+        that only wear gear drop nothing).
 
-    Two earlier designs were tried and abandoned: KOTOR's
-    Mod_OnAcquirItem module event (scripts/patch_item_suppression.py),
-    which re-fires for items the player already holds -- a confirmed,
-    unfixable engine quirk that forced held-quantity-delta guards and a
-    purchase-detection heuristic just to work around it (do not
-    reintroduce this mechanism for any reason); and its replacement,
-    OnInvDisturbed/ScriptDisturbed, which never fires at all for creature
-    corpse loot -- fatal since most of this game's loot comes from
-    killing enemies, not static containers. See DEVELOPMENT_HISTORY.md's
-    "Loot Mode's final settled design" section for the full history.
-
-    CURRENT design: pure static template editing. scripts/patch_loot_
-    disturb.py directly rewrites each loot-bearing placeable/creature's
-    item list in Override before the game loads -- the same technique
-    already used for the Galactic Coin item injection and Additional
-    Enemies' bounty-card creature clones. No script hook of any kind, so
-    none of the earlier designs' problems apply: no relaunch requirement
-    (this is static data, applied the moment a module next loads, even on
-    a reload of an already-running game), and creature corpse loot works
-    identically to placeable container loot since both are just template
-    data edited the same way. See scripts/patch_loot_disturb.py for
-    implementation detail.
-
-    This is a real, game-file-level patch applied once by
-    scripts/patch_loot_disturb.py (not something the AP client toggles
-    live), so this option's actual effect depends on that patch step
-    having been run for the seed you're playing."""
+    Items an enemy's death script creates at runtime (for example the
+    Additional Enemies bounty cards) are not touched. With progression_system
+    on, the Sith Armor and Shield Codes are always removed from loot whatever
+    this option is set to, since they come through the Progression System.
+    With destroy, bonus or replace the Endar Spire starting locker is fixed
+    to clothing, a blaster pistol, a short sword and 10 computer spikes so
+    you cannot be left without a weapon. Areas you have already visited in
+    a save keep their old loot."""
     display_name = "Loot Mode"
     option_normal = 0
     option_destroy = 1
@@ -783,22 +814,26 @@ class LootMode(Choice):
 
 
 class ItemDistributionType(Choice):
-    """Controls how almost the entire item pool is composed. Only
-    companions (when companion_mode is ap_gated) are ever unconditionally
-    guaranteed in the pool -- everything else (curated gear, Skills,
-    Abilities, EXP, Credits) is drawn proportionally from the 7 categories
-    below, across whichever pool slots aren't taken by those guaranteed
-    companion items -- the starting_class class item (when starting_class
-    is "granted") is ALSO unconditionally guaranteed the same way, never
-    subject to this weighted draw. When starting_class is "start" it's
-    precollected at game start instead, still never placed in the pool;
-    when "off" there's no class item at all.
+    """Controls how almost the entire item pool is composed. Only a few
+    kinds of item are placed outside this draw (guaranteed to exist):
+    ap_gated companions, the jedi_granted class item, Jedi Training items
+    (companion_class jedi_companion), Additional Feats items, the 8
+    progression_system items, the 5 vendor passes and fixed_amount traps.
+    Everything else (curated gear, Skills, Abilities, EXP, Credits) is
+    drawn proportionally from the 8 categories below, across the
+    remaining slots. With jedi_start the class item is given at the start
+    instead of being placed in the pool; with starting_class off there is
+    no class item at all. If no category has anything available (for
+    example receive_inventory_items off, no EXP or credit mode, and skill
+    and ability weights 0), the remaining slots are filled with copies of
+    "Skill: Computer Use".
 
     normal (default): uses a fixed, project-chosen baseline distribution
     (Weapons 30 / Armor 20 / Consumables 30 / EXP 20 / Credits 10 /
     Skills 5 / Abilities 5 / Traps 5) -- a sensible mix that doesn't need
-    any tuning. (Traps only participate at all when traps is
-    item_filler.)
+    any tuning. (Traps only participate at all when enable_traps is
+    item_filler.) With receive_inventory_items, experience_mode and
+    credit_mode all off, the pool holds only Skill and Ability items.
 
     player_decided: uses the 8 weight options below instead of the fixed
     baseline. Weights are relative, not required to sum to 100 -- doubling
@@ -902,24 +937,23 @@ class Goal(Choice):
     """What counts as winning the game.
 
     defeat_malak (default): the game is won the moment Darth Malak is
-    defeated aboard the Star Forge -- detected via STA_MALAK_DEAD, a real
-    globalcat.2da flag set unconditionally across every narrative branch
-    of that fight (Bastila redeemed or turned, however many captive Jedi
-    were drained), never reset.
+    defeated aboard the Star Forge, however the fight plays out (Bastila
+    redeemed or turned, however many captive Jedi were drained).
 
     true_balance: the game is won once you've reached BOTH alignment
-    extremes (Light Side 100 and Dark Side 0) at some point in the same
-    playthrough -- not simultaneously, just visited each extreme at some
+    extremes (Light Side 80 or higher and Dark Side 20 or lower) at some
+    point in the same playthrough -- not simultaneously, just visited each extreme at some
     point, tracked the same way the True Neutral/Fallen Jedi/Redeemed
     Sith alignment bonus checks already are.
 
     max_level: the game is won on reaching character level 20, KOTOR's
-    real level cap (exptable.2da).
+    real level cap. If experience_mode is not off, make
+    sure experience_limiter/experience_item allow reaching 190,000 XP (the
+    defaults do, after about 80% of your checks with additional_enemies on).
 
-    reach_leviathan: the game is won the moment you're captured aboard the
-    Leviathan -- detected via the same "Leviathan: Captured by the
-    Leviathan" journal check (lev_captured >= 99) already tracked as a
-    real location. A shorter alternative to defeat_malak that still
+    reach_leviathan: the game is won the moment you enter the first area
+    of the Leviathan (the "Visited: Leviathan - Prison Block" check). A
+    shorter alternative to defeat_malak that still
     requires completing the same core story beats (under
     progression_system, reaching the Leviathan already requires all 4 Star
     Maps -- see ProgressionSystem's own docstring) without the long
@@ -932,6 +966,14 @@ class Goal(Choice):
     option_max_level = 2
     option_reach_leviathan = 3
     default = 0
+
+
+class KotorDeathLink(DeathLink):
+    """When you die, everyone who enabled death link dies, and the other way
+    round. Your death is reported within about 5 seconds.
+    An incoming death is applied the next time you enter an area; deaths
+    that arrive while the client is disconnected are discarded when it
+    connects again."""
 
 
 # arm_name -> (option field name, points-per-arm-firing) for translating a
@@ -973,6 +1015,7 @@ class KotorOptions(PerGameCommonOptions):
     enable_traps: Traps
     trap_link: TrapLink
     galactic_shop: GalacticShop
+    archipelago_vendor: ArchipelagoVendor
     additional_enemies: AdditionalEnemies
     experience_mode: ExperienceMode
     experience_limiter: ExperienceLimiter
@@ -980,7 +1023,7 @@ class KotorOptions(PerGameCommonOptions):
     credit_mode: CreditMode
     credit_limiter: CreditLimiter
     credit_item: CreditItem
-    death_link: DeathLink
+    death_link: KotorDeathLink
     starting_strength: StartingStrength
     starting_dexterity: StartingDexterity
     starting_constitution: StartingConstitution

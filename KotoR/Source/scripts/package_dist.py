@@ -81,7 +81,12 @@ ALWAYS_ON_EXTRA = ["ap_heartbeat", "ap_poll_shared"]
 # "CutStart" object during any of several scripted cutscenes. See
 # docs/MODE_DEPENDENCIES.md for the full investigation.
 EXTRA_RAW_FILES = [
+    # The Player ID item's placeholder template (scripts/patch_player_id.py --placeholder); every Connect rewrites
+    # it per seed, but it must exist at game launch so the engine can create the item from it.
+    "ap_pid.uti",
     "cut00_convers.dlg", "k_player_dialog.dlg",
+    # The sensor console that starts the Leviathan capture scene (ap_lev_cast.nss).
+    "ap_lev_console.utp", "ebo40_carthtlk.utt", "lev40_carth.dlg",
     "m12aa_c06.dlg", "tar02_carth022.dlg",
     # The 6 new lightsaber crystal colors (add_saber_crystal_colors.py) --
     # static, seed-independent item/model/texture content, same category
@@ -133,24 +138,79 @@ EXTRA_RAW_FILES = [
 # the sole "back way" into the Black Vulkar Base, gated on Mission Vao
 # specifically with no Security bypass, same story-soft-lock risk under
 # companion_mode=ap_gated/none. See docs/MODE_DEPENDENCIES.md.
+#
+# k_ptar_trigdoor/apo_trigdoor_orig: the Undercity sewer cell-door trigger
+# (tar05_trigdoor, OnEnter + OnExit) wrapper and its preserved original --
+# the scene that frees and recruits Zaalbar only starts with Mission in the
+# party, so the wrapper stages her when her item hasn't arrived. Her revert
+# lives in k_ptar_addzaal (already shipped via COMPANIONS). See
+# extender/scripts_src/ap_zaal_mission.nss and docs/MODE_DEPENDENCIES.md.
 HAND_WRITTEN_EXTRA = [
     "k_ptar_addcarth", "apo_carth_orig", "k_ptar_candadd", "apo_cand_orig",
     "k_ptar_carbas_en", "apo_carbast_orig",
     "k_psta_init_cart", "apo_stainit_cart_orig",
     "k_ptar_openbase", "apo_openbase_orig",
     "k_ptar_startconv", "apo_startconv_orig",
+    "k_ptar_trigdoor", "apo_trigdoor_orig",
     "k_ptar_davatk_en", "apo_davatk_en_orig",
     "k_ren_taris03", "apo_taris03_orig",
     "k_ren_levescape", "apo_levescape_orig",
     "k_ren_unkturret", "apo_unkturret_orig",
     "k_pdan_addbast", "apo_addbast_orig",
+    "k_pkas_talkwall", "apo_talkwall_orig",
+    "ap_lev_trigger", "ap_lev_use", "ap_lev_rand",
+    "k_punk_temple02", "apo_temple02_orig",
+    "k_pdan_addcarth", "apo_addcarth_orig",
     "k_pdan_cut01", "apo_danm13_cut01_orig", "apo_danm14ab_cut01_orig",
     "k_pdan_cut02", "apo_danm13_cut02_orig", "apo_danm14ab_cut02_orig",
     "k_pdan_cut03", "apo_danm13_cut03_orig", "apo_danm14ab_cut03_orig",
     "k_pdan_cut04", "apo_danm13_cut04_orig", "apo_danm14ab_cut04_orig",
     "k_pdan_cut05", "apo_danm13_cut05_orig", "apo_danm14ab_cut05_orig",
     "k_pdan_cut06", "apo_danm13_cut06_orig", "apo_danm14ab_cut06_orig",
+    # The Endar Spire escape pod's replacement OnUsed script and the preserved vanilla one: heals the party and
+    # transitions straight to tar_m02af, landing beside Carth so his reunion conversation fires on arrival. It was
+    # missing from every earlier package (only its source rode along in extender/scripts_src), so testers ran the
+    # vanilla pod script. See DEVELOPMENT_HISTORY.md, "The escape pod's four independent bugs".
+    "k_pend_pod02", "apo_pod02_org",
 ]
+
+
+def _vendor_manifest():
+    """Everything the Archipelago Vendor needs, as recorded by a real run of
+    scripts/generate_ap_vendor.py (extender/scripts_src/_vendor_manifest.json):
+    the compiled dialogue/gating/grant scripts, plus the static dialogue, NPC
+    and Vendor Pass item files (which generate_ap_vendor.py also copies into
+    extender/raw_override_files). Shipped unconditionally: the vendor only
+    spawns when a seed turns the archipelago_vendor option on, but the files
+    must already be in a tester's Override when it does. A missing manifest is
+    a hard stop, not a silent skip -- the vendor was once left out of the
+    package entirely."""
+    path = os.path.join(REPO_ROOT, "extender", "scripts_src", "_vendor_manifest.json")
+    if not os.path.exists(path):
+        sys.exit(f"vendor manifest missing: {path} -- run scripts/generate_ap_vendor.py first.")
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    return data["scripts"], data["raw_files"]
+
+
+_VENDOR_SCRIPTS, _VENDOR_RAW_FILES = _vendor_manifest()
+HAND_WRITTEN_EXTRA = HAND_WRITTEN_EXTRA + _VENDOR_SCRIPTS
+EXTRA_RAW_FILES = EXTRA_RAW_FILES + _VENDOR_RAW_FILES
+
+
+def _location_manifest():
+    """The 78 `ap_loc_<idx>.uti` visited-area marker items, as written by scripts/generate_location_items.py
+    (extender/scripts_src/_location_manifest.json; the files themselves are in extender/raw_override_files).
+    Every area's entry script creates its marker, so all 78 must be in the player's Override. A missing
+    manifest is a hard stop, not a silent skip."""
+    path = os.path.join(REPO_ROOT, "extender", "scripts_src", "_location_manifest.json")
+    if not os.path.exists(path):
+        sys.exit(f"location manifest missing: {path} -- run scripts/generate_location_items.py first.")
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)["raw_files"]
+
+
+EXTRA_RAW_FILES = EXTRA_RAW_FILES + _location_manifest()
 
 
 def collect_expected_resrefs():

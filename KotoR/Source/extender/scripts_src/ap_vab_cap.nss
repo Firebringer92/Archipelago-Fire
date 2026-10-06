@@ -2,5 +2,5 @@
 
 int StartingConditional()
 {
-    return GetLocalNumber(GetPCSpeaker(), 61) < 5;
+    return GetIsObjectValid(GetItemPossessedBy(GetPCSpeaker(), "ap_vtok_abil")) && GetLocalNumber(GetPCSpeaker(), 61) < 5;
 }

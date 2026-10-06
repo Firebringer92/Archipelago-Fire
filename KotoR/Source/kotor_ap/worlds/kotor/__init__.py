@@ -6,10 +6,10 @@ from worlds.AutoWorld import World, WebWorld
 from worlds.LauncherComponents import Component, components, Type
 
 from . import EntranceRando
-from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS
+from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS, VENDOR_UNLOCK_ITEMS
 from .Locations import KotorLocation, location_table, location_name_to_id, COMPANION_SUBPLOT_LOCATIONS
 from .Options import (
-    KotorOptions, STARTING_ABILITY_ARMS, STARTING_SKILL_ARMS,
+    Goal, KotorOptions, STARTING_ABILITY_ARMS, STARTING_SKILL_ARMS,
 )
 from .Rules import set_rules, set_completion_rules
 
@@ -159,16 +159,17 @@ ALL_CLASS_NAMES = BASE_CLASS_NAMES + JEDI_CLASS_NAMES
 # locked via place_locked_item() at their matching Locations.py locations
 # instead of drawing a normal random reward. Location name -> item name.
 # Two are dedicated new locations (Level 20 Reached/Malak Defeated); the
-# true_balance pair reuses two EXISTING alignment locations instead of
-# adding new ones. Locked unconditionally regardless of which Goal option
-# is actually selected -- simpler, deterministic pool math beats varying
-# the location set by option choice for 4 checks out of 220. See
-# create_items() for the matching pool-count adjustment.
+# true_balance pair and reach_leviathan's first-area visit reuse EXISTING
+# locations instead of adding new ones. Only the markers the selected Goal's completion
+# condition needs are locked (see KotorWorld._goal_event_locations());
+# every other location in this table is an ordinary check that draws a
+# normal reward. See create_items() for the matching pool-count adjustment.
 GOAL_EVENT_LOCATIONS: typing.Dict[str, str] = {
     "Malak Defeated": "Malak Defeated",
     "Level 20 Reached": "Reached Level 20",
     "Alignment: Dark Side 0": "Reached Dark Side 0",
     "Alignment: Light Side 100": "Reached Light Side 100",
+    "Visited: Leviathan - Prison Block": "Reached Leviathan",
 }
 
 # CompanionMode=ap_gated Mission/Zaalbar dependency, part 2 of
@@ -318,6 +319,19 @@ class KotorWorld(World):
             keys.append("hk47")
         return keys
 
+    def _goal_event_locations(self) -> typing.Dict[str, str]:
+        """The subset of GOAL_EVENT_LOCATIONS the selected Goal's completion
+        condition (Rules.py's set_completion_rules) actually checks. The
+        other goals' locations stay ordinary checks."""
+        names_by_goal = {
+            Goal.option_defeat_malak: ("Malak Defeated",),
+            Goal.option_max_level: ("Level 20 Reached",),
+            Goal.option_true_balance: ("Alignment: Dark Side 0", "Alignment: Light Side 100"),
+            Goal.option_reach_leviathan: ("Visited: Leviathan - Prison Block",),
+        }
+        names = names_by_goal.get(self.options.goal.value, ())
+        return {name: GOAL_EVENT_LOCATIONS[name] for name in names}
+
     def _active_locations(self) -> dict:
         """location_table filtered for companion_mode=none, which removes
         the 9 "companion" location_type entries AND the 10
@@ -377,11 +391,12 @@ class KotorWorld(World):
             menu.connect(r)
             regions[name] = r
 
+        goal_events = self._goal_event_locations()
         for loc_name, loc_data in active.items():
             region = regions[loc_data.region]
             location = KotorLocation(self.player, loc_name, loc_data.id, region)
             region.locations.append(location)
-            event_item_name = GOAL_EVENT_LOCATIONS.get(loc_name)
+            event_item_name = goal_events.get(loc_name)
             if event_item_name is not None:
                 # Real item with a real code (see Items.py's own comment on
                 # why this can't be a code=None Event) via the normal
@@ -528,15 +543,15 @@ class KotorWorld(World):
         # vanilla item there, hence the one direct addition.
 
     def create_items(self) -> None:
-        # -len(GOAL_EVENT_LOCATIONS): those 2 locations got a locked Event
-        # item in create_regions() instead of drawing from this pool --
-        # without this adjustment the pool would be 2 items short of the
-        # real number of fillable (non-event) location slots. The extra -1
+        # -len(self._goal_event_locations()): the selected goal's marker
+        # locations got a locked item in create_regions() instead of drawing
+        # from this pool -- without this adjustment the pool would be short
+        # of the real number of fillable (non-event) location slots. The extra -1
         # when companion_mode=ap_gated matches "Companion: Mission Vao"
         # getting the same locked-in-create_regions() treatment (see
         # mission_item_location above) -- one more pre-filled location,
         # one more subtraction, same reasoning.
-        active_count = len(self._active_locations()) - len(GOAL_EVENT_LOCATIONS)
+        active_count = len(self._active_locations()) - len(self._goal_event_locations())
         if self.mission_item_location is not None:
             active_count -= 1
 
@@ -617,6 +632,11 @@ class KotorWorld(World):
                 "Progression Item: Star Map (Korriban)",
             ]
 
+        # ArchipelagoVendor: the five Vendor Pass items are guaranteed placement (they replace filler,
+        # so the pool size is unchanged). Useful, never progression.
+        if self.options.archipelago_vendor:
+            mandatory_names = mandatory_names + list(VENDOR_UNLOCK_ITEMS.keys())
+
         # Traps=fixed_amount: all 12
         # items guaranteed placement, same reasoning as Additional Feats/
         # Progression System above -- "always exactly 12 exist," not a
@@ -647,6 +667,14 @@ class KotorWorld(World):
             resref = data.arm_name[len("give_item:"):]
             gear_data = gear.get(resref)
             if gear_data is None:
+                continue
+            # Only rows flagged included_as_item are generic gear. The 8
+            # hand-written "Progression Item: ..." entries also use a
+            # give_item: arm and their resrefs sit in gear_items.json, but
+            # flagged included_as_item=False; without this check they were
+            # drawn as ordinary armor/consumables with Progression System off
+            # (and as duplicates of the mandatory copies with it on).
+            if not gear_data.get("included_as_item"):
                 continue
             slot = gear_data.get("equipment_slot") or ""
             if slot == "Weapon":
@@ -771,6 +799,9 @@ class KotorWorld(World):
             "trap_link": bool(self.options.trap_link),
             "traps_mode": self.options.enable_traps.value,
             "galactic_shop": bool(self.options.galactic_shop),
+            # Archipelago Vendor on the Ebon Hawk (generate_trampoline_batch.py reads this from the
+            # saved slot data to decide whether the Hawk's trampoline spawns the vendor NPC).
+            "archipelago_vendor": bool(self.options.archipelago_vendor),
             "receive_inventory_items": bool(self.options.receive_inventory_items),
             "consumable_stack_count": self.options.consumable_stack_count.value,
             "shop_item_count": self.options.shop_item_count.value,

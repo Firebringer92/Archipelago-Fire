@@ -402,17 +402,40 @@ def discover_chitin_templates(inst, restype):
     return templates
 
 
-def _process_inventory(items, mode, suppress_resrefs, loot_pool, progression_resrefs, rng):
+def _process_inventory(items, mode, suppress_resrefs, loot_pool, progression_resrefs, rng,
+                       creature=False):
     """Shared decision logic for both placeables and creatures -- returns
     (new_items, changed). Progression's unconditional strip runs first,
-    independent of mode; destroy/replace/bonus then apply per `mode`."""
+    independent of mode; destroy/replace/bonus then apply per `mode`.
+
+    creature (creatures only): a creature's carried items are gear its AI or
+    a cutscene script equips from the pack (ActionEquipMostDamagingMelee/
+    Ranged), e.g. the Sith soldiers' vibroblades and Malak's lightsaber, so
+    none of them may be removed or swapped -- that leaves the creature
+    weaponless (a cutscene fighter that does not fight, a Sith with no
+    blade). A non-droppable item is already unlootable and is left alone.
+    A droppable item that the mode would suppress stays too, but is made
+    non-droppable (the same treatment _process_equipment gives equipped
+    gear): destroy then leaves nothing to loot, and replace additionally puts
+    the random replacement into the loot. Placeables must NOT use this: every
+    item in a container is stored non-droppable and is still lootable."""
     changed = False
     kept = []
+    replacements = []
     for item in items:
         tag = str(item.resref).lower()
         if progression_resrefs and tag in progression_resrefs:
             changed = True
             continue  # always dropped, regardless of loot_mode
+        if creature and not item.droppable:
+            kept.append(item)
+            continue
+        if creature and mode in ("destroy", "replace") and tag in suppress_resrefs:
+            kept.append(InventoryItem(item.resref, False, item.infinite))
+            if mode == "replace":
+                replacements.append(InventoryItem(ResRef(rng.choice(loot_pool)), True, False))
+            changed = True
+            continue
         if mode == "destroy" and tag in suppress_resrefs:
             changed = True
             continue
@@ -422,6 +445,7 @@ def _process_inventory(items, mode, suppress_resrefs, loot_pool, progression_res
             changed = True
             continue
         kept.append(item)
+    kept.extend(replacements)
 
     if mode == "bonus" and kept:
         kept.append(InventoryItem(ResRef(rng.choice(loot_pool)), True, False))
@@ -520,7 +544,8 @@ def apply_creatures(inst, mode, suppress_resrefs, loot_pool, progression_resrefs
         changed = False
         if utc.inventory:
             new_items, inv_changed = _process_inventory(
-                utc.inventory, mode, suppress_resrefs, loot_pool, progression_resrefs, rng)
+                utc.inventory, mode, suppress_resrefs, loot_pool, progression_resrefs, rng,
+                creature=True)
             if inv_changed:
                 utc.inventory = new_items
                 changed = True
@@ -604,7 +629,8 @@ def apply_module_rim_contents(game_dir, mode, suppress_resrefs, loot_pool, progr
             changed = False
             if obj.inventory:
                 new_items, inv_changed = _process_inventory(
-                    obj.inventory, mode, suppress_resrefs, loot_pool, progression_resrefs, rng)
+                    obj.inventory, mode, suppress_resrefs, loot_pool, progression_resrefs, rng,
+                    creature=is_creature)
                 if inv_changed:
                     obj.inventory = new_items
                     changed = True

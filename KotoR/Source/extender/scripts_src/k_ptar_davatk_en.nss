@@ -53,6 +53,7 @@
 // is the only reliable "AP actually put him here" signal.
 //
 #include "kse"
+#include "ap_recruit_marker"
 
 void main()
 {
@@ -64,7 +65,7 @@ void main()
             RemoveAvailableNPC(NPC_CANDEROUS);
             KSE_Diag(27, "AP|SUPPRESSED|companion_candadd_davik_hangar");
         }
-        KSE_Diag(22, "AP|CHECK|COMPANION|1");
+        RecordRecruit("canderous", 1);
     }
 
     ExecuteScript("apo_davatk_en_orig", OBJECT_SELF);

@@ -276,7 +276,10 @@ def uninstall() -> None:
     # make --restore target the hardcoded default install path instead of
     # manifest["game_dir"], silently wrong for anyone who installed to a
     # non-default KOTOR location.
-    for name in ("patch_loot_disturb.py", "patch_item_suppression.py", "patch_door_randomizer.py", "patch_additional_enemies.py"):
+    # Every patcher that rewrites a module file or writes Override files of its own must be listed
+    # here; the Galactic Shop and area poll hook patchers were missing and left their edits behind.
+    for name in ("patch_loot_disturb.py", "patch_item_suppression.py", "patch_door_randomizer.py", "patch_additional_enemies.py",
+                 "patch_boss_datapads.py", "patch_galactic_shop.py", "patch_area_poll_hooks.py"):
         result = subprocess.run(
             [sys.executable, os.path.join(SCRIPT_DIR, name), "--restore", f"--game-dir={game_dir}"],
             capture_output=True, text=True,

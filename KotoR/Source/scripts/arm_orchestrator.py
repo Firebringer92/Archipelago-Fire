@@ -24,6 +24,9 @@ Usage:
   python arm_orchestrator.py --queue-trap=<trap_type>:<params>  (Traps -- see Options.py)
   python arm_orchestrator.py --queue-force-power=<spells.2da row id>  (TSL power port pilot / admin grant)
   python arm_orchestrator.py --delivered=<arm_id>,<arm_id>  (confirmed applied; remove from queue, clear fired areas)
+  python arm_orchestrator.py --clear-derived | --clear-all  (drop staged entries the reconciler re-derives / every staged entry)
+  python arm_orchestrator.py --restore-dropped              (re-stage the entries a --clear-all dropped that cannot be re-derived)
+  python arm_orchestrator.py --purge-arm=<arm_id>,...        (drop every queued instance of these int arm ids)
   python arm_orchestrator.py --reset-if-owner-changed=<seed_name>:<slot>
       (Connect-time cross-slot leakage guard -- see KotorClient.py's
       _reset_trampolines_if_owner_changed. Two clients sharing one
@@ -58,6 +61,9 @@ QUEUE_PATH = os.path.join(STATE_DIR, "_pending_queue.json")
 ARMED_PATH = os.path.join(STATE_DIR, "_armed_state.json")
 CURRENT_AREA_PATH = os.path.join(STATE_DIR, "_current_area.json")
 OWNER_PATH = os.path.join(STATE_DIR, "_armed_owner.json")
+# Entries --clear-all dropped that nothing else will bring back (gear, traps, force powers, feats, plain arms), kept so
+# --restore-dropped can re-stage them. Owner-scoped: reset_all() deletes it with the rest of a slot's state.
+DROPPED_PATH = os.path.join(STATE_DIR, "_dropped_queue.json")
 # Deliberately separate from QUEUE_PATH/ARMED_PATH: a
 # notification (check found / item received) has no delivery confirmation
 # to reconcile against, unlike every other queue entry -- there's no
@@ -96,6 +102,13 @@ BATCH_GEN = os.path.join(os.path.dirname(__file__), "generate_trampoline_batch.p
 ONE_SHOT_ARM_IDS = {
     9, 10, 13, 14, 19, 20, 21, 22, 23, 24, 25, 26, 34, 35, 36,
 }
+
+# Staged entries the client's reconciler recomputes from fresh polls, so --clear-derived drops them (see that handler):
+# the exact-value corrections and companion_class assignments (queue dicts, by "action") and the Archipelago Tracker
+# journal stage arms 60-65 (journal_tracker_20..100 and journal_tracker_1).
+DERIVED_DICT_ACTIONS = {"set_xp", "set_credits", "delevel", "companion_class"}
+DERIVED_ARM_IDS = {60, 61, 62, 63, 64, 65}
+DEATHLINK_ARM_ID = 32
 
 # Not a hard cap -- see this constant's own usage in _save_queue() for why
 # a blanket size limit isn't the fix (it would risk silently dropping
@@ -239,29 +252,48 @@ def _cli_token(item):
 _had_failure = False
 
 
-# Bastila's companion grant (arm 9) must never be armed into end_m01aa --
-# the Endar Spire's own scripted hand-off of Trask into the party uses the
-# same party slot a CreateObject+AddPartyMember for Bastila would claim,
-# and firing there first leaves Trask unable to join. Centralized here
-# (rather than at each regenerate() call site) so every caller -- area
+# No companion grant (the nine companion_* arms: 9 Bastila, 10 Canderous,
+# 19 Carth, 20 HK-47/new companion, 21 Jolee, 22 Juhani, 23 Mission, 24 T3-M4,
+# 25 Zaalbar) is ever armed into the Endar Spire's first area (end_m01aa). The
+# prologue's own scripts hand Trask into the party and run scripted fights
+# with the party locked; a grant there either claims that slot first (Bastila
+# left Trask unable to join) or, with AddPartyMember refused, leaves a loose
+# companion creature standing in the scene (a tester's Malak grant, in
+# a prologue whose scripted Sith fight then misbehaved). A blocked grant is not
+# lost: it stays queued and is armed into the next covered area. Centralized
+# here (rather than at each regenerate() call site) so every caller -- area
 # entry, --queue-add= re-arming, etc. -- is covered automatically.
-_BLOCK_ARM_IN_AREA = {9: "end_m01aa"}
+_COMPANION_ARM_IDS = (9, 10, 19, 20, 21, 22, 23, 24, 25)
+_PROLOGUE_AREAS = ("end_m01aa",)
+_BLOCK_ARM_IN_AREA = {arm_id: _PROLOGUE_AREAS for arm_id in _COMPANION_ARM_IDS}
+
+
+def _batch_for_area(area_base, batch_items):
+    """batch_items minus every arm blocked in this area (_BLOCK_ARM_IN_AREA)."""
+    return [item for item in batch_items
+            if not (isinstance(item, int) and area_base in _BLOCK_ARM_IN_AREA.get(item, ()))]
 
 
 def regenerate(area_bases, batch_items):
     """Regenerate+compile+deploy a list of areas with the given batch (empty
     list = clear back to the plain preserved-original+poll_shared form).
-    See _BLOCK_ARM_IN_AREA for the one hardcoded arm/area exclusion."""
+    Areas that block some of the batch's arms (_BLOCK_ARM_IN_AREA) get the
+    batch without them; areas with the same resulting batch are regenerated
+    together."""
+    if not area_bases:
+        return
+    groups = {}
+    for base in area_bases:
+        key = tuple(map(repr, _batch_for_area(base, batch_items)))
+        groups.setdefault(key, (_batch_for_area(base, batch_items), []))[1].append(base)
+    for items, bases in groups.values():
+        _regenerate_unfiltered(bases, items)
+
+
+def _regenerate_unfiltered(area_bases, batch_items):
     global _had_failure
     if not area_bases:
         return
-    for arm_id, blocked_base in _BLOCK_ARM_IN_AREA.items():
-        if blocked_base in area_bases and arm_id in batch_items:
-            others = [b for b in area_bases if b != blocked_base]
-            regenerate([blocked_base], [item for item in batch_items if item != arm_id])
-            if others:
-                regenerate(others, batch_items)
-            return
     # sys.executable, not a bare "python" -- same bug class as
     # ap_extender.c's ap_run_orchestrator() (fixed 2026-10-01, see its own
     # comment): a bare "python" trusts PATH resolution from whatever
@@ -320,6 +352,8 @@ def reset_all():
         regenerate(sorted(armed.keys()), [])
     save_json(ARMED_PATH, {})
     save_json(QUEUE_PATH, [])
+    if os.path.exists(DROPPED_PATH):
+        os.remove(DROPPED_PATH)
 
 
 def apply_armed_set(new_area_base, graph, force_clean=False):
@@ -714,6 +748,89 @@ def _dispatch():
         save_queue(queue)
         current = load_json(CURRENT_AREA_PATH, {}).get("area")
         apply_armed_set(current, graph)
+        return
+
+    if arg == "--ensure-vendor":
+        # Regenerates ONLY the Ebon Hawk's main-hold trampoline (ebo_m12aa) so the Archipelago
+        # Vendor spawn (generate_trampoline_batch.py's AREA_PERMANENT_SPAWNS, gated on the
+        # archipelago_vendor slot option) is present or absent to match the connected seed. The
+        # trampoline is otherwise only rebuilt when an arm is queued for that area. Keeps whatever
+        # batch is already armed there.
+        base = "ebo_m12aa"
+        armed = load_json(ARMED_PATH, {})
+        batch = armed.get(base) or []
+        regenerate([base], batch)
+        if _had_failure:
+            print(f"vendor trampoline regenerate for {base} FAILED")
+        else:
+            armed[base] = list(batch)
+            if batch:
+                save_json(ARMED_PATH, armed)
+            print(f"vendor spawn refreshed in {base} (armed batch kept: {len(batch)} item(s))")
+        return
+
+    if arg in ("--clear-derived", "--clear-all"):
+        # Drops staged-but-unapplied entries and re-arms the current area. --clear-derived keeps only what
+        # cannot be re-derived (gear and item grants, traps, force powers, additional feats, plain arms) and
+        # drops what the client's reconciler recomputes from fresh polls anyway: exact-value corrections
+        # (set_xp, set_credits, delevel), companion_class assignments and the Archipelago Tracker journal
+        # stages. A stale copy of those is worse than none: it can fire at a save load before the party exists,
+        # or be applied on top of the same correction the reconciler sends again after a reconnect. Called by the
+        # client on every extender (re)connect and Connect. --clear-all drops everything (admin /ap_clear_queue).
+        queue = load_json(QUEUE_PATH, [])
+        if arg == "--clear-all":
+            kept = []
+            # Journal what a restore could safely bring back: not the entries the reconciler recomputes (a stale copy
+            # is the thing being cleared) and not queued DeathLink deaths (arm 32, only meaningful when they arrive).
+            journal = [q for q in queue if not (
+                (isinstance(q, dict) and q.get("action") in DERIVED_DICT_ACTIONS)
+                or (isinstance(q, int) and (q in DERIVED_ARM_IDS or q == DEATHLINK_ARM_ID)))]
+            if journal:
+                save_json(DROPPED_PATH, load_json(DROPPED_PATH, []) + journal)
+        else:
+            kept = [q for q in queue if not (
+                (isinstance(q, dict) and q.get("action") in DERIVED_DICT_ACTIONS)
+                or (isinstance(q, int) and q in DERIVED_ARM_IDS))]
+        removed = len(queue) - len(kept)
+        if removed:
+            save_queue(kept)
+            current = load_json(CURRENT_AREA_PATH, {}).get("area")
+            apply_armed_set(current, graph)
+        print(f"{arg[2:]}: removed {removed} of {len(queue)} staged entr{'y' if len(queue) == 1 else 'ies'}, kept {len(kept)}")
+        return
+
+    if arg == "--restore-dropped":
+        # Re-stages what --clear-all journaled. An entry already staged (same value) is not added twice, so running
+        # this again or after the client re-sent something is harmless; the journal is emptied either way.
+        dropped = load_json(DROPPED_PATH, [])
+        queue = load_json(QUEUE_PATH, [])
+        restored = 0
+        for entry in dropped:
+            if entry not in queue:
+                queue.append(entry)
+                restored += 1
+        if restored:
+            save_queue(queue)
+            current = load_json(CURRENT_AREA_PATH, {}).get("area")
+            apply_armed_set(current, graph)
+        if os.path.exists(DROPPED_PATH):
+            os.remove(DROPPED_PATH)
+        print(f"restore-dropped: restored {restored} of {len(dropped)} journaled entr{'y' if len(dropped) == 1 else 'ies'}")
+        return
+
+    if arg.startswith("--purge-arm="):
+        # Drops EVERY queued instance of the given integer arm id(s) (unlike --delivered=, which
+        # removes one per call) and re-arms the current area. Used on each client Connect to drop
+        # queued DeathLink deaths (arm 32), which are only meaningful at the moment they arrive.
+        ids = {int(x) for x in arg.split("=", 1)[1].split(",") if x}
+        queue = load_json(QUEUE_PATH, [])
+        kept = [q for q in queue if not (isinstance(q, int) and q in ids)]
+        removed = len(queue) - len(kept)
+        if removed:
+            save_queue(kept)
+            current = load_json(CURRENT_AREA_PATH, {}).get("area")
+            apply_armed_set(current, graph)
+        print(f"purged {removed} queued arm(s) {sorted(ids)}")
         return
 
     if arg.startswith("--reset-if-owner-changed="):

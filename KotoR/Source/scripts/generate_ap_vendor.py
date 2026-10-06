@@ -57,6 +57,7 @@ Character Reset (ap_vs_reset.nss) -- that script never adjusts alignment
 at all, unlike ability/skill purchases which it explicitly wipes and
 refunds the counter for.
 """
+import json
 import os
 import subprocess
 import sys
@@ -65,6 +66,7 @@ from pykotor.extract.installation import Installation
 from pykotor.resource.type import ResourceType
 from pykotor.resource.formats.gff import read_gff, write_gff
 from pykotor.resource.generics.utc import construct_utc, dismantle_utc
+from pykotor.resource.generics.uti import construct_uti, dismantle_uti
 from pykotor.resource.generics.dlg import DLG, DLGEntry, DLGReply, DLGLink, dismantle_dlg
 from pykotor.common.language import LocalizedString
 from pykotor.common.misc import ResRef, Game
@@ -73,10 +75,37 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 OVERRIDE_DIR = os.path.join(GAME_DIR, "Override")
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
+RAW_DIR = os.path.join(REPO_ROOT, "extender", "raw_override_files")
+# Written at the end of a full run: every script the vendor compiled, so packaging (package_dist.py)
+# ships exactly the set a real run produced instead of guessing by name prefix (the ap_vcc*/ap_verify_*
+# leftovers in scripts_src are not part of the vendor).
+MANIFEST_PATH = os.path.join(SRC_DIR, "_vendor_manifest.json")
+_COMPILED = []
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402
 NWNNSSCOMP = resolve_nwnnsscomp()
+
+# Vendor unlock items (the Archipelago Vendor option, Options.py's ArchipelagoVendor): one
+# plot item per menu category, found as AP items (Items.py's VENDOR_UNLOCK_ITEMS). A menu
+# entry stays hidden until the PC holds its item; Character Reset is the one entry that is
+# never gated. Held in the inventory (not a flag) so the reconciler's progression-item
+# possession check (entitlement.py's PROGRESSION_ITEM_RESREFS) re-grants a lost one and a
+# reloaded older save gets it back. Keep the resrefs in sync with Items.py, entitlement.py and
+# generate_poll_shared.py.
+VENDOR_TOKENS = {
+    "skill": ("ap_vtok_skill", "Vendor Pass: Skill Training"),
+    "ability": ("ap_vtok_abil", "Vendor Pass: Ability Training"),
+    "feat": ("ap_vtok_feat", "Vendor Pass: Feat Training"),
+    "power": ("ap_vtok_power", "Vendor Pass: Force Power Training"),
+    "align": ("ap_vtok_align", "Vendor Pass: Alignment Change"),
+}
+
+
+def has_token_expr(category):
+    """NWScript expression: the PC (conversation speaker) holds this category's vendor pass."""
+    return f'GetIsObjectValid(GetItemPossessedBy(GetPCSpeaker(), "{VENDOR_TOKENS[category][0]}"))'
+
 
 SKILL_COUNT_IDX = 60
 ABILITY_COUNT_IDX = 61
@@ -328,6 +357,8 @@ def write_and_compile(resref, source):
     with open(os.path.join(OVERRIDE_DIR, f"{resref}.ncs"), "wb") as f:
         f.write(data)
     print(f"  compiled + deployed -> {resref}.ncs")
+    if resref not in _COMPILED:
+        _COMPILED.append(resref)
     return True
 
 
@@ -365,14 +396,14 @@ int StartingConditional()
 
 int StartingConditional()
 {{
-    return GetLocalNumber(GetPCSpeaker(), {SKILL_COUNT_IDX}) < {PURCHASE_CAP};
+    return {has_token_expr("skill")} && GetLocalNumber(GetPCSpeaker(), {SKILL_COUNT_IDX}) < {PURCHASE_CAP};
 }}
 ''')
     ok &= write_and_compile("ap_vab_cap", f'''#include "kse"
 
 int StartingConditional()
 {{
-    return GetLocalNumber(GetPCSpeaker(), {ABILITY_COUNT_IDX}) < {PURCHASE_CAP};
+    return {has_token_expr("ability")} && GetLocalNumber(GetPCSpeaker(), {ABILITY_COUNT_IDX}) < {PURCHASE_CAP};
 }}
 ''')
     ok &= write_and_compile("ap_vg3000y", f'''#include "kse"
@@ -405,7 +436,15 @@ int StartingConditional()
 int StartingConditional()
 {{
     object oPC = GetPCSpeaker();
-    return {is_jedi_expr};
+    return {has_token_expr("power")} && {is_jedi_expr};
+}}
+''')
+    # Train Feat's top-level entry had no conditional before; it is now the pass check.
+    ok &= write_and_compile("ap_vft_gate", f'''#include "kse"
+
+int StartingConditional()
+{{
+    return {has_token_expr("feat")};
 }}
 ''')
     for feat_id, _text, is_signature in FEATS:
@@ -483,7 +522,7 @@ int StartingConditional()
 
 int StartingConditional()
 {{
-    return GetLocalNumber(GetPCSpeaker(), {ALIGNMENT_COUNT_IDX}) < {PURCHASE_CAP};
+    return {has_token_expr("align")} && GetLocalNumber(GetPCSpeaker(), {ALIGNMENT_COUNT_IDX}) < {PURCHASE_CAP};
 }}
 ''')
     ok &= write_and_compile("ap_vg5000y", f'''#include "kse"
@@ -698,6 +737,34 @@ void main()
     return ok
 
 
+def write_token_templates(installation):
+    """The five vendor passes (VENDOR_TOKENS): plot items (cannot be sold, dropped or destroyed),
+    cloned from the same base item as the progression marker. Static, seed-independent files, so
+    they are also written to RAW_DIR for packaging."""
+    src = installation.resource("g_i_datapad001", ResourceType.UTI)
+    if src is None:
+        sys.exit("vanilla g_i_datapad001.uti not found -- is GAME_DIR a real KOTOR install?")
+    names = []
+    for _category, (resref, title) in VENDOR_TOKENS.items():
+        uti = construct_uti(read_gff(src.data))
+        uti.resref = ResRef(resref)
+        uti.tag = resref
+        uti.name = LocalizedString.from_english(title)
+        uti.description = LocalizedString.from_english(
+            "Unlocks a menu at the Archipelago Vendor on the Ebon Hawk. Can't be sold, dropped, or destroyed.")
+        uti.plot = 1
+        uti.stack_size = 1
+        data = bytearray()
+        write_gff(dismantle_uti(uti), data)
+        for d in (OVERRIDE_DIR, RAW_DIR):
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, f"{resref}.uti"), "wb") as f:
+                f.write(bytes(data))
+        names.append(f"{resref}.uti")
+        print(f"  wrote {resref}.uti")
+    return names
+
+
 def new_entry(text):
     e = DLGEntry()
     e.text = LocalizedString.from_english(text)
@@ -753,6 +820,8 @@ def build_dlg():
     # gated on the PC having real Force levels (see ap_vpwr_jedi).
     reply_feat = new_reply(f"Train Feat -- {FEAT_PRICE} credits each")
     reply_feat.links.append(DLGLink(entry_feat_picker))
+    reply_feat_link = DLGLink(reply_feat)
+    reply_feat_link.active1 = ResRef("ap_vft_gate")
 
     # RE-ENABLED 2026-09-20 -- unlinked 2026-09-19 after confirming via the
     # actual save file that a granted power never reached the persisted,
@@ -777,7 +846,7 @@ def build_dlg():
 
     entry_greet.links.append(reply_skill_link)
     entry_greet.links.append(reply_ability_link)
-    entry_greet.links.append(DLGLink(reply_feat))
+    entry_greet.links.append(reply_feat_link)
     entry_greet.links.append(reply_power_link)
 
     for suffix, text, _const in SKILLS:
@@ -957,15 +1026,30 @@ def main():
         f.write(utc_bytes)
     print(f"  wrote + deployed ap_vendor_npc.utc ({len(utc_bytes)} bytes)")
 
+    print("Building vendor pass items...")
+    raw_files = write_token_templates(installation)
+
+    # Static files for packaging (package_dist.py reads RAW_DIR and the manifest).
+    os.makedirs(RAW_DIR, exist_ok=True)
+    for name, blob_path in (("ap_vendor_dlg.dlg", dlg_path), ("ap_vendor_npc.utc", utc_path)):
+        with open(blob_path, "rb") as f:
+            blob = f.read()
+        with open(os.path.join(RAW_DIR, name), "wb") as f:
+            f.write(blob)
+        raw_files.append(name)
+    with open(MANIFEST_PATH, "w", encoding="utf8") as f:
+        json.dump({"scripts": sorted(_COMPILED), "raw_files": sorted(raw_files)}, f, indent=1)
+    print(f"  wrote manifest: {len(_COMPILED)} scripts, {len(raw_files)} raw files")
+
     print()
     print(f"Vendor spot: {VENDOR_LOCATION} in ebo_m12aa.")
     print("Remember: this is a brand-new Override file set -- the game's")
     print("Override scan happens once at startup, so a full relaunch is")
     print("needed before any of this is visible in-game.")
     print()
-    print("Next: wire the permanent spawn into ebo_m12aa's OnEnter trampoline")
-    print("(generate_area_trampolines.py / generate_trampoline_batch.py),")
-    print("then regenerate just that one area's trampoline.")
+    print("The permanent spawn lives in generate_trampoline_batch.py's AREA_PERMANENT_SPAWNS,")
+    print("gated on the archipelago_vendor slot option; `arm_orchestrator.py --ensure-vendor`")
+    print("regenerates just the Hawk's trampoline so it appears.")
 
 
 if __name__ == "__main__":

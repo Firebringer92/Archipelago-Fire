@@ -110,6 +110,106 @@ static int ap_arm_id_for_name(const char *name);
 
 static int g_last_area_idx = -1;
 
+/* ---- thinning of routine per-poll lines in extender.log --------------------------------
+ * Every relayed AP| line used to be copied into extender.log as "KSE-LOG MATCH: ..." -- in a
+ * tester's 42.6 MB log that was 99% of the bytes, and most of it the same report lines repeated
+ * unchanged every 5 s. The relay to the client (ap_push_to_client) is NOT affected: the client
+ * still receives every line. Only the log copy is thinned: a routine line is written when its
+ * content changes and then once per AP_ROUTINE_REPEAT_EVERY identical repeats, so the log still
+ * proves the poll is alive (a silent death is a missing periodic line) without a thousand copies
+ * of the same state. Event lines (CHECK|AREA, APPLIED, SAFEGUARD, POLLRUN, ticks, ...) are never
+ * thinned. Routine = the *REPORT lines, ALIGNMENT, PARTYLEVELS, DATAPAD, BOUNTY|COUNT and the
+ * CHECK|JOURNAL/QUEST/PLOT/COMPANION lines. */
+#define AP_ROUTINE_SLOTS 160
+#define AP_ROUTINE_REPEAT_EVERY 12
+typedef struct {
+    char key[80];
+    unsigned long long hash;
+    int repeats;
+    int used;
+} ap_routine_slot;
+static ap_routine_slot g_routine[AP_ROUTINE_SLOTS];
+
+static unsigned long long ap_fnv1a(const char *s) {
+    unsigned long long h = 1469598103934665603ULL;
+    while (*s) { h ^= (unsigned char)*s++; h *= 1099511628211ULL; }
+    return h;
+}
+
+/* Copies up to the Nth '|' (exclusive) of p into out; returns 1 if there were at least N tokens. */
+static int ap_key_prefix(const char *p, int n_tokens, char *out, size_t out_size) {
+    size_t i = 0;
+    int bars = 0;
+    for (; *p && i + 1 < out_size; ++p) {
+        if (*p == '|' && ++bars == n_tokens) break;
+        out[i++] = *p;
+    }
+    out[i] = '\0';
+    return bars >= n_tokens || *p == '\0';
+}
+
+/* 1 = write this line to extender.log, 0 = skip it (an unchanged repeat of a routine line). */
+static int ap_should_log_match(const char *line) {
+    const char *p = strstr(line, "msg=\"AP|");
+    p = p ? p + 5 : strstr(line, AP_MARKER);
+    if (!p) return 1;
+    const char *fam = p + 3;                 /* after "AP|" */
+    const char *e = strchr(fam, '|');
+    size_t flen = e ? (size_t)(e - fam) : strlen(fam);
+    char key[80];
+    int routine = 0;
+
+    if (flen >= 6 && strncmp(fam + flen - 6, "REPORT", 6) == 0) {
+        routine = 1;
+        ap_key_prefix(fam, 1, key, sizeof(key));              /* e.g. SKILLREPORT */
+    } else if ((flen == 9 && strncmp(fam, "ALIGNMENT", 9) == 0) ||
+               (flen == 11 && strncmp(fam, "PARTYLEVELS", 11) == 0)) {
+        routine = 1;
+        ap_key_prefix(fam, 1, key, sizeof(key));
+    } else if (flen == 7 && strncmp(fam, "DATAPAD", 7) == 0) {
+        routine = 1;
+        ap_key_prefix(fam, 2, key, sizeof(key));              /* DATAPAD|calo */
+    } else if (flen == 6 && strncmp(fam, "BOUNTY", 6) == 0 && strncmp(fam + 7, "COUNT", 5) == 0) {
+        routine = 1;
+        ap_key_prefix(fam, 2, key, sizeof(key));
+    } else if (flen == 5 && strncmp(fam, "CHECK", 5) == 0) {
+        const char *sub = fam + 6;
+        if (strncmp(sub, "JOURNAL|", 8) == 0 || strncmp(sub, "QUEST|", 6) == 0 ||
+            strncmp(sub, "PLOT|", 5) == 0 || strncmp(sub, "COMPANION|", 10) == 0) {
+            routine = 1;
+            ap_key_prefix(fam, 3, key, sizeof(key));          /* CHECK|JOURNAL|<tag> */
+        }
+    }
+    if (!routine) return 1;
+
+    unsigned long long h = ap_fnv1a(p);
+    ap_routine_slot *slot = NULL, *freeslot = NULL;
+    for (int i = 0; i < AP_ROUTINE_SLOTS; ++i) {
+        if (g_routine[i].used) {
+            if (strcmp(g_routine[i].key, key) == 0) { slot = &g_routine[i]; break; }
+        } else if (!freeslot) {
+            freeslot = &g_routine[i];
+        }
+    }
+    if (!slot) {
+        if (!freeslot) return 1;             /* table full: log everything rather than lose lines */
+        slot = freeslot;
+        slot->used = 1;
+        strncpy(slot->key, key, sizeof(slot->key) - 1);
+        slot->key[sizeof(slot->key) - 1] = '\0';
+        slot->hash = h;
+        slot->repeats = 0;
+        return 1;
+    }
+    if (slot->hash == h) {
+        slot->repeats++;
+        return (slot->repeats % AP_ROUTINE_REPEAT_EVERY) == 0;
+    }
+    slot->hash = h;
+    slot->repeats = 0;
+    return 1;
+}
+
 /* Tails K1SE's kse.log for lines containing our AP| marker (written by a
  * script calling KSE_Diag(code, "AP|...")) and relays them to the socket. */
 static DWORD WINAPI ap_kse_log_tail_thread(LPVOID unused) {
@@ -171,7 +271,7 @@ static DWORD WINAPI ap_kse_log_tail_thread(LPVOID unused) {
             while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = '\0';
 
             if (strstr(line, AP_MARKER)) {
-                ap_log("KSE-LOG MATCH: %s", line);
+                if (ap_should_log_match(line)) ap_log("KSE-LOG MATCH: %s", line);
                 ap_push_to_client(line);
 
                 /* Player entered a (possibly new) covered area -- re-center

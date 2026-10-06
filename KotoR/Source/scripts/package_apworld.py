@@ -48,7 +48,11 @@ DEFAULT_OUT = os.path.join(REPO_ROOT, "dist", "kotor.apworld")
 # player can compare to confirm they're running the same generation logic.
 # No existing version tracking anywhere in worlds/kotor/ before this
 # script -- starting fresh at 0.1.0 for the first packaged release.
-WORLD_VERSION = "0.1.7"
+WORLD_VERSION = "0.1.8"
+
+# The Archipelago core the players actually run. Used for minimum_ap_version unless --min-ap-version is given;
+# NOT this machine's own core (0.6.8 here), which twice produced an apworld that players on 0.6.7 refused to load.
+DEFAULT_MIN_AP_VERSION = "0.6.7"
 
 GAME_NAME = "KotOR"
 
@@ -59,8 +63,8 @@ def main():
     parser.add_argument("--version", default=WORLD_VERSION,
                          help=f"World version to stamp in the manifest (default: {WORLD_VERSION}).")
     parser.add_argument("--min-ap-version", default=None,
-                         help="Override minimum_ap_version instead of auto-detecting this machine's own "
-                              "Archipelago core version. Use this to pin against a real tester's actual "
+                         help="Override minimum_ap_version (default: DEFAULT_MIN_AP_VERSION, the core players run) "
+                              "instead of this machine's own Archipelago core version. Use this to pin against a real tester's actual "
                               "(possibly older) core -- this repo's own dev-machine core can be newer than "
                               "a tester's official Archipelago install, which would otherwise auto-reject "
                               "the apworld as 'too old' even though nothing KOTOR-specific actually needs "
@@ -89,7 +93,7 @@ def main():
     # every time this repo's own Archipelago core gets updated, for no
     # real benefit -- the actual cross-machine risk this script exists to
     # solve is world_version skew, not core skew).
-    min_ap_version = args.min_ap_version if args.min_ap_version is not None else ap_core_version
+    min_ap_version = args.min_ap_version if args.min_ap_version is not None else DEFAULT_MIN_AP_VERSION
     apworld.minimum_ap_version = tuplize_version(min_ap_version)
     manifest = apworld.get_manifest()
 

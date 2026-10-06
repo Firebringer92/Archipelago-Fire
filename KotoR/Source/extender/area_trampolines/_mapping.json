@@ -92,12 +92,14 @@
   "korr_m34aa": {
     "idx": 18,
     "onenter": "k_pkor_areaenter",
-    "renamed": "apo_0019"
+    "renamed": "apo_0019",
+    "tag": "SithMonastery"
   },
   "korr_m39aa": {
     "idx": 23,
     "onenter": "k_pkor_areaenter",
-    "renamed": "apo_0019"
+    "renamed": "apo_0019b",
+    "tag": "m39aa"
   },
   "korr_m35aa": {
     "idx": 19,
@@ -197,17 +199,20 @@
   "sta_m45aa": {
     "idx": 39,
     "onenter": "k_psta_areaenter",
-    "renamed": "apo_0039"
+    "renamed": "apo_0039",
+    "tag": "sta_45aa"
   },
   "sta_m45ac": {
     "idx": 40,
     "onenter": "k_psta_areaenter",
-    "renamed": "apo_0039"
+    "renamed": "apo_0039b",
+    "tag": "Untitled"
   },
   "sta_m45ad": {
     "idx": 41,
     "onenter": "k_psta_areaenter",
-    "renamed": "apo_0039"
+    "renamed": "apo_0039c",
+    "tag": "sta_m45ad"
   },
   "tar_m02ab": {
     "idx": 42,

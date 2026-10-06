@@ -10,8 +10,15 @@
 // delivery pipeline (current-area-and-neighbors trampolines).
 #include "kse"
 
-void Tick()
+// Every chain carries the generation it was started in. main() bumps the
+// generation, so a chain from an earlier start sees a mismatch on its next
+// tick and ends. Without this, ap_poll_shared's staleness check (which
+// compares the in-game clock and can read a jump as a dead heartbeat) kept
+// starting a new chain while the old ones were still alive, and the poll
+// ended up running several times a second.
+void Tick(int nGen)
 {
+    if (KSE_GetData("hb_gen") != IntToString(nGen)) return;
     // Liveness stamp for ap_poll_shared's self-healing staleness check --
     // see generate_poll_shared.py. Written every tick so a dead heartbeat
     // (e.g. after a same-process Load Game silently kills the DelayCommand
@@ -19,27 +26,31 @@ void Tick()
     int nNow = GetTimeHour() * 3600 + GetTimeMinute() * 60 + GetTimeSecond();
     KSE_SetData("hb_tick_time", IntToString(nNow));
 
-    // Diagnostic instrumentation (2026-09-13) -- see this generator's own
+    // Diagnostic instrumentation -- see this generator's own
     // module docstring for exactly what this is trying to localize.
     int nTickNum = 0;
     if (KSE_HasData("hb_tick_num")) nTickNum = StringToInt(KSE_GetData("hb_tick_num"));
     nTickNum = nTickNum + 1;
     KSE_SetData("hb_tick_num", IntToString(nTickNum));
-    KSE_Diag(153, "AP|TICK_START|" + IntToString(nTickNum));
+    // Tick markers are logged for the first tick and then every 12th (about once a minute): the
+    // per-tick pair was two log lines every 5 s. A START with no matching RESCHEDULED (the same
+    // number) still localises a tick that died, and AP|POLLRUN|begin/end (every poll) shows the
+    // poll itself.
+    int bTickLog = (nTickNum % 12 == 1);
+    if (bTickLog) KSE_Diag(153, "AP|TICK_START|" + IntToString(nTickNum));
 
     ExecuteScript("ap_poll_shared", OBJECT_SELF);
 
-    KSE_Diag(154, "AP|TICK_RESCHEDULED|" + IntToString(nTickNum));
-    DelayCommand(5.0, Tick());
+    if (bTickLog) KSE_Diag(154, "AP|TICK_RESCHEDULED|" + IntToString(nTickNum));
+    DelayCommand(5.0, Tick(nGen));
 }
 
-// DeathLink 2-second dedicated loop (2026-09-13). Confirmed live this
-// session that the main 5s Tick()'s own death detection (ap_poll_shared's
-// CheckDeath()) misses most real deaths -- KOTOR auto-revives a downed PC
-// almost immediately once combat ends as long as a companion is alive, and
-// if the whole die-then-revive cycle completes inside one 5s gap, the poll
-// never observes GetIsDead()==true at all (confirmed ~33% catch rate over
-// 3 real deaths in one session). Mod_OnPlayerDeath/Mod_OnPlayerDying were
+// DeathLink 2-second dedicated loop. The main 5s Tick()'s own death
+// detection (ap_poll_shared's CheckDeath()) misses most real deaths --
+// KOTOR auto-revives a downed PC almost immediately once combat ends as
+// long as a companion is alive, and if the whole die-then-revive cycle
+// completes inside one 5s gap, the poll never observes GetIsDead()==true
+// at all. Mod_OnPlayerDeath/Mod_OnPlayerDying were
 // investigated as a real event-driven alternative but their stock scripts
 // don't exist anywhere in the actual game data (confirmed via a chitin.key
 // resource scan) -- likely vestigial NWN-inherited fields this engine never
@@ -55,19 +66,23 @@ void Tick()
 // (_cycle_saw_death/_was_dead, reset on the next AP|SKILLREPORT|) needs zero
 // client-side changes -- whichever of the two sources sees the death first
 // just sets the same flag a little earlier.
-void DeathTick()
+void DeathTick(int nGen)
 {
+    if (KSE_GetData("hb_gen") != IntToString(nGen)) return;
     object oPC = GetFirstPC();
     if (GetIsDead(oPC))
     {
         KSE_Diag(64, "AP|CHECK|DEATH");
     }
-    DelayCommand(2.0, DeathTick());
+    DelayCommand(2.0, DeathTick(nGen));
 }
 
 void main()
 {
     KSE_Diag(103, "AP|HEARTBEAT_STARTED");
-    Tick();
-    DeathTick();
+    int nGen = 1;
+    if (KSE_HasData("hb_gen")) nGen = StringToInt(KSE_GetData("hb_gen")) + 1;
+    KSE_SetData("hb_gen", IntToString(nGen));
+    Tick(nGen);
+    DeathTick(nGen);
 }

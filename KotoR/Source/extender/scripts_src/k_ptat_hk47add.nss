@@ -6,17 +6,18 @@
 // actually sticks -- the real grant will come from AP later, through the
 // existing companion apply script (phase 06).
 //
-// GUARD (added 2026-08-31): if NPC_HK_47 is ALREADY available when this
-// fires, our own companion_hk47 AP arm already ran (early item, or an
-// admin re-grant) and hk47 is already an active party member. Confirmed
-// live: running apo_hk47_orig + RemoveAvailableNPC on an
-// already-recruited companion kicks them OUT of the active party --
-// RemoveAvailableNPC is not the harmless no-op on an active member that
-// the vanilla script assumes. So skip the vanilla script and the
+// GUARD: if NPC_HK_47 is ALREADY available when this fires, our own
+// companion_hk47 AP arm already ran (early item, or an admin re-grant)
+// and hk47 is already an active party member. Running apo_hk47_orig
+// + RemoveAvailableNPC on an already-recruited companion kicks them OUT
+// of the active party -- RemoveAvailableNPC is not the harmless no-op on
+// an active member that the vanilla script assumes. So skip the vanilla
+// script and the
 // RemoveAvailableNPC in that case; the AP location check still fires
 // either way below, since reaching this trigger is the check regardless
 // of whether recruitment logic needs to run.
 #include "kse"
+#include "ap_recruit_marker"
 
 void main()
 {
@@ -34,6 +35,8 @@ void main()
     // script call -- no other script (including the regular poll's
     // CheckCompanions()) needs to observe anything here. Report the AP
     // location check directly from here, the only place that reliably
-    // knows recruitment was just reached.
-    KSE_Diag(22, "AP|CHECK|COMPANION|3");
+    // knows recruitment was just reached. RecordRecruit also writes the
+    // persistent journal marker for this recruit (ap_recruit_marker.nss) so
+    // the check survives a missed relay.
+    RecordRecruit("hk47", 3);
 }

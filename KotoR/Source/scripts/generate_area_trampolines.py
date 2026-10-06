@@ -70,7 +70,7 @@ installation = Installation(GAME_DIR)
 # Defaults to matching GalacticShop's own `default = False` (no vendor)
 # rather than guessing "always on." generate_trampoline_batch.py's own
 # copy of this dict is the real, per-seed-correct source of truth once a
-# player actually connects (gated on _connected_galactic_shop()) -- this
+# player actually connects (gated on _connected_archipelago_vendor()) -- this
 # packaging-time baseline only matters until the first real regeneration
 # for ebo_m12aa happens for that player's own seed.
 AREA_PERMANENT_SPAWNS = {}
@@ -78,6 +78,81 @@ AREA_PERMANENT_SPAWNS = {}
 
 def permanent_spawn_lines_for(base, indent):
     return [f"{indent}{stmt}" for stmt in AREA_PERMANENT_SPAWNS.get(base, [])]
+
+
+def area_entry_diag_lines(idx, indent):
+    """The area-entry report: the existing AP|CHECK|AREA|<idx> line, now also carrying seen=0/1.
+    The mark is a LocalBoolean on the area object, which the game saves with the area's module
+    state. A re-entry that reports seen=0 for an area the player has already been in, with no save
+    load in between, means the game started the area from scratch instead of restoring its saved
+    state -- the symptom behind "scripts refire and the game does not recognise I have been here"
+    reports. Folded into the existing line (all readers match only the prefix) rather than a
+    separate diagnostic line; nothing reads the mark.
+
+    Also gives the player the plot item `ap_loc_<idx>` ("Location: <area>") if they do not have it. The
+    item stays in the save, so the visited set survives a closed client or a missed report; the poll's
+    CheckVisitedMarkers() reports it. Written here, in the always-on entry block, so it needs no client
+    and no queued arm. Keep in sync with the copy in generate_trampoline_batch.py and with
+    generate_location_items.py (the templates)."""
+    marker = f"ap_loc_{idx:02d}"
+    lines = [
+        f"{indent}int nVisitMark = GetLocalBoolean(OBJECT_SELF, 62);",
+        f"{indent}SetLocalBoolean(OBJECT_SELF, 62, TRUE);",
+        f'{indent}KSE_Diag(20, "AP|CHECK|AREA|{idx}|seen=" + IntToString(nVisitMark));',
+        f'{indent}if (!GetIsObjectValid(GetItemPossessedBy(GetFirstPC(), "{marker}")))',
+        f"{indent}{{",
+        f'{indent}    CreateItemOnObject("{marker}", GetFirstPC(), 1);',
+        f"{indent}}}",
+    ]
+    if idx == 0:
+        # The first Endar Spire area (end_m01aa): a brand-new level-1 character gets the Player ID item
+        # (patch_player_id.py writes its per-seed template). Level 1 only, so a leveled character that
+        # is warped or loaded in here is never stamped with the current seed. Runs after the original
+        # OnEnter, so an entry-time inventory strip cannot remove it.
+        lines += [
+            f'{indent}if (GetHitDice(GetFirstPC()) <= 1 && !GetIsObjectValid(GetItemPossessedBy(GetFirstPC(), "ap_pid")))',
+            f"{indent}{{",
+            f'{indent}    CreateItemOnObject("ap_pid", GetFirstPC(), 1);',
+            f"{indent}}}",
+        ]
+    return lines
+
+
+# OnEnter scripts whose vanilla body makes a companion available on every
+# real entry (AddAvailableNPCByTemplate behind only an IsAvailableCreature
+# check), which hands Carth/Bastila back to a player whose AP item hasn't
+# arrived: k_pdan_13_area (danm13, the Jedi Enclave) adds both,
+# k_pdan_15_area (danm15) adds Bastila. The trampoline records who was
+# available before the original runs and takes away whoever it added. A
+# companion the AP grant already made available is left alone. Keep in sync
+# with the copy in generate_trampoline_batch.py, which rebuilds these same
+# trampolines.
+ORIGINAL_ENTER_GUARDS = {
+    "k_pdan_13_area": [("NPC_CARTH", "carth"), ("NPC_BASTILA", "bastila")],
+    "k_pdan_15_area": [("NPC_BASTILA", "bastila")],
+}
+
+
+def original_enter_guard(onenter):
+    """(lines before, lines after) the ExecuteScript of the preserved
+    original, as ready-to-embed text. Both empty for an unguarded OnEnter so
+    its generated trampoline is unchanged."""
+    guards = ORIGINAL_ENTER_GUARDS.get(onenter)
+    if not guards:
+        return "", ""
+    pre = ""
+    post = ""
+    for npc_const, key in guards:
+        pre += f"    int bWas_{key} = IsAvailableCreature({npc_const});\n"
+        post += (
+            f"    if (!bWas_{key} && IsAvailableCreature({npc_const}))\n"
+            "    {\n"
+            f"        RemovePartyMember({npc_const});\n"
+            f"        RemoveAvailableNPC({npc_const});\n"
+            f'        KSE_Diag(28, "AP|SUPPRESSED|companion_{key}|area_enter");\n'
+            "    }\n"
+        )
+    return pre, post
 
 
 def get_onenter_and_tag(base):
@@ -123,15 +198,34 @@ trampoline_counter = 0
 for onenter, bases in by_onenter.items():
     trampoline_counter += 1
     renamed_resref = f"apo_{trampoline_counter:04d}"
-    orig_ncs = get_orig_ncs(bases[0], onenter)
-    renamed_path = os.path.join(OVERRIDE_DIR, f"{renamed_resref}.ncs")
-    with open(renamed_path, "wb") as f:
-        f.write(orig_ncs)
+    # Areas can share an OnEnter RESREF while each module's copy of that
+    # script is a different script (korr_m34aa/korr_m39aa and the three
+    # sta_m45* areas do). Preserve one original per distinct script, under
+    # apo_NNNN, apo_NNNNb, apo_NNNNc..., keyed by the exact bytes.
+    variant_name_for_bytes = {}
+    renamed_for_base = {}
+    for base in bases:
+        data = bytes(get_orig_ncs(base, onenter))
+        if data not in variant_name_for_bytes:
+            suffix = "" if not variant_name_for_bytes else chr(ord("a") + len(variant_name_for_bytes))
+            name = f"{renamed_resref}{suffix}"
+            variant_name_for_bytes[data] = name
+            with open(os.path.join(OVERRIDE_DIR, f"{name}.ncs"), "wb") as f:
+                f.write(data)
+        renamed_for_base[base] = variant_name_for_bytes[data]
+    if len(variant_name_for_bytes) == 1:
+        original_block = f'    ExecuteScript("{renamed_resref}", OBJECT_SELF);\n'
+    else:
+        original_block = '    string sEnterTag = GetTag(GetArea(OBJECT_SELF));\n'
+        for i, base in enumerate(bases):
+            kw = "if" if i == 0 else "else if"
+            original_block += f'    {kw} (sEnterTag == "{area_info[base]["tag"]}") ExecuteScript("{renamed_for_base[base]}", OBJECT_SELF);\n'
+        original_block += f'    else ExecuteScript("{renamed_for_base[bases[0]]}", OBJECT_SELF);\n'
 
     if len(bases) == 1:
         base = bases[0]
         idx = area_info[base]["idx"]
-        lines = [f'        KSE_Diag(20, "AP|CHECK|AREA|{idx}");']
+        lines = list(area_entry_diag_lines(idx, "        "))
         lines.extend(permanent_spawn_lines_for(base, "        "))
         report_block = "\n".join(lines)
     else:
@@ -145,12 +239,13 @@ for onenter, bases in by_onenter.items():
             kw = "if" if i == 0 else "else if"
             lines.append(f'        {kw} (sAreaTag == "{tag}")')
             lines.append('        {')
-            lines.append(f'            KSE_Diag(20, "AP|CHECK|AREA|{idx}");')
+            lines.extend(area_entry_diag_lines(idx, "            "))
             lines.extend(permanent_spawn_lines_for(base, "            "))
             lines.append('        }')
         report_block = "\n".join(lines)
 
     base_list_comment = ", ".join(bases)
+    guard_pre, guard_post = original_enter_guard(onenter)
     trampoline_src = f"""// AUTO-GENERATED trampoline for OnEnter={onenter}.
 // Covers: {base_list_comment}
 // Preserves the real game's OnEnter logic via ExecuteScript, then runs the
@@ -179,12 +274,17 @@ for onenter, bases in by_onenter.items():
 
 void main()
 {{
-    ExecuteScript("{renamed_resref}", OBJECT_SELF);
-
+{guard_pre}{original_block}{guard_post}
     object oEnterer = GetEnteringObject();
     if (GetIsPC(oEnterer))
     {{
 {report_block}
+        // Restart the heartbeat on every area entry. An area change ends the heartbeat's timer chain, and the
+        // staleness check inside the poll only notices that when the game clock steps back by a whole second;
+        // a smaller step left the heartbeat dead (no polls at all) until the next transition. Starting it
+        // bumps its generation, so any older chain ends itself at its next tick and exactly one chain
+        // survives, attached to this area.
+        ExecuteScript("ap_heartbeat", OBJECT_SELF);
         ExecuteScript("ap_poll_shared", OBJECT_SELF);
     }}
 }}
@@ -194,7 +294,8 @@ void main()
         f.write(trampoline_src)
 
     for base in bases:
-        mapping[base] = {"idx": area_info[base]["idx"], "onenter": onenter, "renamed": renamed_resref}
+        mapping[base] = {"idx": area_info[base]["idx"], "onenter": onenter,
+                         "renamed": renamed_for_base[base], "tag": area_info[base]["tag"]}
     tag_note = "" if len(bases) == 1 else f" (shared, {len(bases)} areas via runtime tag check)"
     print(f"{onenter}: covers {base_list_comment} -> preserved as {renamed_resref}, trampoline at {nss_path}{tag_note}")
 

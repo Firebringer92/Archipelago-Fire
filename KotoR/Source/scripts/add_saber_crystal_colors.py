@@ -32,7 +32,10 @@ safe, non-crashing fallback: a Purple crystal inserted into a short or
 double-bladed hilt renders as dark green for that hilt type instead of
 purple, cosmetic-only, never an invalid/missing model reference.
 
-Usage: python add_saber_crystal_colors.py [--game-dir=<path>]
+Usage: python add_saber_crystal_colors.py [--game-dir=<path>] [--icons-only]
+  --icons-only deploys just the icons: the crystal icons (Cyan/Orange/Bronze
+  with a softened outline) and the saber hilt icons (the item icon the upgrade
+  screen swaps to when a crystal changes the hilt's ModelVariation).
   Writes extender/raw_override_files/*.{uti,mdl,mdx,tga,txi} (checked-in
   source), extender/raw_override_files/upcrystals.2da, deploys everything
   to <game-dir>/Override, and updates
@@ -95,6 +98,74 @@ VIRIDIAN_SHORT_UTI = "g_w_shortsbr12"
 VIRIDIAN_DBL_UTI = "g_w_dblsbr012"
 
 
+# Saber hilt icons. The item icon of a weapon is iw_<itemclass>_<ModelVariation>,
+# so inserting a crystal (which swaps the hilt's ModelVariation through
+# upcrystals.2da) makes the upgrade screen look up a NEW icon for the saber;
+# a missing one is drawn as a blank white square. One icon per hilt form per
+# variation. Value: (icon prefix, model-name prefix to read the variation from).
+_HILT_ICON_FORMS = (
+    ("iw_lghtsbr_", "long_mdl"),
+    ("iw_shortsbr_", "short_mdl"),
+    ("iw_dblsbr_", "dbl_mdl"),
+)
+# Purple's long hilt (variation 17) has no icon in the pack; it is built from
+# Viridian's (variation 12) with the glow re-tinted. Its short/double hilts are
+# Viridian's real ones (variation 12, already green to match their model).
+PURPLE_LONG_HILT_ICON = "iw_lghtsbr_017"
+PURPLE_ICON_SOURCE = "iw_lghtsbr_012"
+VIRIDIAN_HILT_ICONS = ("iw_shortsbr_012", "iw_dblsbr_012")
+
+
+def _pack_icon_filename(stem: str) -> str:
+    """The pack's own spelling of <stem>.tga (it mixes iw_Lghtsbr_010 and
+    iw_lghtsbr_011); the deployed file keeps that spelling."""
+    for fn in os.listdir(PACK_DIR):
+        if fn.lower() == f"{stem}.tga":
+            return fn
+    raise RuntimeError(f"expected hilt icon missing from pack: {stem}.tga")
+
+
+def _hilt_icon_stems() -> list:
+    """Pack hilt icons to deploy verbatim: every form of every ported color,
+    plus Viridian's short/double (Purple's fallbacks) and long (Purple's
+    tint source)."""
+    stems = []
+    for spec in PORTED_COLORS.values():
+        for prefix, key in _HILT_ICON_FORMS:
+            variation = int(spec[key].rsplit("_", 1)[1])
+            stems.append(f"{prefix}{variation:03d}")
+    stems += list(VIRIDIAN_HILT_ICONS) + [PURPLE_ICON_SOURCE]
+    return stems
+
+
+def deploy_hilt_icons(override_dir: str) -> None:
+    """Deploys the hilt icons above, then builds Purple's long-hilt icon by
+    re-tinting Viridian's green glow."""
+    import colorsys
+    from PIL import Image
+
+    stems = _hilt_icon_stems()
+    for stem in stems:
+        _copy_pack_file(_pack_icon_filename(stem), override_dir)
+    print(f"  deployed {len(stems)} hilt icons")
+
+    src = Image.open(os.path.join(PACK_DIR, _pack_icon_filename(PURPLE_ICON_SOURCE))).convert("RGBA")
+    px = src.load()
+    for y in range(src.height):
+        for x in range(src.width):
+            r, g, b, a = px[x, y]
+            h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+            # Only the saturated glow is green; the grey hilt is untouched.
+            if s > 0.2 and 0.2 < h < 0.5:
+                h = 0.78
+                nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
+                px[x, y] = (round(nr * 255), round(ng * 255), round(nb * 255), a)
+    out_raw = os.path.join(RAW_OVERRIDE_DIR, f"{PURPLE_LONG_HILT_ICON}.tga")
+    src.save(out_raw, format="TGA", rle=True)
+    shutil.copy2(out_raw, os.path.join(override_dir, f"{PURPLE_LONG_HILT_ICON}.tga"))
+    print(f"  built+deployed {PURPLE_LONG_HILT_ICON}.tga (Viridian's hilt, purple glow)")
+
+
 def list_deployed_filenames() -> list:
     """Every filename deploy_ported_colors()/build_purple() write to
     RAW_OVERRIDE_DIR, derived from PORTED_COLORS/PURPLE_* rather than
@@ -116,7 +187,9 @@ def list_deployed_filenames() -> list:
         f"{PURPLE_TEXTURE}.tga", f"{PURPLE_TEXTURE}.txi",
         f"{PURPLE_LONG_UTI}.uti", f"{PURPLE_CRYSTAL}.uti",
         f"{PURPLE_ICON}.tga",
+        f"{PURPLE_LONG_HILT_ICON}.tga",
     ]
+    files += [_pack_icon_filename(stem) for stem in _hilt_icon_stems()]
     return files
 
 
@@ -136,6 +209,67 @@ def _copy_pack_file(basename: str, override_dir: str) -> None:
     shutil.copy2(src, os.path.join(override_dir, basename))
 
 
+# Pack crystal icons drawn with a heavy near-black rim that looks harsh next to
+# vanilla's thin dark-tinted one. Their rim pixels are recoloured as a darker
+# shade of the crystal's own colour. Silver, Black and Purple are left as they
+# are (no visible rim problem).
+SOFT_OUTLINE_COLORS = ("Cyan", "Orange", "Bronze")
+
+
+def _luma(p) -> float:
+    return 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]
+
+
+def soften_icon_outline(path: str, darken: float = 0.55, luma_max: float = 70, radius: int = 3) -> None:
+    """Rewrites the TGA at `path`: every dark pixel touching the transparent
+    background takes the average colour of the lit pixels within `radius`,
+    scaled by `darken`. Alpha is unchanged."""
+    from PIL import Image
+
+    im = Image.open(path).convert("RGBA")
+    px = im.load()
+    w, h = im.size
+    out = im.copy()
+    op = out.load()
+    for y in range(h):
+        for x in range(w):
+            p = px[x, y]
+            if p[3] == 0 or _luma(p) >= luma_max:
+                continue
+            touches_background = any(
+                0 <= x + dx < w and 0 <= y + dy < h and px[x + dx, y + dy][3] < 128
+                for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+            )
+            if not touches_background:
+                continue
+            lit = [
+                px[x + dx, y + dy]
+                for dy in range(-radius, radius + 1) for dx in range(-radius, radius + 1)
+                if 0 <= x + dx < w and 0 <= y + dy < h
+                and px[x + dx, y + dy][3] > 200 and _luma(px[x + dx, y + dy]) >= luma_max
+            ]
+            if not lit:
+                continue
+            n = len(lit)
+            op[x, y] = (
+                int(sum(c[0] for c in lit) / n * darken),
+                int(sum(c[1] for c in lit) / n * darken),
+                int(sum(c[2] for c in lit) / n * darken),
+                p[3],
+            )
+    out.save(path, format="TGA", rle=True)
+
+
+def deploy_crystal_icon(label: str, spec: dict, override_dir: str) -> None:
+    """Copies the pack's crystal icon to the raw dir and Override, softening
+    its outline first for the colours in SOFT_OUTLINE_COLORS."""
+    fn = f"{spec['icon']}.tga"
+    _copy_pack_file(fn, override_dir)
+    if label in SOFT_OUTLINE_COLORS:
+        soften_icon_outline(os.path.join(RAW_OVERRIDE_DIR, fn))
+        shutil.copy2(os.path.join(RAW_OVERRIDE_DIR, fn), os.path.join(override_dir, fn))
+
+
 def deploy_ported_colors(override_dir: str) -> None:
     for label, spec in PORTED_COLORS.items():
         files = [
@@ -144,11 +278,11 @@ def deploy_ported_colors(override_dir: str) -> None:
             f"{spec['short_mdl']}.mdl", f"{spec['short_mdl']}.mdx",
             f"{spec['dbl_mdl']}.mdl", f"{spec['dbl_mdl']}.mdx",
             f"{spec['texture']}.tga", f"{spec['texture']}.txi",
-            f"{spec['icon']}.tga",
         ]
         for fn in files:
             _copy_pack_file(fn, override_dir)
-        print(f"  deployed {label} ({len(files)} files)")
+        deploy_crystal_icon(label, spec, override_dir)
+        print(f"  deployed {label} ({len(files) + 1} files)")
 
 
 def build_purple(game_dir: str, override_dir: str) -> None:
@@ -323,11 +457,23 @@ def main():
     game_dir = _arg_value("--game-dir", DEFAULT_GAME_DIR)
     override_dir = os.path.join(game_dir, "Override")
 
+    if "--icons-only" in sys.argv[1:]:
+        print("Deploying crystal icons...")
+        for label, spec in PORTED_COLORS.items():
+            deploy_crystal_icon(label, spec, override_dir)
+        print("Deploying saber hilt icons...")
+        deploy_hilt_icons(override_dir)
+        print("Done.")
+        return
+
     print("Deploying ported colors (Cyan/Orange/Bronze/Silver/Black)...")
     deploy_ported_colors(override_dir)
 
     print("Building Purple...")
     build_purple(game_dir, override_dir)
+
+    print("Deploying saber hilt icons...")
+    deploy_hilt_icons(override_dir)
 
     print("Patching upcrystals.2da...")
     patch_upcrystals(game_dir, override_dir)

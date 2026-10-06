@@ -15,6 +15,7 @@
 // them OUT of the active party. Skip both in that case; the AP location
 // check still fires either way below.
 #include "kse"
+#include "ap_recruit_marker"
 
 void main()
 {
@@ -31,5 +32,5 @@ void main()
     // Same reasoning as k_ptar_addcarth.nss: report the AP check directly
     // from the only place that reliably knows recruitment was just
     // reached, regardless of whether recruitment logic ran above.
-    KSE_Diag(22, "AP|CHECK|COMPANION|1");
+    RecordRecruit("canderous", 1);
 }

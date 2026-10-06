@@ -127,6 +127,15 @@ _SKILLREPORT_RE = re.compile(
     r"persuade=(\d+)\|repair=(\d+)\|security=(\d+)\|treatinjury=(\d+)"
 )
 _SKILL_FIELDS = ["computeruse", "demolitions", "stealth", "awareness", "persuade", "repair", "security", "treatinjury"]
+# The eight TRUE skill ranks (KSE_FIELD_REPORT_SKILL_RANKS, logged by the
+# extender just before each SKILLREPORT). SKILLREPORT above is GetSkillRank --
+# rank + ability modifier + effects -- so it moves whenever abilities, gear or
+# debuffs change; skill reconciliation runs on these true ranks instead.
+# Signed because the engine stores ranks in a signed byte.
+_SKILLBASE_RE = re.compile(
+    r"AP\|SKILLBASEREPORT\|computeruse=(-?\d+)\|demolitions=(-?\d+)\|stealth=(-?\d+)\|awareness=(-?\d+)\|"
+    r"persuade=(-?\d+)\|repair=(-?\d+)\|security=(-?\d+)\|treatinjury=(-?\d+)"
+)
 
 # Raw events are full kse.log lines (timestamp + `KSE DIAG: code=N msg="..."`
 # wrapper, with a trailing close-quote after the value) -- these MUST use a
@@ -159,6 +168,37 @@ _COMPANION_CLASSREPORT_RE = re.compile(
     r"AP\|COMPANIONCLASSREPORT\|bastila=(-?\d+)\|canderous=(-?\d+)\|carth=(-?\d+)\|"
     r"jolee=(-?\d+)\|juhani=(-?\d+)\|mission=(-?\d+)\|zaalbar=(-?\d+)"
 )
+# Roster cleanup (CheckRoster(), generate_poll_shared.py): which of the 9
+# companions are AVAILABLE (on the roster, in the active party or not), plus
+# busy=1 while a scripted scene has someone staged on purpose (the Leviathan
+# sequence, a conversation, the Zaalbar/Jolee temporary-companion scenes).
+# Anyone available who the player is not entitled to is purged once, after
+# several consecutive non-busy reports -- see ReconciliationTracker.
+# _roster_extras. Keys in the order the poll reports them; the index is the
+# NPC_* slot (0 Bastila, 1 Canderous, 2 Carth, 3 HK-47, 4 Jolee, 5 Juhani,
+# 6 Mission, 7 T3-M4, 8 Zaalbar).
+_ROSTER_KEYS = ["bastila", "canderous", "carth", "hk47", "jolee", "juhani", "mission", "t3m4", "zaalbar"]
+_ROSTER_NPC_IDX = {"bastila": 0, "canderous": 1, "carth": 2, "hk47": 3, "jolee": 4,
+                   "juhani": 5, "mission": 6, "t3m4": 7, "zaalbar": 8}
+_ROSTER_RE = re.compile(
+    r"AP\|ROSTERREPORT\|busy=(\d)\|bastila=(\d)\|canderous=(\d)\|carth=(\d)\|hk47=(\d)\|"
+    r"jolee=(\d)\|juhani=(\d)\|mission=(\d)\|t3m4=(\d)\|zaalbar=(\d)\|lev=(-?\d+)"
+    r"\|sf=(\d)\|fc=(-?\d+)\|bp=(\d)(?:\|md=(\d))?(?:\|sel=([01]{9}))?"
+)
+# Star Forge pass: companions that nothing in the Star Forge needs (its Carth and
+# Bastila scenes use stand-in creatures with their own tags), purged on arrival if
+# the player is not entitled to them. Bastila is handled by path, see
+# ReconciliationTracker._starforge_actions.
+_STARFORGE_PURGE_KEYS = ["carth", "canderous", "hk47", "jolee", "juhani", "mission", "t3m4", "zaalbar"]
+# lev_captured's final journal entry (global.jrl): the Leviathan has been
+# escaped. The roster cleanup only runs from then on.
+_LEVIATHAN_DONE_ENTRY = 99
+# Consecutive non-busy reports (5 s apart) an unentitled companion must be
+# seen in before a purge is sent, and how long after the first report of a
+# connection nothing is purged (the received-item replay and the delivery
+# log must have had time to say who is entitled).
+_ROSTER_STABLE_REPORTS = 3
+_ROSTER_WARMUP_SECONDS = 45
 # Same shape as _COMPANION_CLASSREPORT_RE, for the feats poll
 # (CheckCompanionFeats(), generate_poll_shared.py) -- each segment is
 # either "NONE" (not currently recruited), empty (recruited, holds none of
@@ -182,9 +222,7 @@ _COMPANION_FEATSREPORT_RE = re.compile(
 # separator, unlike the free-form COMPANIONFEATSREPORT fields above, so no
 # quote-exclusion trick is needed here.
 _PROGRESSIONITEMSREPORT_RE = re.compile(
-    r"AP\|PROGRESSIONITEMSREPORT\|sith_armor=(\d)\|sith_papers=(\d)\|shield_codes=(\d)\|"
-    r"enviro_suit=(\d)\|starmap_tatooine=(\d)\|starmap_kashyyyk=(\d)\|starmap_manaan=(\d)\|"
-    r"starmap_korriban=(\d)"
+    r"AP\|PROGRESSIONITEMSREPORT" + "".join(rf"\|{_k}=(\d)" for _k in PROGRESSION_ITEM_RESREFS)
 )
 _RESREF_TO_PROGRESSION_KEY: typing.Dict[str, str] = {v: k for k, v in PROGRESSION_ITEM_RESREFS.items()}
 # ap_vs_reset.nss/ap_val_steal.nss (generate_ap_vendor.py) -- vendor
@@ -253,7 +291,20 @@ _NAMEREPORT_RE = re.compile(r'AP\|NAMEREPORT\|([^"]+)')
 _ABILITY_RE = re.compile(
     r"AP\|ABILITYREPORT\|str=(\d+)\|dex=(\d+)\|con=(\d+)\|int=(\d+)\|wis=(\d+)\|cha=(\d+)"
 )
+# The six TRUE base ability scores (KSE_FIELD_REPORT_ABILITY_BASES, logged by
+# the extender right after each ABILITYREPORT). ABILITYREPORT above is the
+# EFFECTIVE score -- base + item bonuses + temporary effects such as combat
+# debuffs -- so on its own a debuff reads as a lost point. The ability
+# reconciliation below only ever consults these when the effective score has
+# dropped below the baseline, to tell a temporary effect from a real loss.
+_ABILITYBASE_RE = re.compile(
+    r"AP\|ABILITYBASEREPORT\|str=(\d+)\|dex=(\d+)\|con=(\d+)\|int=(\d+)\|wis=(\d+)\|cha=(\d+)"
+)
 _FEATREPORT_RE = re.compile(r"AP\|FEATREPORT\|([\d,]*)")
+# The full held-feat list (CheckFeatsFull(), about once a minute). FEATREPORT above now carries only
+# the feats the reconciler and the Additional Feats picker care about; the Remove Half Known Feats
+# trap needs everything the character holds.
+_FEATFULL_RE = re.compile(r"AP\|FEATFULL\|([\d,]*)")
 _POWERREPORT_RE = re.compile(r"AP\|POWERREPORT\|([\d,]*)")
 # Trap confirmations (generate_trampoline_batch.py's build_trap_block) --
 # both are a legitimate, intentional DECREASE, so on a match the
@@ -332,6 +383,15 @@ _CREDITS_INFLIGHT_TIMEOUT_SECONDS = 30
 # land.
 _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS = 300
 
+# How long after a covered-area entry the staged arms are still considered to
+# be flushing. The area's trampoline runs `AP|CHECK|AREA` and the poll BEFORE
+# its batch applies, so the poll of that same run reports pre-batch values;
+# judging "the arms had their chance" from the AREA line alone made the
+# reconciler resend every staged grant in the same instant the batch was
+# landing (a whole connect-time burst doubled). The next heartbeat poll, one
+# 5 s tick later, reflects the landed batch.
+_AREA_FLUSH_GRACE_SECONDS = 12
+
 # is_heavy_arm (entitlement.py) classifies every correction arm name that
 # must be routed through send_heavy (KotorClient.py's _queue_heavy)
 # instead of send_apply directly -- imported rather than duplicated here,
@@ -355,6 +415,11 @@ class ReconciliationTracker:
         send_feats: typing.Optional[typing.Callable[[str, typing.List[int]], typing.Awaitable[bool]]] = None,
         on_death: typing.Optional[typing.Callable[[], None]] = None,
         is_awaiting_confirmation: typing.Optional[typing.Callable[[str], bool]] = None,
+        send_purge: typing.Optional[typing.Callable[[str], typing.Awaitable[bool]]] = None,
+        send_unparty: typing.Optional[typing.Callable[[str], typing.Awaitable[bool]]] = None,
+        send_roster_remove: typing.Optional[typing.Callable[[str], typing.Awaitable[bool]]] = None,
+        send_select: typing.Optional[typing.Callable[[str], typing.Awaitable[bool]]] = None,
+        entitled_companions: typing.Optional[typing.Callable[[], typing.Set[str]]] = None,
     ):
         self._send_apply = send_apply
         self._send_apply_value = send_apply_value
@@ -383,6 +448,20 @@ class ReconciliationTracker:
         # a fresh random draw. Optional, same tolerant shape as
         # send_delevel/send_heavy above.
         self._send_feats = send_feats
+        # Roster cleanup: send_purge(npc_key) removes a companion the player
+        # is not entitled to (the purge_companion trap); entitled_companions()
+        # returns the keys the delivery log says were granted for this
+        # seed/slot, the persistent half of "who should be on the roster".
+        # Both optional, same tolerant shape as the callbacks above.
+        self._send_purge = send_purge
+        # Star Forge pass only: out of the active party + objects destroyed, roster kept
+        # (an entitled Bastila on the light path), and roster-only removal (a non-entitled
+        # Bastila on the dark path, after the game's own script has taken her out of the
+        # party; her object keeps standing for the scene).
+        self._send_unparty = send_unparty
+        self._send_roster_remove = send_roster_remove
+        self._send_select = send_select
+        self._entitled_companions = entitled_companions
         self._on_death = on_death
         # Optional, same reasoning as send_delevel/on_death above -- a
         # missing callable just means "nothing else knows about in-flight
@@ -400,7 +479,7 @@ class ReconciliationTracker:
         KotorClient process that connects to a DIFFERENT slot (e.g.
         WaterKnight after FireKnight) without restarting the process
         would otherwise keep every bit of the PREVIOUS slot's
-        reconciliation state -- expected_scalar/expected_skills/
+        reconciliation state -- expected_scalar/_skill_baseline/
         expected_companions still reflecting the old slot's items,
         current_classes/current_character_name still the old slot's last
         reported values, in-flight dedup guards still armed from the old
@@ -523,21 +602,19 @@ class ReconciliationTracker:
         self._credits_inflight_target: typing.Optional[int] = None
         self._credits_inflight_since: typing.Optional[float] = None
 
-        # Ability baseline tracking -- deliberately NOT the same shape as
-        # expected_skills (a pure AP-grant count compared directly against
-        # absolute current). Ability scores start at a real natural value
-        # (8-18), not near 0 the way most skills do, so a zero-floor count
-        # would almost never actually compare meaningfully against current
-        # -- it would take that many AP grants alone to ever exceed a
-        # typical starting score. Same bootstrap-then-track-deltas shape
-        # as _credit_baseline instead: None until the first real
-        # ABILITYREPORT (bootstrapped in _reconcile(), trusting whatever's
-        # currently real rather than judging pre-connection history), then
-        # moved only by a real "ability_X" grant (+1, note_item_received)
-        # or a legitimate decrease (reduce_str/dex/int/wis/cha trap, or
-        # Character Reset -- both lower it directly, same "a real
-        # punishment/respec is not exempt" reasoning as expected_feats/
-        # expected_skills above). con is tracked (has a real AP item,
+        # Ability baseline tracking -- the same bootstrap-then-track-deltas
+        # shape as _skill_baseline and _credit_baseline, not a pure AP-grant
+        # count: ability scores start at a real natural value (8-18), so a
+        # zero-floor count would almost never compare meaningfully against
+        # the current score -- it would take that many AP grants alone to
+        # ever exceed a typical starting score. None until the first real
+        # ABILITYBASEREPORT (bootstrapped in _reconcile() from the TRUE base
+        # score, trusting whatever's currently real rather than judging
+        # pre-connection history), then moved only by a real "ability_X"
+        # grant (+1, note_item_received) or a legitimate decrease
+        # (reduce_str/dex/int/wis trap, or Character Reset -- both lower it
+        # directly, same "a real punishment/respec is not exempt" reasoning
+        # as expected_feats/_skill_baseline). con is tracked (has a real AP item,
         # "Ability: Constitution Increase") even though no reduce_con trap
         # exists to lower it; cha is NOT tracked -- no AP item grants it at
         # all (Items.py has no "Ability: Charisma Increase"), so there is
@@ -547,8 +624,56 @@ class ReconciliationTracker:
         self._ability_inflight_since: typing.Dict[str, float] = {}
 
         self.expected_scalar: typing.Dict[str, int] = {"credits": 0, "xp": 0}
-        self.expected_skills: typing.Dict[str, int] = {f: 0 for f in _SKILL_FIELDS}
+        # Skill entitlement, on the TRUE RANK scale: the rank each skill must
+        # not fall below. None until the first SKILLBASEREPORT of this
+        # connection (bootstrapped in _reconcile() from the real rank, same
+        # "don't judge pre-connection history" rule as _ability_baseline and
+        # _credit_baseline), then moved only by a real skill grant (+amount,
+        # note_item_received) or a legitimate decrease (reduce_skill trap, or
+        # Character Reset). It deliberately is NOT compared against
+        # GetSkillRank (SKILLREPORT): that value is rank + ability modifier +
+        # effects, so a grant tally measured against it under-heals by the
+        # modifier on a fresh character and never triggers on a trained one.
+        self._skill_baseline: typing.Dict[str, typing.Optional[int]] = {f: None for f in _SKILL_FIELDS}
         self.expected_companions: set[int] = set()
+        # Companion keys a Trap: Remove a Companion has permanently removed (set by the client at
+        # Connect and when the trap lands). They are not entitled, are never re-added, and are
+        # purged by the roster cleanup if one turns up on the roster -- except while a scene that
+        # stages companions on purpose is running (the busy flag), which is unchanged.
+        self.trapped_off_companions: typing.Set[str] = set()
+        # Roster cleanup state (see _ROSTER_RE). current_roster None = no
+        # ROSTERREPORT yet this connection (nothing is ever purged on an
+        # unknown roster). trust_recruit_markers is set by the client for
+        # companion_mode=normal only: there a story-recruited companion is
+        # entitled the moment the recruit script's journal marker exists,
+        # which can be well before the auto-grant lands; under ap_gated/none
+        # the markers are just the location checks and entitle nobody.
+        self.current_roster: typing.Optional[typing.Dict[str, bool]] = None
+        self.roster_busy = True
+        self.roster_leviathan_done = False
+        self.roster_in_starforge = False
+        self.roster_final_choice = 0
+        self.roster_bastila_in_party = False
+        self.roster_malak_dead = False
+        self._sf_streak: typing.Dict[str, int] = {}
+        # Selectability (ROSTERREPORT sel=): companion key -> can be picked on the party screen,
+        # None until a report carrying it has arrived.
+        self.current_selectable: typing.Optional[typing.Dict[str, bool]] = None
+        self._unsel_streak: typing.Dict[str, int] = {}
+        self._unsel_inflight_since: typing.Dict[str, float] = {}
+        self._sf_inflight_since: typing.Dict[str, float] = {}
+        # One-shot per connection: once a post-Leviathan roster has been seen
+        # clean (nothing unentitled), the cleanup stops for good, so later
+        # scenes that add companions on purpose can never be undone by it.
+        self._roster_cleanup_done = False
+        # "on" purges, "log" only reports who it would purge, "off" disables
+        # (KotorClient's /ap_roster_cleanup). Not reset per connection: it is
+        # an operator choice, not live state.
+        self.roster_cleanup_mode = "on"
+        self.trust_recruit_markers = False
+        self._roster_first_seen: typing.Optional[float] = None
+        self._roster_extra_streak: typing.Dict[str, int] = {}
+        self._purge_inflight_since: typing.Dict[str, float] = {}
         # PC class self-healing (see entitlement.py's PC_CLASS_CONST_TO_ARM) --
         # tied to AP progress (the last class-switch item actually received),
         # not to any one running game process, same reasoning as
@@ -660,7 +785,20 @@ class ReconciliationTracker:
         self.current_abilities: typing.Dict[str, int] = {
             "str": 0, "dex": 0, "con": 0, "int": 0, "wis": 0, "cha": 0,
         }
+        # True base scores from ABILITYBASEREPORT -- None until the first
+        # report of this connection (and for good with an extender build that
+        # predates the report). Tracked abilities only; cha has no AP item.
+        self.current_ability_bases: typing.Dict[str, typing.Optional[int]] = {k: None for k in _ABILITY_KEYS}
+        self._ability_base_missing_warned = False
+        # True skill ranks from SKILLBASEREPORT (see _SKILLBASE_RE) -- None
+        # until the first report of this connection, and for good with an
+        # extender build that predates it. current_skills below stays the
+        # effective GetSkillRank value.
+        self.current_skill_bases: typing.Dict[str, typing.Optional[int]] = {f: None for f in _SKILL_FIELDS}
+        self._skill_base_missing_warned = False
         self.current_feats: typing.Set[int] = set()
+        # Full held-feat list from FEATFULL (None until one has arrived this connection).
+        self.full_feats: typing.Optional[typing.Set[int]] = None
         self.current_powers: typing.Set[int] = set()
         # From NAMEREPORT -- the delivery log's other half (see
         # KotorClient.py) keys on this to tell a fresh character (deliberate
@@ -678,20 +816,23 @@ class ReconciliationTracker:
         # since delivery is gated on the next area transition -- compounds
         # into a real over-grant (e.g. a single starting_persuade
         # boost firing 9 times instead of once during a pre-transition
-        # wait after connecting). Cleared whenever current_skills/
+        # wait after connecting). Cleared whenever current_skill_bases/
         # last_seen_companions shows real progress, so a lost/dropped
         # request still self-heals on the next cycle.
         self._inflight_skill_count: typing.Dict[str, int] = {f: 0 for f in _SKILL_FIELDS}
         self._inflight_skill_since: typing.Dict[str, float] = {}
         self._inflight_companions: set[int] = set()
-        self._prev_current_skills: typing.Dict[str, int] = {f: 0 for f in _SKILL_FIELDS}
+        # Last TRUE rank seen per skill, for the in-flight reset in
+        # _reconcile(). Keyed on the true rank, not GetSkillRank, so ability,
+        # gear and debuff changes can't masquerade as a grant landing.
+        self._prev_skill_bases: typing.Dict[str, typing.Optional[int]] = {f: None for f in _SKILL_FIELDS}
 
         self.last_corrections: typing.List[str] = []
 
     def reset_live_state(self) -> None:
         """Resets only the fields that reflect what the game currently
         reports (repopulated fresh by the next real poll) -- NOT
-        expected_scalar/expected_skills/expected_companions (what the
+        expected_scalar/_skill_baseline/expected_companions (what the
         player is owed, tied to their AP progress, not to any one running
         game process) and NOT the experience_mode/credit_mode/etc option
         config (only ever set from slot_data, which isn't resent here).
@@ -722,17 +863,35 @@ class ReconciliationTracker:
         self._classes_known = False
         self.current_companion_classes = {k: -1 for k in _COMPANION_CLASS_KEYS}
         self.current_companion_feats = {k: None for k in _COMPANION_CLASS_KEYS}
+        self.current_roster = None
+        self.roster_busy = True
+        self.roster_leviathan_done = False
+        self.roster_in_starforge = False
+        self.roster_final_choice = 0
+        self.roster_bastila_in_party = False
+        self._sf_streak = {}
+        self._sf_inflight_since = {}
+        self.current_selectable = None
+        self._unsel_streak = {}
+        self._unsel_inflight_since = {}
+        self._roster_cleanup_done = False
+        self._roster_first_seen = None
+        self._roster_extra_streak = {}
+        self._purge_inflight_since = {}
         self.current_progression_items = {k: False for k in PROGRESSION_ITEM_RESREFS}
         self.current_ap_tracker_stage = None
         self.current_level = None
         self.current_force = {"current": 0, "max": 0}
         self.current_abilities = {"str": 0, "dex": 0, "con": 0, "int": 0, "wis": 0, "cha": 0}
+        self.current_ability_bases = {k: None for k in _ABILITY_KEYS}
         self.current_feats = set()
+        self.full_feats = None
         self.current_powers = set()
         self.current_character_name = None
         self._cycle_companions = set()
         self.last_seen_companions = set()
-        self._prev_current_skills = {f: 0 for f in _SKILL_FIELDS}
+        self.current_skill_bases = {f: None for f in _SKILL_FIELDS}
+        self._prev_skill_bases = {f: None for f in _SKILL_FIELDS}
         # Same staleness risk as current_scalar/current_level above -- a
         # stale reference point here would misread the freshly-loaded
         # save's real credits as an unauthorized gain (or a spend) relative
@@ -843,16 +1002,21 @@ class ReconciliationTracker:
             self.expected_scalar[key] += amount
         elif kind == "skill":
             _, key, amount = rule
-            self.expected_skills[key] += amount
-            # Mark this amount in-flight too, not just expected_skills --
-            # otherwise _reconcile() computes a deficit against `current`
-            # (which hasn't caught up to this real grant yet, since
-            # delivery and the next poll cycle race independently) with no
-            # visibility that a real delivery already covers it, and sends
-            # a redundant correction for the exact same amount on top.
-            if self._inflight_skill_since.get(key) is None:
-                self._inflight_skill_since[key] = time.time()
-            self._inflight_skill_count[key] += amount
+            # No-op if not yet bootstrapped (see _skill_baseline's own
+            # comment) -- _reconcile()'s bootstrap adopts the true rank as
+            # it stands, so nothing is lost by skipping the increment here.
+            if self._skill_baseline.get(key) is not None:
+                self._skill_baseline[key] += amount
+                # Mark this amount in-flight too, not just in the baseline --
+                # otherwise _reconcile() computes a deficit against the true
+                # rank (which hasn't caught up to this real grant yet, since
+                # delivery and the next poll cycle race independently) with
+                # no visibility that a real delivery already covers it, and
+                # sends a redundant correction for the exact same amount on
+                # top.
+                if self._inflight_skill_since.get(key) is None:
+                    self._inflight_skill_since[key] = time.time()
+                self._inflight_skill_count[key] += amount
         elif kind == "companion":
             _, npc_idx = rule
             self.expected_companions.add(npc_idx)
@@ -904,7 +1068,7 @@ class ReconciliationTracker:
         if _VENDOR_RESET_RE.search(event):
             # Character Reset strips the PC's feats/skills/abilities in
             # the game -- without this, expected_feats["pc"]/
-            # expected_skills/_ability_baseline (AP-side entitlement)
+            # _skill_baseline/_ability_baseline (AP-side entitlement)
             # would see the very next poll as a deficit and silently
             # regrant everything back, undoing the respec within one
             # cycle. Explicit product decision: a respec is a real
@@ -917,7 +1081,8 @@ class ReconciliationTracker:
             self.expected_feats["pc"] = set()
             self._feats_inflight.pop("pc", None)
             self._feats_inflight_since.pop("pc", None)
-            self.expected_skills = {f: 0 for f in _SKILL_FIELDS}
+            # ap_vs_reset.nss zeroes every skill rank.
+            self._skill_baseline = {f: 0 for f in _SKILL_FIELDS}
             self._inflight_skill_count = {f: 0 for f in _SKILL_FIELDS}
             self._inflight_skill_since = {}
             # RESET_ABILITY_FLOOR (generate_ap_vendor.py) -- the exact
@@ -928,14 +1093,37 @@ class ReconciliationTracker:
             return
         m = _TRAP_REDUCE_SKILL_RE.search(event)
         if m:
-            skill_key, after = m.group(1), int(m.group(3))
-            self.expected_skills[skill_key] = min(self.expected_skills.get(skill_key, 0), after)
+            # before/after are GetSkillRank values read in the same script
+            # run, and the ability modifier doesn't change across the call, so
+            # their difference is exactly how far the trap moved the true
+            # rank. Lower the baseline by that amount (it lives on the rank
+            # scale); a baseline that hasn't bootstrapped yet adopts the
+            # already-lowered rank when it does.
+            skill_key = m.group(1)
+            drop = max(0, int(m.group(2)) - int(m.group(3)))
+            current_baseline = self._skill_baseline.get(skill_key)
+            if current_baseline is not None:
+                self._skill_baseline[skill_key] = max(0, current_baseline - drop)
             return
         m = _TRAP_REDUCE_ABILITY_RE.search(event)
         if m:
-            key, after = _TRAP_ABILITY_TO_KEY[m.group(1)], int(m.group(3))
+            key = _TRAP_ABILITY_TO_KEY.get(m.group(1))
+            if key is None:
+                # reduce_cha: charisma has no AP grant, so there is no
+                # baseline for it to lower.
+                return
+            # before/after are EFFECTIVE scores read in the same script run,
+            # so their difference is exactly how far the trap moved the true
+            # base. The baseline lives on the base scale, so lower it by that
+            # amount rather than adopting an effective score (which would
+            # carry any item bonus into the baseline). Subtracting keeps
+            # several traps landing before the next poll cumulative. A
+            # baseline that hasn't bootstrapped yet adopts the already-lowered
+            # base when it does.
+            drop = max(0, int(m.group(2)) - int(m.group(3)))
             current_baseline = self._ability_baseline.get(key)
-            self._ability_baseline[key] = after if current_baseline is None else min(current_baseline, after)
+            if current_baseline is not None:
+                self._ability_baseline[key] = max(0, current_baseline - drop)
             return
         m = _SET_CREDITS_APPLIED_RE.search(event)
         if m:
@@ -996,6 +1184,50 @@ class ReconciliationTracker:
                 self.current_classes["baselevel"] = int(m.group(5))
             self._classes_known = True
             return
+        m = _ROSTER_RE.search(event)
+        if m:
+            values = [int(x) for x in m.groups()[:15] if x is not None]
+            sel_bits = m.group(16)
+            self.current_selectable = ({k: b == "1" for k, b in zip(_ROSTER_KEYS, sel_bits)}
+                                       if sel_bits else None)
+            self.roster_busy = bool(values[0])
+            self.current_roster = {k: bool(v) for k, v in zip(_ROSTER_KEYS, values[1:10])}
+            self.roster_leviathan_done = values[10] >= _LEVIATHAN_DONE_ENTRY
+            self.roster_in_starforge = bool(values[11])
+            self.roster_final_choice = values[12]
+            self.roster_bastila_in_party = bool(values[13])
+            self.roster_malak_dead = bool(values[14]) if len(values) > 14 else False
+            if self._roster_first_seen is None:
+                self._roster_first_seen = time.time()
+            extras = set(self._roster_extras())
+            if (self.roster_leviathan_done and not self.roster_busy and not extras
+                    and not self.roster_in_starforge
+                    and time.time() - self._roster_first_seen >= _ROSTER_WARMUP_SECONDS):
+                self._roster_cleanup_done = True
+            unsel = self._unselectable_entitled()
+            for key in _ROSTER_KEYS:
+                if key in unsel and not self.roster_busy and not self.roster_in_starforge:
+                    self._unsel_streak[key] = self._unsel_streak.get(key, 0) + 1
+                else:
+                    self._unsel_streak[key] = 0
+                    if key not in unsel:
+                        self._unsel_inflight_since.pop(key, None)
+            sf_actions = self._starforge_actions()
+            for key in set(_STARFORGE_PURGE_KEYS) | {"bastila"}:
+                if key in sf_actions and not self.roster_busy:
+                    self._sf_streak[key] = self._sf_streak.get(key, 0) + 1
+                else:
+                    self._sf_streak[key] = 0
+                    if key not in sf_actions:
+                        self._sf_inflight_since.pop(key, None)
+            for key in _ROSTER_KEYS:
+                if key in extras and not self.roster_busy:
+                    self._roster_extra_streak[key] = self._roster_extra_streak.get(key, 0) + 1
+                else:
+                    self._roster_extra_streak[key] = 0
+                    if key not in extras:
+                        self._purge_inflight_since.pop(key, None)
+            return
         m = _COMPANION_CLASSREPORT_RE.search(event)
         if m:
             for key, value in zip(_COMPANION_CLASS_KEYS, m.groups()):
@@ -1016,8 +1248,10 @@ class ReconciliationTracker:
             self.current_ap_tracker_stage = int(m.group(1))
             return
         if _AREA_CHECK_RE.search(event):
+            # No return: _AREA_RE below matches this same event and drives
+            # the XP clamp. The branches in between match other report
+            # types, so falling through is safe.
             self._last_covered_area_entry_time = time.time()
-            return
         m = _LEVEL_RE.search(event)
         if m:
             self.current_level = int(m.group(1))
@@ -1053,6 +1287,22 @@ class ReconciliationTracker:
             self.current_abilities["int"] = int(m.group(4))
             self.current_abilities["wis"] = int(m.group(5))
             self.current_abilities["cha"] = int(m.group(6))
+            return
+        m = _ABILITYBASE_RE.search(event)
+        if m:
+            # Groups 1-5 are str/dex/con/int/wis, matching _ABILITY_KEYS; the
+            # sixth (cha) isn't tracked, so zip drops it.
+            for key, value in zip(_ABILITY_KEYS, m.groups()):
+                self.current_ability_bases[key] = int(value)
+            return
+        m = _SKILLBASE_RE.search(event)
+        if m:
+            for key, value in zip(_SKILL_FIELDS, m.groups()):
+                self.current_skill_bases[key] = int(value)
+            return
+        m = _FEATFULL_RE.search(event)
+        if m:
+            self.full_feats = {int(x) for x in m.group(1).split(",") if x}
             return
         m = _FEATREPORT_RE.search(event)
         if m:
@@ -1110,20 +1360,26 @@ class ReconciliationTracker:
                             or self.current_classes["consular"]
                             or self.current_classes["sentinel"]
                         )
+                        # The level written is never HIGHER than the player's current level. A player can hold more XP
+                        # than their level reflects (XP past the next threshold, level-up not taken yet), and the
+                        # expected XP can still map to a level above the current one; raising the class level with a
+                        # raw field write skips the level-up (HP, feats, skill points) and was followed by a crash at
+                        # the next area load. In that case only the XP is written and the player's own level-up stands.
+                        write_level = min(target_level, self.current_level) if self.current_level else target_level
                         new_force = -1
                         if has_jedi and self.current_level:
                             new_force = round(
-                                self.current_force["current"] * target_level / self.current_level
+                                self.current_force["current"] * write_level / self.current_level
                             )
                         logger.info(
                             f"[reconcile] downward XP correction (level {self.current_level} -> "
-                            f"{target_level}, xp {current} -> {expected}) -- raw field write "
+                            f"{write_level}, xp {current} -> {expected}) -- raw field write "
                             f"instead of plain set_xp, since SetXP silently refuses any decrease "
                             f"(force -> {new_force})"
                         )
                         import asyncio
                         if self._send_delevel is not None:
-                            asyncio.create_task(self._send_delevel(target_level, expected, new_force))
+                            asyncio.create_task(self._send_delevel(write_level, expected, new_force))
                         else:
                             logger.warning("[reconcile] delevel needed but no send_delevel callback wired up")
                     else:
@@ -1166,6 +1422,97 @@ class ReconciliationTracker:
 
             self._reconcile()
 
+    def _entitled_keys(self) -> typing.Optional[typing.Set[str]]:
+        """Companion keys the player is entitled to (see _roster_extras), or None when
+        the entitlement could not be worked out (treat the roster as unknown)."""
+        entitled = {k for k, idx in _ROSTER_NPC_IDX.items() if idx in self.expected_companions}
+        if self._entitled_companions is not None:
+            try:
+                entitled |= set(self._entitled_companions())
+            except Exception:
+                logger.exception("[roster] entitled_companions callback failed, treating the roster as unknown")
+                return None
+        if self.trust_recruit_markers:
+            entitled |= {k for k, idx in _ROSTER_NPC_IDX.items() if idx in self.last_seen_companions}
+        return entitled - self.trapped_off_companions
+
+    def _unselectable_entitled(self) -> typing.Set[str]:
+        """Entitled companions who are on the roster but cannot be picked on the party screen
+        (the report's sel= bit is off). Vanilla scenes switch selectability off (the Dantooine
+        Enclave load script does it for Bastila and Carth) and the script that switches it back
+        on may be skipped or suppressed by the companion modes, which leaves a companion listed
+        and greyed out. Empty when the report carries no selectability or the entitlement is
+        unknown. Only entitled companions are touched: an unentitled one is the roster cleanup's
+        business, and a vanilla-unselectable companion we have no claim on stays as it is."""
+        if self.current_roster is None or self.current_selectable is None:
+            return set()
+        entitled = self._entitled_keys()
+        if entitled is None:
+            return set()
+        return {k for k in entitled
+                if self.current_roster.get(k) and not self.current_selectable.get(k, True)}
+
+    def _starforge_actions(self) -> typing.Dict[str, str]:
+        """What the Star Forge pass wants done, {companion key: action}: "purge" (roster +
+        party + objects), "unparty" (party + objects, roster kept) or "roster_remove"
+        (roster only). Empty unless the player is in a Star Forge module with a known
+        roster. Everything in _STARFORGE_PURGE_KEYS that is available and not entitled is
+        purged. Bastila, by G_FinalChoice:
+          2 light: the boss is a stand-in (sta_bastila), created only if no creature tagged
+            Bastila is near, so a companion Bastila must go before that area: purged if not
+            entitled, taken out of the party (roster kept) if entitled and in the party.
+          1 dark: the real Bastila fights beside the player and speaks in the Star Forge
+            scenes until the game's own script (k_psta_pc_j) takes her out of the party,
+            so nothing happens until she is out of the party; then a non-entitled one
+            leaves the roster (her object keeps standing for the scene)."""
+        if not self.roster_in_starforge or not self.current_roster:
+            return {}
+        # Once Malak is dead the Star Forge pass is over: the epilogue and the ending cutscenes
+        # use the party and the game's own Carth stand-in, and nothing is gained by removing
+        # anyone then.
+        if self.roster_malak_dead:
+            return {}
+        entitled = self._entitled_keys()
+        if entitled is None:
+            return {}
+        actions: typing.Dict[str, str] = {}
+        for key in _STARFORGE_PURGE_KEYS:
+            if self.current_roster.get(key) and key not in entitled:
+                actions[key] = "purge"
+        if self.current_roster.get("bastila"):
+            is_entitled = "bastila" in entitled
+            if self.roster_final_choice == 2:
+                if not is_entitled:
+                    actions["bastila"] = "purge"
+                elif self.roster_bastila_in_party:
+                    actions["bastila"] = "unparty"
+            elif self.roster_final_choice == 1:
+                if not is_entitled and not self.roster_bastila_in_party:
+                    actions["bastila"] = "roster_remove"
+        return actions
+
+    def _roster_extras(self) -> typing.List[str]:
+        """Companions the last ROSTERREPORT shows as available that the
+        player is not entitled to. Entitled = granted this connection
+        (expected_companions, fed by every received/auto-granted companion
+        arm) or granted earlier this seed/slot (the delivery log, via the
+        entitled_companions callback); under companion_mode=normal also any
+        companion whose recruit moment has been reached (their journal
+        marker, last_seen_companions). Empty when the roster is unknown."""
+        if not self.current_roster:
+            return []
+        entitled = {k for k, idx in _ROSTER_NPC_IDX.items() if idx in self.expected_companions}
+        if self._entitled_companions is not None:
+            try:
+                entitled |= set(self._entitled_companions())
+            except Exception:
+                logger.exception("[roster] entitled_companions callback failed, treating the roster as unknown")
+                return []
+        if self.trust_recruit_markers:
+            entitled |= {k for k, idx in _ROSTER_NPC_IDX.items() if idx in self.last_seen_companions}
+        entitled -= self.trapped_off_companions
+        return [k for k in _ROSTER_KEYS if self.current_roster.get(k) and k not in entitled]
+
     def _staged_arm_stale(self, since: typing.Optional[float]) -> bool:
         """Replaces a pure time.time() - since > TIMEOUT check for every
         staged-arm correction type (ability, skill, PC class, companion
@@ -1179,7 +1526,9 @@ class ReconciliationTracker:
         retry harmless there, unlike every arm this gates."""
         if since is None:
             return False
-        return self._last_covered_area_entry_time is not None and self._last_covered_area_entry_time > since
+        entered = self._last_covered_area_entry_time
+        return (entered is not None and entered > since
+                and time.time() - entered >= _AREA_FLUSH_GRACE_SECONDS)
 
     def _reconcile(self) -> None:
         import asyncio
@@ -1268,17 +1617,41 @@ class ReconciliationTracker:
                 self._credits_inflight_target = None
                 self._credits_inflight_since = None
 
-        for key, expected in self.expected_skills.items():
-            current = self.current_skills.get(key, 0)
-            # Any real movement since last cycle means something we
-            # dispatched actually landed (or the player naturally trained
-            # it) -- either way, stop assuming our old in-flight requests
-            # are still outstanding and let the fresh deficit (if any)
-            # below decide what's still needed.
-            if current != self._prev_current_skills.get(key, 0):
+        # Skill reconciliation runs on the TRUE ranks (SKILLBASEREPORT), never
+        # on GetSkillRank: that value is rank + ability modifier + effects, so
+        # it shifts whenever abilities, gear or combat debuffs change. Against
+        # it, a grant tally under-heals a fresh character by the modifier and
+        # can never trigger on a trained one, and its constant movement kept
+        # clearing the in-flight guard below.
+        for key in _SKILL_FIELDS:
+            current = self.current_skill_bases.get(key)
+            if current is None:
+                # No rank report (an extender build that predates it, or the
+                # PC object was unresolvable). Fail closed -- there is no safe
+                # way to size a correction from the effective value.
+                if not self._skill_base_missing_warned and any(self.current_skills.values()):
+                    self._skill_base_missing_warned = True
+                    logger.warning("[reconcile] skill reconciliation paused -- SKILLREPORT arrived without a "
+                                   "SKILLBASEREPORT, so a grant can't be sized against the true rank. Is the "
+                                   "installed binkw32.dll the current build?")
+                continue
+            expected = self._skill_baseline.get(key)
+            # Any real movement of the TRUE rank since last cycle means
+            # something we dispatched actually landed (or the player naturally
+            # trained it) -- either way, stop assuming our old in-flight
+            # requests are still outstanding and let the fresh deficit (if
+            # any) below decide what's still needed.
+            if current != self._prev_skill_bases.get(key):
                 self._inflight_skill_count[key] = 0
                 self._inflight_skill_since.pop(key, None)
-            self._prev_current_skills[key] = current
+            self._prev_skill_bases[key] = current
+
+            if expected is None:
+                # First real rank for this key this connection -- adopt it as
+                # the floor, same "don't judge pre-connection history" reasoning
+                # as _ability_baseline's own bootstrap.
+                self._skill_baseline[key] = current
+                continue
 
             # Staleness, skills only: a request with zero progress is only
             # presumed lost once a covered area has actually been entered
@@ -1310,22 +1683,50 @@ class ReconciliationTracker:
         # Ability reconciliation -- see _ability_baseline's own comment
         # (__init__) for why this is a bootstrap-then-track-deltas design
         # (like credits), not the zero-floor design skills use above.
+        #
+        # The baseline lives on the TRUE BASE scale. The poll's effective
+        # score (ABILITYREPORT) also moves with item bonuses and temporary
+        # effects -- combat debuffs especially -- so a deficit measured
+        # against it queues permanent +1 grants for points that were never
+        # lost, and every queued grant lands later. The effective score is
+        # only the trigger: the true base (ABILITYBASEREPORT) is consulted
+        # once the effective score has dropped below the baseline, and the
+        # correction is sized from the base.
         for key in _ABILITY_KEYS:
             current = self.current_abilities.get(key, 0)
+            base = self.current_ability_bases.get(key)
+            if base is None:
+                # No base report (an extender build that predates it, or the
+                # PC object was unresolvable). Fail closed: without it, a
+                # temporary debuff is indistinguishable from a real loss.
+                if not self._ability_base_missing_warned and any(self.current_abilities.values()):
+                    self._ability_base_missing_warned = True
+                    logger.warning("[reconcile] ability reconciliation paused -- ABILITYREPORT arrived "
+                                   "without an ABILITYBASEREPORT, so a temporary debuff can't be told "
+                                   "from a real loss. Is the installed binkw32.dll the current build?")
+                continue
             if self._ability_baseline.get(key) is None:
                 # First real report for this key this connection -- adopt
-                # whatever's currently real as the floor, same "don't
-                # judge pre-connection history" reasoning as
-                # _credit_baseline's own bootstrap.
-                self._ability_baseline[key] = current
+                # the true base as the floor, same "don't judge
+                # pre-connection history" reasoning as _credit_baseline's
+                # own bootstrap.
+                self._ability_baseline[key] = base
                 continue
             expected = self._ability_baseline[key]
 
-            deficit = expected - current
-            if deficit <= 0:
+            base_deficit = expected - base
+            if base_deficit <= 0:
                 self._ability_inflight_count[key] = 0
                 self._ability_inflight_since.pop(key, None)
                 continue
+            if current >= expected:
+                # The base is short but item bonuses cover it, so the
+                # effective score hasn't dropped. Nothing to act on yet; if
+                # the bonus goes away the effective score drops below the
+                # baseline and the check below takes over. In-flight
+                # bookkeeping is left alone.
+                continue
+            deficit = base_deficit
 
             since = self._ability_inflight_since.get(key)
             if self._staged_arm_stale(since):
@@ -1371,8 +1772,16 @@ class ReconciliationTracker:
         # (which could fluctuate) but "has this companion ever been made
         # available" (which, once true, stays true), so this design should
         # be safe against the refire risk described above.
-        self._inflight_companions &= self.expected_companions - self.last_seen_companions
-        missing_companions = self.expected_companions - self.last_seen_companions
+        # last_seen_companions only gets an entry from a recruit scene or a saved recruit marker, so a companion that
+        # arrived through an item arm (no scene) never appears in it. The roster report names who is available right
+        # now by slot, so a companion already on the roster counts as present.
+        roster_present = ({_ROSTER_NPC_IDX[k] for k, here in self.current_roster.items() if here}
+                          if self.current_roster is not None else set())
+        self._inflight_companions &= self.expected_companions - self.last_seen_companions - roster_present
+        missing_companions = self.expected_companions - self.last_seen_companions - roster_present
+        # A trapped-off companion is meant to stay gone: never re-grant them.
+        missing_companions = {i for i in missing_companions
+                              if not any(_ROSTER_NPC_IDX.get(k) == i for k in self.trapped_off_companions)}
         for npc_idx in missing_companions:
             if npc_idx in self._inflight_companions:
                 continue
@@ -1398,6 +1807,94 @@ class ReconciliationTracker:
                 continue
             corrections.append(arm_name)
             self._inflight_companions.add(npc_idx)
+
+        # Roster cleanup: a companion who is available but not entitled (a
+        # scene's temporary staging that was left behind, a vanilla leak) is
+        # purged, but only once the Leviathan has been escaped
+        # (roster_leviathan_done: journal lev_captured at its final entry).
+        # Waits for a settled roster: not busy (no scene is staging
+        # someone on purpose), the same extra in _ROSTER_STABLE_REPORTS
+        # consecutive reports, and the warm-up after connect so the item
+        # replay and delivery log have had time to say who is entitled. One
+        # purge per cycle; a purge already sent is not repeated until a
+        # covered area has been entered since (the staged-arm rule) or the
+        # staged-arm timeout has passed.
+        if (self.roster_cleanup_mode != "off"
+                and self._send_purge is not None and self.current_roster is not None and not self.roster_busy
+                and self.roster_leviathan_done and not self._roster_cleanup_done
+                and not self.roster_in_starforge
+                and self._roster_first_seen is not None
+                and time.time() - self._roster_first_seen >= _ROSTER_WARMUP_SECONDS):
+            for key in self._roster_extras():
+                if self._roster_extra_streak.get(key, 0) < _ROSTER_STABLE_REPORTS:
+                    continue
+                since = self._purge_inflight_since.get(key)
+                if (since is not None and not self._staged_arm_stale(since)
+                        and time.time() - since < _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS):
+                    continue
+                self._purge_inflight_since[key] = time.time()
+                if self.roster_cleanup_mode == "log":
+                    logger.warning(f"[reconcile] {key} is on the roster but not entitled "
+                                   f"(roster cleanup is log-only, not purging)")
+                    continue
+                logger.warning(f"[reconcile] {key} is on the roster but not entitled, purging")
+                asyncio.create_task(self._send_purge(key))
+                break
+
+        # Selectability fix: an entitled companion who is listed but unselectable gets the
+        # select_companion trap (SetNPCSelectability TRUE). Same settle rules as the cleanup
+        # (not busy, 3 consecutive reports, warm-up), one per cycle, no repeat until a covered
+        # area has been entered since or the staged-arm timeout has passed.
+        if (self.roster_cleanup_mode != "off" and self._send_select is not None
+                and self.current_roster is not None and not self.roster_busy
+                and not self.roster_in_starforge and self._roster_first_seen is not None
+                and time.time() - self._roster_first_seen >= _ROSTER_WARMUP_SECONDS):
+            for key in _ROSTER_KEYS:
+                if self._unsel_streak.get(key, 0) < _ROSTER_STABLE_REPORTS:
+                    continue
+                since = self._unsel_inflight_since.get(key)
+                if (since is not None and not self._staged_arm_stale(since)
+                        and time.time() - since < _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS):
+                    continue
+                self._unsel_inflight_since[key] = time.time()
+                if self.roster_cleanup_mode == "log":
+                    logger.warning(f"[reconcile] {key} is entitled and listed but not selectable "
+                                   f"(roster cleanup is log-only, not fixing)")
+                    continue
+                logger.warning(f"[reconcile] {key} is entitled and listed but not selectable, making selectable")
+                asyncio.create_task(self._send_select(key))
+                break
+
+        # Star Forge pass (see _starforge_actions): the same settle rules as above (not busy,
+        # 3 consecutive reports, warm-up), one action per cycle, and a sent action is not
+        # repeated until a covered area has been entered since or the staged-arm timeout
+        # has passed. Not one-shot: it only acts while something is wrong, so a later
+        # re-add (the epilogue's Carth backfill) is reconciled too.
+        if (self.roster_cleanup_mode != "off" and self.current_roster is not None
+                and self.roster_in_starforge and not self.roster_busy
+                and self._roster_first_seen is not None
+                and time.time() - self._roster_first_seen >= _ROSTER_WARMUP_SECONDS):
+            sf_actions = self._starforge_actions()
+            for key, action in sf_actions.items():
+                if self._sf_streak.get(key, 0) < _ROSTER_STABLE_REPORTS:
+                    continue
+                since = self._sf_inflight_since.get(key)
+                if (since is not None and not self._staged_arm_stale(since)
+                        and time.time() - since < _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS):
+                    continue
+                sender = {"purge": self._send_purge, "unparty": self._send_unparty,
+                          "roster_remove": self._send_roster_remove}.get(action)
+                if sender is None:
+                    continue
+                self._sf_inflight_since[key] = time.time()
+                if self.roster_cleanup_mode == "log":
+                    logger.warning(f"[reconcile] Star Forge: {key} would get {action} "
+                                   f"(roster cleanup is log-only, not sending)")
+                    continue
+                logger.warning(f"[reconcile] Star Forge: {key} is on the roster/party without entitlement "
+                               f"or in the way, {action}")
+                asyncio.create_task(sender(key))
+                break
 
         # Class self-healing -- PC and companions -- see FutureDesign.md's
         # "Entitlement/dispatch redesign" entry. Both share the shape

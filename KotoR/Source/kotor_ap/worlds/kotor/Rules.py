@@ -317,7 +317,9 @@ def set_rules(multiworld: MultiWorld, player: int) -> None:
     # reachable quest action, it depends on how much a player explores/
     # fights, so a required progression item could end up effectively
     # locked behind however much combat a given playthrough happens to do.
-    NON_PROGRESSION_LOCATION_TYPES = {"alignment", "alignment_bonus", "level", "bounty"}
+    # "datapad" (the boss datapad checks): depends on killing and looting that boss, which a route can
+    # miss or a bug can swallow, so a required item must never be placed there.
+    NON_PROGRESSION_LOCATION_TYPES = {"alignment", "alignment_bonus", "level", "bounty", "datapad"}
     for name, data in world._active_locations().items():
         if data.location_type in NON_PROGRESSION_LOCATION_TYPES:
             add_item_rule(multiworld.get_location(name, player),
@@ -392,6 +394,18 @@ def set_rules(multiworld: MultiWorld, player: int) -> None:
     # companion, are fine to place at the literal endgame -- nothing
     # needs them afterward since this IS the end).
     for name in STAR_FORGE_ENDGAME_LOCATIONS:
+        add_item_rule(multiworld.get_location(name, player),
+                       lambda item: item.name not in ALL_STAR_MAPS)
+
+    # Each planet's own "Star Map: <planet>" location is exempt from the
+    # travel-gate rule below (see PLANET_OWN_STARMAP_LOCATION), so the
+    # generator treats it as reachable without that planet's Star Map item.
+    # Physically it sits ON the planet, which the galaxy-map lock keeps shut
+    # until that item arrives -- so a Star Map item placed on any of these 4
+    # locations is never reachable: the planet's own map would sit behind
+    # itself, and two maps could each wait on the other's planet. Keep every
+    # Star Map item off them (other items are fine there).
+    for name in PLANET_OWN_STARMAP_LOCATION:
         add_item_rule(multiworld.get_location(name, player),
                        lambda item: item.name not in ALL_STAR_MAPS)
 
@@ -473,3 +487,9 @@ def set_completion_rules(multiworld: MultiWorld, player: int) -> None:
     elif goal == Goal.option_true_balance:
         multiworld.completion_condition[player] = lambda state: (
             state.has("Reached Dark Side 0", player) and state.has("Reached Light Side 100", player))
+    elif goal == Goal.option_reach_leviathan:
+        # The first Leviathan area ("Visited: Leviathan - Prison Block"). With
+        # progression_system on, that location already requires all 4 Star
+        # Maps (STAR_FORGE_ENDGAME_LOCATIONS), so the goal carries that
+        # requirement with it.
+        multiworld.completion_condition[player] = lambda state: state.has("Reached Leviathan", player)

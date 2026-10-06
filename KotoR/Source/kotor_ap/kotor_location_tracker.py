@@ -41,6 +41,12 @@ _MALAK_RE = re.compile(r"AP\|CHECK\|GOAL\|MALAK_DEAD")
 # tag and emits a bounded integer directly, never a per-item string build,
 # so it can't hit that limit regardless of backpack size.
 _BOUNTY_COUNT_RE = re.compile(r"AP\|BOUNTY\|COUNT\|(\d+)")
+# CheckBossDatapads() (generate_poll_shared.py): one line per boss datapad the player holds.
+_DATAPAD_RE = re.compile(r"AP\|DATAPAD\|(\w+)")
+# CheckVisitedMarkers() (generate_poll_shared.py): the area indexes whose "Location:" marker item the player
+# holds, comma separated. Each area's entry script gives the player its marker once, so this credits areas
+# entered while the client was not connected.
+_AREASVISITED_RE = re.compile(r"AP\|AREASVISITED\|([\d,]+)")
 
 # The 10 real threshold checks -- 50 itself doesn't count as a crossing
 # (see Locations.py's alignment location comment).
@@ -79,6 +85,7 @@ class LocationTracker:
         self._level_index: typing.Dict[int, str] = {}
         self._malak_location_name: typing.Optional[str] = None
         self._bounty_index: typing.Dict[int, str] = {}
+        self._datapad_index: typing.Dict[str, str] = {}
         for name, data in location_table.items():
             if data.location_type == "journal":
                 self._journal_index[data.journal_tag] = (data.journal_target, name)
@@ -96,6 +103,8 @@ class LocationTracker:
                 self._malak_location_name = name
             elif data.location_type == "bounty":
                 self._bounty_index[data.bounty_value] = name
+            elif data.location_type == "datapad":
+                self._datapad_index[data.datapad_key] = name
 
         # Alignment crossing state -- unlike the other three location types
         # above (which are pure functions of one event line), this needs
@@ -209,6 +218,20 @@ class LocationTracker:
                     return [loc_id]
             return []
 
+        m = _AREASVISITED_RE.search(event)
+        if m:
+            loc_ids = []
+            for part in m.group(1).split(","):
+                if not part:
+                    continue
+                name = self._area_index.get(int(part))
+                if name is None:
+                    continue
+                loc_id = location_table[name].id
+                if loc_id not in already_checked_ids and loc_id not in loc_ids:
+                    loc_ids.append(loc_id)
+            return loc_ids
+
         m = _AREA_RE.search(event)
         if m:
             idx = int(m.group(1))
@@ -230,6 +253,15 @@ class LocationTracker:
         if _MALAK_RE.search(event):
             if self._malak_location_name is not None:
                 loc_id = location_table[self._malak_location_name].id
+                if loc_id not in already_checked_ids:
+                    return [loc_id]
+            return []
+
+        m = _DATAPAD_RE.search(event)
+        if m:
+            name = self._datapad_index.get(m.group(1))
+            if name is not None:
+                loc_id = location_table[name].id
                 if loc_id not in already_checked_ids:
                     return [loc_id]
             return []

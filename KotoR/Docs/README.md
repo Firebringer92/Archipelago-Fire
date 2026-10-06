@@ -1,13 +1,13 @@
 # KOTOR Archipelago Randomizer — Installation (Alpha)
 
 > **Status: Alpha.** This rewrites live game files (see "Before you start,
-> back up" below). Expect bugs. While no game crashes has occured in this version, that doesn't mean a unique interaction with a scripted event can't cause interference and cause a crash. A live end-end playthrough with each scenario is unfeasable with current design. I ask testers to focus on efforts on random_areas, no_companion/ap_companion gating as while these options have been tested to work, I firmly believe they may have bugs and/or soft locks present in them. If you find an issue please report to me  with a brief description and if crash please also include kise logs, and recent delivery list at time of crash. Refer to `TESTING.md` for more information.
+> back up" below). Expect bugs. While no game crashes has occurred in this version, that doesn't mean a unique interaction with a scripted event can't cause interference and cause a crash. A live end-end playthrough with each scenario is unfeasible with current design. If you find an issue please report it with a brief description. If it was a crash, please also include `%LOCALAPPDATA%\KSE\kse.log`, `%LOCALAPPDATA%\KotorApExtender\extender.log`, the newest `logs\KotorClient_*.txt` and `kotor_delivery_log.jsonl` from your Client folder. Refer to `TESTING.md` for more information.
 
 This mod needs two pieces working together: **this project's own extender**
 (a single compiled DLL — it merges K1SE's dispatcher-hook source directly in,
 so there's no separate third-party script extender to install any more —
 plus generated NWScript that talks to Archipelago) and **Python** (to
-generate your seed and run a couple of small setup scripts). Neither is
+run the installer and the KOTOR client). Neither is
 optional — skipping either means the mod won't work.
 
 ## What you'll need
@@ -16,7 +16,9 @@ optional — skipping either means the mod won't work.
   patched, localized) aren't supported yet.
 - **Windows.**
 - **Python 3.12 or 3.13**, from [python.org](https://www.python.org/) —
-  needed to run the installer and `KotorClient.py`.
+  needed to run the installer and `KotorClient.py`. 3.11.9 or a newer 3.11
+  also works; **Python 3.14 does not** (the Archipelago client refuses to run
+  on it), so install 3.12 or 3.13 alongside it if that is what you have.
 - **Archipelago 0.6.7 or newer, the "Source code" download, not the
   installer app** — [get it here](https://github.com/ArchipelagoMW/Archipelago/releases).
   `KotorClient.py` needs to sit inside a real Archipelago source folder to
@@ -61,15 +63,29 @@ To remove everything later, double-click **`Uninstall.bat`** the same way.
    then click **Host** and select the seed zip it just made.
 3. click **"KOTOR Client"** in the Archipelago Launcher to connect (Step 2's installer registers this
    button — it's the same client as running `KotorClient.py` directly,
-   just no terminal needed). Then connect to server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes.
+   just no terminal needed). Then connect to server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes. Connect before you start KOTOR: the first connect after an
+   install or update also adds a few entries to the game's `dialog.tlk` once, which can't happen while the game is running.
 4. Open the actual game. You should see on the client.py it switch status to `Extender: CONNECTED`  otherwise type   command  `/ap_status` to see if your client is talking to game. If it shows connected and your in the server. You are  good to go!
 
 Note: If Kotor doesn't launch from archipelago launcher try launching it from your client folder instead.
 
-Door randomization, item suppression, and additional enemies (whichever
-you enabled) apply themselves automatically the moment you connect — no
-separate patch step. See `TESTING.md` for client commands and what to
+Every option that changes game files (Loot Mode, Progression System, door
+randomization, additional enemies, Galactic Shop, New Companion, boss datapads
+and the Archipelago Vendor, whichever you enabled) applies itself automatically
+the moment you connect — no separate patch step. See `TESTING.md` for client commands and what to
 send if you hit a bug.
+
+
+## Updating from an earlier version
+
+Download both zips of the new release, close the Archipelago client and KOTOR,
+extract the PlayerBundle zip over your Client folder and let it replace the
+whole `extender\` and `scripts\` folders (copying over only the files you
+recognize can leave out `extender\scripts_src\`), put the new `kotor.apworld`
+in both places from Step 1, and double-click `Install.bat` again. Seeds
+generated with an older world version have to be generated again when a release
+changes the item or location tables (0.1.8 does). Then connect once with the
+game closed, as in Step 3, before launching KOTOR.
 
 
 ## Before you start: back up
@@ -80,20 +96,30 @@ This mod repacks real game files in place — `modules\*.rim` and
 - Back up your **saves** (`%LOCALAPPDATA%\KotOR\saves` or similar) before
   playing a randomized seed.
 - Back up your **`modules\` folder and `Override\` folder** (or your whole
-  game install) before running any of the setup scripts, in case something
+  game install) before installing, in case something
   goes wrong beyond what the built-in restore covers.
 - **`Uninstall.bat`** reverts everything the installer touched, including
-  restoring any module RIMs door randomization/item suppression edited.
+  restoring every module file the per-seed patches edited (doors, Loot Mode,
+  Progression System, additional enemies, boss datapads, Galactic Shop).
 - If all else fails, Steam's **Verify integrity of game files** will
   restore any modified `modules\`/`Override\` content from scratch (this
   won't undo save-file changes, which is why saves need their own backup).
 
 
 ## Other Notes
-Kotor on steam defaults to a fullscreen mode that is horrible. I suggest all players modify their settings text file that is stored in the swtor folder at "C:\Program Files (x86)\Steam\steamapps\common\swkotor". Find section for graphics and change the settings for FullScreen Mode to 0 and also add the following:
+Kotor on steam defaults to a fullscreen mode that is horrible. I suggest all players modify their settings file, `swkotor.ini`, which is stored in the swkotor folder at "C:\Program Files (x86)\Steam\steamapps\common\swkotor". Find section for graphics and change the settings for FullScreen Mode to 0 and also add the following:
 AllowWindowedMode=1
 Width=1680
 Height=1050
+
+**If your character can't move during or after a fight:** this is a known vanilla
+KOTOR bug, far more likely with an uncapped frame rate or a high-refresh monitor,
+and it is not caused by this mod. Turn V-Sync on (Options → Graphics → Advanced
+Options) and cap the game at 60 FPS, for example in the NVIDIA Control Panel:
+Manage 3D settings → Program Settings → `swkotor.exe` → Max Frame Rate 60 and
+Vertical sync On. If it still happens, hold forward while panning the camera (map
+a key to Pan Camera Left or Right in Options → Controls) for a second or two,
+click an object or another party member, or quicksave and quickload.
 
 **If you crash, these are the two known culprits and they're both vanilla
 engine issues, not this mod** — worth ruling out before reporting a bug:
@@ -116,12 +142,16 @@ When you first launch KotorClient.py and connect to server you will see an "exte
 This extender is what is used to get information from the game to report on current status and the client will 
 then use this information to determine "Did you achieve requirements for a known check". If you did, it will then send back to AP Server to mark it as completed and the attached item is then sent by client to be delivered to your game.
 You in game might not see the result check immediately. The delivery pipeline is designed to provide you items when you load into a new module (loading zone). Additionally because of how taxing some of the items are to the game client, there is a queuing system in place so you might not get all the items your supposed to get on your first transition. This is designed purposefully to prevent a game crash. A known issue where if more than 30 or so items being sent at once overwhelms the game. So if you see you should have gotten an item, it wsn't delivered ensure you check if its queued in the KotorClient status page or if it is marked as Completed/Received and you didn't get it that would be a bug. You will notice during playing that your KotorClient.py will get lots of messages, these are in game events that is being reported to client from game on current status and used to detect a check, this happens every 5 seconds. 
+You will also see a few small quest items in your inventory: a "Location: <area>" item for each area you visit and,
+on a new character, a "Player ID: <slot> <hash>" item. They are record-keeping the mod uses to remember which areas
+you have seen and which seed a character belongs to, so don't drop or sell them (the Remove Half Inventory trap leaves them alone).
 For more technical details on how it all works refer to DESIGN.md
 
 ## Known alpha limitations
 
-- Door randomization and item suppression both directly rewrite game
-  files — see the backup section above before enabling either.
+- Door randomization, Loot Mode, Progression System, additional enemies, boss
+  datapads and Galactic Shop directly rewrite game files — see the backup section
+  above before enabling any of them.
 - A handful of doors are structurally impossible to randomize and are left on their
   vanilla exit automatically. This is expected. Not a bug
 - Door-randomization also doesn't begin until after tutorial (Endar Spire) until you leave Apartments on Taris.
@@ -131,6 +161,7 @@ For more technical details on how it all works refer to DESIGN.md
   and travel to and from planets. Ebon-Hawk entrance/exit always leads to it.
   End game areas (leviathan/unknown world/star forge) are taken out of randomization on doors
 - Death link will not kill the player if he has party members due to having a companion still up. Known issue.
+  A received death is applied on your next area transition, and deaths that arrive while the client is closed are discarded.
 - **Crash Confirmed In Game: opening a companion's Force Powers
   screen right after they've been granted a Jedi class, before they've
   reached level 2 in it.** A freshly-granted level-1 Jedi companion has
@@ -138,13 +169,17 @@ For more technical details on how it all works refer to DESIGN.md
   "learn initial powers" step a real level-up would), and the Force
   Powers screen isn't built to render a completely empty list for a
   character it considers Jedi. DO NOT OPEN FORCE POWERS MENU ON COMPANION THATS LEVLE 1
-- `jedi_start: granted` fixes a real, confirmed KOTOR 1 engine bug for the
+- `starting_class` (`jedi_start` / `jedi_granted`) fixes a real, confirmed KOTOR 1 engine bug for the
   4 cutscenes known to trigger it — an undiscovered 5th could still hang
   at a "CutStart" object. If that happens, a full game restart (not just
   reloading) is needed regardless, so it isn't a lost save.
 - `progression_system` can only be combined with `goal: defeat_malak` or
-  `goal: reach_leviathan` — enforced at generation time, so an invalid
+  `goal: reach_leviathan`, and not with `area_randomizer` — enforced at generation time, so an invalid
   combination just fails to generate rather than shipping a broken seed.
+- Close an old KotorClient before starting a new one: a leftover client process can hold the game's connection, and the
+  new client then connects to nothing without showing an error.
+- The Remove a Companion trap is permanent for the rest of the run.
+- Companions not following or fighting after some area transitions has not been confirmed fixed.
 - Only tested against the Steam release of KOTOR 1.
 
 ## Credits
@@ -171,7 +206,7 @@ and Archipelago communities. It would not exist without:
   door-randomization and location-detection systems.
 - **[Archipelago](https://archipelago.gg/)** itself, obviously — this
   project is built as an Archipelago world/client 
-= **[Bioware]** For making an amazing game, I loved it as a kid growing up and its been interesting learning about the
+- **[Bioware]** For making an amazing game, I loved it as a kid growing up and its been interesting learning about the
   inner working of the engine that made this game  (the good and bad)
 
 ## AI usage

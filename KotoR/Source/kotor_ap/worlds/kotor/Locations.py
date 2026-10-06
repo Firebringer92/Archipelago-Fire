@@ -7,7 +7,7 @@ class LocationData(typing.NamedTuple):
     id: int
     region: str = "Adventure"
     location_type: str = "journal"  # "journal", "companion", "area", "alignment",
-    # "alignment_bonus", "level", "malak_defeated", or "bounty" -- see
+    # "alignment_bonus", "level", "malak_defeated", "bounty", or "datapad" -- see
     # kotor_location_tracker.py's LocationTracker.__init__ for how each is
     # consumed; every field below is read directly from there, this is not
     # a schema this file invented independently.
@@ -60,6 +60,10 @@ class LocationData(typing.NamedTuple):
     # carrying (1-40) -- a plain count threshold, same shape as level_value,
     # just driven by inventory count instead of character level.
     bounty_value: int = -1
+    # datapad: which boss datapad ("calo"/"bandon"/"karath") must be in the player's
+    # inventory -- dropped by that boss on death (scripts/patch_boss_datapads.py),
+    # reported by CheckBossDatapads() as AP|DATAPAD|<key>.
+    datapad_key: str = ""
 
 
 class KotorLocation(Location):
@@ -365,6 +369,9 @@ location_table: typing.Dict[str, LocationData] = {
     "Bounty Card #38": LocationData(base_id + 257, region="Additional Enemies", location_type="bounty", bounty_value=38),
     "Bounty Card #39": LocationData(base_id + 258, region="Additional Enemies", location_type="bounty", bounty_value=39),
     "Bounty Card #40": LocationData(base_id + 259, region="Additional Enemies", location_type="bounty", bounty_value=40),
+    "Boss: Calo Nord": LocationData(base_id + 261, region="Bosses", location_type="datapad", datapad_key="calo"),
+    "Boss: Darth Bandon": LocationData(base_id + 262, region="Bosses", location_type="datapad", datapad_key="bandon"),
+    "Boss: Saul Karath": LocationData(base_id + 263, region="Bosses", location_type="datapad", datapad_key="karath"),
 }
 
 location_name_to_id: typing.Dict[str, int] = {name: data.id for name, data in location_table.items()}

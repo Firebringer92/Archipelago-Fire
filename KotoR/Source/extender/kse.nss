@@ -441,6 +441,25 @@ int KSE_FIELD_HALVE_CHA_BASE() { return 27; }
 // applies it. Takes no parameters -- oCreature is enough.
 int KSE_FIELD_HALVE_MAX_HP_VIA_CON() { return 28; }
 
+// Read-only: logs the creature's six TRUE base ability scores as one
+// AP|ABILITYBASEREPORT|str=..|dex=..|con=..|int=..|wis=..|cha=.. line (KSE_Diag
+// code 170) -- GetAbilityScore only returns the EFFECTIVE score, including
+// item bonuses and temporary effects. Call as
+//   KSE_SetCreatureField(oPC, KSE_FIELD_REPORT_ABILITY_BASES(), 0);
+// Writes nothing; nValue is unused.
+int KSE_FIELD_REPORT_ABILITY_BASES() { return 29; }
+
+// Read-only: logs the creature's eight TRUE skill ranks as one
+// AP|SKILLBASEREPORT|computeruse=..|demolitions=..|stealth=..|awareness=..|persuade=..|repair=..|security=..|treatinjury=..
+// line (KSE_Diag code 171). GetSkillRank is rank + ability modifier + effects,
+// not the rank. Call as KSE_SetCreatureField(oPC, KSE_FIELD_REPORT_SKILL_RANKS(), 0);
+int KSE_FIELD_REPORT_SKILL_RANKS() { return 30; }
+
+// Halves one skill's TRUE rank (rank - rank/2 off the raw byte, no-op at 0).
+// nValue = the skill index (SKILL_*). Call as
+//   KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_STEALTH);
+int KSE_FIELD_HALVE_SKILL_RANK() { return 31; }
+
 // TEMPORARY RESEARCH DIAGNOSTIC -- see offsets.h's own comment. Retire
 // once the client-stats offset is confirmed and wired into a real fix.
 int KSE_FIELD_DIAG_SCAN_CLIENT_STATS() { return 14; }

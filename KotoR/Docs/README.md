@@ -1,7 +1,7 @@
 # KOTOR Archipelago Randomizer — Installation (Alpha)
 
 > **Status: Alpha.** This rewrites live game files (see "Before you start,
-> back up" below). Expect bugs. While no game crashes has occurred in this version, that doesn't mean a unique interaction with a scripted event can't cause interference and cause a crash. A live end-end playthrough with each scenario is unfeasible with current design. If you find an issue please report it with a brief description. If it was a crash, please also include `%LOCALAPPDATA%\KSE\kse.log`, `%LOCALAPPDATA%\KotorApExtender\extender.log`, the newest `logs\KotorClient_*.txt` and `kotor_delivery_log.jsonl` from your Client folder. Refer to `TESTING.md` for more information.
+> back up" below). A unique interaction with a scripted event can interfere with the mod and crash the game, and a live end-to-end playthrough of every scenario is not feasible with the current design. If you find an issue please report it with a brief description. If it was a crash, please also include `%LOCALAPPDATA%\KSE\kse.log`, `%LOCALAPPDATA%\KotorApExtender\extender.log`, the newest `logs\KotorClient_*.txt` and `kotor_delivery_log.jsonl` from your Client folder. Refer to `TESTING.md` for more information.
 
 This mod needs two pieces working together: **this project's own extender**
 (a single compiled DLL — it merges K1SE's dispatcher-hook source directly in,
@@ -63,17 +63,23 @@ To remove everything later, double-click **`Uninstall.bat`** the same way.
    then click **Host** and select the seed zip it just made.
 3. click **"KOTOR Client"** in the Archipelago Launcher to connect (Step 2's installer registers this
    button — it's the same client as running `KotorClient.py` directly,
-   just no terminal needed). Then connect to server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes. Connect before you start KOTOR: the first connect after an
+   just no terminal needed). Then connect to server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes. The client prints `[patching] ...` while it prepares the game files and a `Finished` line when you can start the game; if KOTOR was already running, relaunch it, because the game reads some of the tables the patches replace (the droid options) only at startup. Connect before you start KOTOR: the first connect after an
    install or update also adds a few entries to the game's `dialog.tlk` once, which can't happen while the game is running.
 4. Open the actual game. You should see on the client.py it switch status to `Extender: CONNECTED`  otherwise type   command  `/ap_status` to see if your client is talking to game. If it shows connected and your in the server. You are  good to go!
 
 Note: If Kotor doesn't launch from archipelago launcher try launching it from your client folder instead.
 
 Every option that changes game files (Loot Mode, Progression System, door
-randomization, additional enemies, Galactic Shop, New Companion, boss datapads
+randomization, additional enemies, Galactic Shop, New Companion, the droid options, boss datapads
 and the Archipelago Vendor, whichever you enabled) applies itself automatically
 the moment you connect — no separate patch step. See `TESTING.md` for client commands and what to
 send if you hit a bug.
+
+New in 0.1.9: the Progression System now holds story events (not doors or travel) until you own enough of that planet's
+Progression items, and it works with every goal and both area randomizer modes. `companion_mode: ap_limited` hands out a
+companion for every 25 of your own checks, with no companion items. `starting_class: droid` and `companion_class: droid` turn your
+character and the seven organic companions into droids; the game must be relaunched after the client finishes patching, because
+those options replace class, appearance and weapon tables the game reads once at startup. `KotoR_TEMPLATE.yaml` documents every option.
 
 
 ## Updating from an earlier version
@@ -84,8 +90,14 @@ whole `extender\` and `scripts\` folders (copying over only the files you
 recognize can leave out `extender\scripts_src\`), put the new `kotor.apworld`
 in both places from Step 1, and double-click `Install.bat` again. Seeds
 generated with an older world version have to be generated again when a release
-changes the item or location tables (0.1.8 does). Then connect once with the
+changes the item or location tables (0.1.8 and 0.1.9 do). Then connect once with the
 game closed, as in Step 3, before launching KOTOR.
+
+**Switching to a new seed on the same install:** quit and restart the client first (a grant still waiting in the client from the
+previous seed can hold up the new seed's companion and class grants for up to 10 minutes), then run `/ap_restore_all` in the client and
+reconnect (or run `/ap_patch_all`). Door changes and extra enemies from the previous seed are not removed by the new seed's patches
+(a seed with vanilla doors or no extra enemies leaves the old ones in place). The client prints a reminder when it sees the install was
+last patched for a different seed or option set.
 
 
 ## Before you start: back up
@@ -100,7 +112,7 @@ This mod repacks real game files in place — `modules\*.rim` and
   goes wrong beyond what the built-in restore covers.
 - **`Uninstall.bat`** reverts everything the installer touched, including
   restoring every module file the per-seed patches edited (doors, Loot Mode,
-  Progression System, additional enemies, boss datapads, Galactic Shop).
+  additional enemies, boss datapads, Galactic Shop) and removing the Progression System's story gates and the droid assets.
 - If all else fails, Steam's **Verify integrity of game files** will
   restore any modified `modules\`/`Override\` content from scratch (this
   won't undo save-file changes, which is why saves need their own backup).
@@ -144,19 +156,17 @@ then use this information to determine "Did you achieve requirements for a known
 You in game might not see the result check immediately. The delivery pipeline is designed to provide you items when you load into a new module (loading zone). Additionally because of how taxing some of the items are to the game client, there is a queuing system in place so you might not get all the items your supposed to get on your first transition. This is designed purposefully to prevent a game crash. A known issue where if more than 30 or so items being sent at once overwhelms the game. So if you see you should have gotten an item, it wsn't delivered ensure you check if its queued in the KotorClient status page or if it is marked as Completed/Received and you didn't get it that would be a bug. You will notice during playing that your KotorClient.py will get lots of messages, these are in game events that is being reported to client from game on current status and used to detect a check, this happens every 5 seconds. 
 You will also see a few small quest items in your inventory: a "Location: <area>" item for each area you visit and,
 on a new character, a "Player ID: <slot> <hash>" item. They are record-keeping the mod uses to remember which areas
-you have seen and which seed a character belongs to, so don't drop or sell them (the Remove Half Inventory trap leaves them alone).
+you have seen and which seed a character belongs to, so don't drop or sell them (the Remove Half Inventory trap leaves them alone). The Progression items ("Taris Progression 2" and so on)
+are plot items as well: they cannot be sold or dropped, and a lost one is given back.
 For more technical details on how it all works refer to DESIGN.md
 
 ## Known alpha limitations
 
-- Door randomization, Loot Mode, Progression System, additional enemies, boss
-  datapads and Galactic Shop directly rewrite game files — see the backup section
-  above before enabling any of them.
 - A handful of doors are structurally impossible to randomize and are left on their
   vanilla exit automatically. This is expected. Not a bug
 - Door-randomization also doesn't begin until after tutorial (Endar Spire) until you leave Apartments on Taris.
   So you will go from Endar Spire > Hideout > Apartments and then next door is randomed. 
-  additionally while game is set to try to couple doors, some may not be directly linked back ot previous. This is done to ensure you always are allowed to go to all areas and are never soft locked from reaching an area. If you have suggestions on a mapping system that is less random and more sane let me know of how  we can better map this. 
+  In coupled mode the shuffle cannot place its last two doors on its own: those are paired with each other and, if an area would still be cut off, two pairs swap partners, so every door still leads back the way you came and no area is unreachable. The layout can still look unusual. If you have suggestions on a mapping system that is less random and more sane let me know of how we can better map this. 
   Ebon hawk travel to all planets is enabled automatically in this mode to ensure you can still use it as a hub
   and travel to and from planets. Ebon-Hawk entrance/exit always leads to it.
   End game areas (leviathan/unknown world/star forge) are taken out of randomization on doors
@@ -168,19 +178,23 @@ For more technical details on how it all works refer to DESIGN.md
   zero known Force Powers yet (our grant mechanism doesn't run the normal
   "learn initial powers" step a real level-up would), and the Force
   Powers screen isn't built to render a completely empty list for a
-  character it considers Jedi. DO NOT OPEN FORCE POWERS MENU ON COMPANION THATS LEVLE 1
+  character it considers Jedi. DO NOT OPEN FORCE POWERS MENU ON COMPANION IF THEY ARE LEVEL 1
 - `starting_class` (`jedi_start` / `jedi_granted`) fixes a real, confirmed KOTOR 1 engine bug for the
   4 cutscenes known to trigger it — an undiscovered 5th could still hang
   at a "CutStart" object. If that happens, a full game restart (not just
   reloading) is needed regardless, so it isn't a lost save.
-- `progression_system` can only be combined with `goal: defeat_malak` or
-  `goal: reach_leviathan`, and not with `area_randomizer` — enforced at generation time, so an invalid
-  combination just fails to generate rather than shipping a broken seed.
-- Close an old KotorClient before starting a new one: a leftover client process can hold the game's connection, and the
-  new client then connects to nothing without showing an error.
+- `progression_system` holds story events (not doors or travel) until you own enough of that planet's Progression items, and the game says why a gate
+  is closed. It works with every goal and with both area randomizer modes.
 - The Remove a Companion trap is permanent for the rest of the run.
 - Companions not following or fighting after some area transitions has not been confirmed fixed.
-- Only tested against the Steam release of KOTOR 1.
+- After escaping the Leviathan, the conversation that lets the Ebon Hawk take off is started by a trigger that fires before Carth has appeared,
+  so the game falls back to a sensor console: use it to start the scene. Skipping the Dantooine council with the area randomizer can also
+  keep Carth and Bastila off the Hawk.
+- The Unknown World may never appear on the galaxy map if the Dantooine ruins star map is never found (an area randomizer run): the game counts
+  five star map activations, Dantooine's included, before it opens the Unknown World.
+- The Taris Hideout escape-plan scene starts after a long black screen (about 25 seconds); the scene plays when you move.
+- The war droid and assassin droid are the only droid looks that display melee weapons; the other droid looks keep their class's
+  proficiency but show no weapon.
 
 ## Credits
 

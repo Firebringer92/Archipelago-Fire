@@ -7,7 +7,7 @@ from worlds.LauncherComponents import Component, components, Type
 
 from . import EntranceRando
 from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS, VENDOR_UNLOCK_ITEMS, STORY_TOKEN_NAMES
-from .Locations import KotorLocation, location_table, location_name_to_id, COMPANION_SUBPLOT_LOCATIONS
+from .Locations import KotorLocation, location_table, location_name_to_id, COMPANION_SUBPLOT_LOCATIONS, UNREACHABLE_BY_CHOICE_LOCATIONS
 from .Options import (
     Goal, KotorOptions, STARTING_ABILITY_ARMS, STARTING_SKILL_ARMS,
 )
@@ -412,7 +412,7 @@ class KotorWorld(World):
         create_regions() and create_items() so the pool size always
         matches what's actually placed -- computing this independently in
         each would risk the two silently drifting out of sync."""
-        result = location_table
+        result = {name: data for name, data in location_table.items() if name not in UNREACHABLE_BY_CHOICE_LOCATIONS}
         if self.options.companion_mode == 2:  # none
             result = {name: data for name, data in result.items()
                        if data.location_type != "companion"

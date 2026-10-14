@@ -76,15 +76,29 @@ GATE_EXTRAS: typing.Dict[str, typing.Tuple[typing.Tuple[str, int], ...]] = {
     # Taris
     "Taris: The Search for Bastila": (("tar", 1),),
     "Taris: Inside the Vulkar Base": (("tar", 1),),
-    "Taris: Invited to a Party": (("tar", 2),),
+    "Taris: Invited to a Party": (("tar", 3),),
+    "Taris: Purchasing a Droid": (("tar", 2),),
+    "Taris: Planetary Information": (("tar", 3),),
+    "Companion Recruited: T3-M4": (("tar", 2),),
     "Taris: Escaping Taris": (("tar", 3),),
     "Companion Recruited: Bastila Shan": (("tar", 1),),
     "Companion Recruited: Canderous Ordo": (("tar", 3),),
-    "Visited: Taris - Hideout": (("tar", 1),),
     "Visited: Taris - Swoop Platform": (("tar", 1),),
-    "Visited: Taris - Black Vulkar Base (tar_m10ac)": (("tar", 1),),
     "Visited: Taris - Davik's Estate": (("tar", 3),),
-    # Dantooine
+    # The Sith base door opens only once Canderous has given the objective (tar_escape 20), which is his first meeting.
+    "Visited: Taris - Sith Base": (("tar", 2),),
+    # Dantooine: the base game keeps you in the council area until your Jedi training (Dorak's class conversation) is done, so everything
+    # outside the Enclave sits behind the first Dantooine gate.
+    "Visited: Dantooine - Courtyard": (("dan", 1),),
+    "Visited: Dantooine - Matale Grounds": (("dan", 1),),
+    "Visited: Dantooine - Grove": (("dan", 1),),
+    "Visited: Dantooine - Sandral Grounds": (("dan", 1),),
+    "Dantooine: Dead Settler": (("dan", 1),),
+    "Dantooine: Missing Companion": (("dan", 1),),
+    "Dantooine: Murdered Settler": (("dan", 1),),
+    "Dantooine: Mandalorian Raiders": (("dan", 1),),
+    "Dantooine: Sandral-Matale Feud": (("dan", 3),),
+    "Genoharadan: Zuulan": (("dan", 1),),
     "Dantooine: Jedi Trials": (("dan", 2),),
     "Dantooine: The Jedi Council": (("dan", 2),),
     "Dantooine: Investigate Ruins": (("dan", 2),),
@@ -129,6 +143,26 @@ GATE_EXTRAS: typing.Dict[str, typing.Tuple[typing.Tuple[str, int], ...]] = {
     # The ending
     "Malak Defeated": (("fin", 3),),
     "Visited: Yavin Station": (("fin", 3),),
+    # Ebon Hawk quests: several finish on other planets or late in the story, so all of them wait for the same items as the post-Leviathan Hawk.
+    "Ebon Hawk: Unfinished Business": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Dwindling Supplies": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: The Ebon Hawk": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Jagi's Challenge": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Mission's Brother": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Pazaak Rules": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: The Trouble With Gizka": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Strange Stowaway": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Bastila": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Canderous": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Carth": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Bastila's Mother": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: HK-47": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Jolee Bindo": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Juhani": (_TAR, _DAN) + _STAR_MAPS,
+    "Ebon Hawk: Threat from Xor": (_TAR, _DAN) + _STAR_MAPS,
+    # Rapid Transit System is finished by using the map screen's Return button once. It can be done on Taris, but a player may skip it there, and the Enclave
+    # blocks the button on arrival with no known release point, so after Taris it is only treated as certain once the whole Dantooine story is done.
+    "Ebon Hawk: Rapid Transit System": (("dan", 3),),
     # Hawk module that exists only after the Leviathan (m41 is the Unknown World's number)
     "Visited: Ebon Hawk (ebo_m41aa)": (_TAR, _DAN) + _STAR_MAPS,
 }

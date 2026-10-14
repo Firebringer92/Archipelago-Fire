@@ -195,6 +195,9 @@ For more technical details on how it all works refer to DESIGN.md
 - The Taris Hideout escape-plan scene starts after a long black screen (about 25 seconds); the scene plays when you move.
 - The war droid and assassin droid are the only droid looks that display melee weapons; the other droid looks keep their class's
   proficiency but show no weapon.
+- With the area randomizer, a planet you have left resets when a shuffled door takes you back to it: the base game deletes a planet's saved areas once you enter the next planet
+  (Taris when you enter the Jedi Enclave, Dantooine when you go on to the Leviathan, and so on), so enemies, loot containers, fog and first-entry scenes come back. Quest and
+  story progress are kept; only the areas reset. Without the area randomizer you cannot return to those planets, so it never shows.
 
 ## Credits
 

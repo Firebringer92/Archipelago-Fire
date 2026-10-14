@@ -397,6 +397,10 @@ lookup_id_to_name: typing.Dict[int, str] = {data.id: name for name, data in loca
 # though companions never joining at all makes them just as permanently
 # uncompletable as the 9 real "Companion Recruited: ..." locations are).
 # Keyed by location name -> the AP item name for the companion it needs.
+# Checks left out of every seed because a player can legitimately never reach them. The second Hidden Bek Base module is Gadon's private chamber,
+# entered only on the route that betrays him for Kandon; the other route never sees it.
+UNREACHABLE_BY_CHOICE_LOCATIONS = frozenset({"Visited: Taris - Hidden Bek Base (tar_m11ab)"})
+
 COMPANION_SUBPLOT_LOCATIONS: typing.Dict[str, str] = {
     "Ebon Hawk: Bastila": "Companion: Bastila Shan",
     "Ebon Hawk: Bastila's Mother": "Companion: Bastila Shan",

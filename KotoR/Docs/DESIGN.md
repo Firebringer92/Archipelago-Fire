@@ -137,7 +137,11 @@ gradually, not all at once):
   trigger or template that exists in more than one module with different content must be renamed, not overridden). On-screen messages do not show, so
   the player speaks a one-line dialog (`ap_gate_msg`) instead. The Override folder is read once at game startup. Triggers can fire while a module is
   still loading, before the player exists. Item variables do not survive an area change but an item's presence does, and a journal quest only moves
-  forward, which is why the mod's records in the save are marker items and journal entries.
+  forward, which is why the mod's records in the save are marker items and journal entries. The game also groups its modules by planet in `modulesave.2da`
+  (Endar Spire, Taris, Dantooine, the four open worlds, the Leviathan, the Unknown World) and deletes a group's saved areas when the player enters the next
+  planet's first area (Taris on entering the Jedi Enclave, Dantooine on entering the Leviathan's Hawk, and so on). Nothing is lost in the base game because
+  those planets cannot be revisited; with the area randomizer a shuffled door can lead back, and the planet comes back in its fresh state (enemies, containers,
+  fog and first-entry scenes reset, while quests and globals are kept). The mod does not change this table.
 
 ## 4. File-by-file breakdown
 

@@ -70,6 +70,28 @@ REPLACE_ORIGINAL = {
     ],
 }
 
+# What the vanilla script does BESIDES granting availability, replayed by the wrapper's "already recruited" branch. That branch skips the
+# vanilla script on purpose (re-running it plus RemoveAvailableNPC would kick an active member), but a companion who joined early through
+# an AP item still reaches this story moment, and skipping the whole script also skipped these effects. The worst case was Bastila:
+# her script is what loads the Taris Hideout "escape plan" scene, so with her item received before the swoop race the game never moved on.
+# Each list was read straight from the compiled vanilla script. The party-selection screens and fades are deliberately left out.
+SKIP_BRANCH_RUN = {
+    "bastila": [
+        'DelayCommand(0.1, StartNewModule("tar_m02af", "tar02_wpcarbascs", "02"));',
+    ],
+    "juhani": [
+        'SetGlobalBoolean("DAN_JUHANI_JOINED", TRUE);',
+        'object oPlacedJuhani = GetObjectByTag("dan13_juhani");',
+        'if (GetIsObjectValid(oPlacedJuhani)) DestroyObject(oPlacedJuhani);',
+    ],
+    "t3m4": [
+        'SetGlobalNumber("Tar_JaniceDro", 30);',
+    ],
+    "zaalbar": [
+        'SetAreaUnescapable(FALSE);',
+    ],
+}
+
 WRAPPER_TEMPLATE = """// Suppression wrapper for {name}'s real story recruitment script
 // (originally {module}'s {resref}, preserved as apo_{name}_orig).
 //
@@ -102,7 +124,7 @@ void main()
     else
     {{
         KSE_Diag({diag_code}, "AP|SUPPRESSED|companion_{name}|skipped_already_recruited");
-    }}
+{skip_run}    }}
     // The check-fire below is atomic with the guard above within this one
     // script call -- no other script (including the regular poll's
     // CheckCompanions()) needs to observe anything here. Report the AP
@@ -141,6 +163,8 @@ def main():
             run_original = "\n".join(f"        {line}" for line in replacement)
         else:
             run_original = f'        ExecuteScript("apo_{name}_orig", OBJECT_SELF);'
+        skip_lines = REPLACE_ORIGINAL.get(name) or SKIP_BRANCH_RUN.get(name) or []
+        skip_run = "".join(f"        {line}\n" for line in skip_lines)
         hook = EXTRA_HOOKS.get(name)
         hook_include = f'#include "{hook[0]}"\n' if hook else ""
         hook_call = f"    {hook[1]}\n" if hook else ""
@@ -150,7 +174,7 @@ def main():
             f.write(WRAPPER_TEMPLATE.format(
                 name=name, module=module, resref=resref,
                 npc_const=npc_const, diag_code=diag_code, npc_idx=npc_idx,
-                hook_include=hook_include, hook_call=hook_call, run_original=run_original,
+                hook_include=hook_include, hook_call=hook_call, run_original=run_original, skip_run=skip_run,
             ))
         print(f"  wrote wrapper source -> {nss_path}")
 

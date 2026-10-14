@@ -262,8 +262,11 @@ CLASS_BASE_FEATS = {
     "CLASS_TYPE_JEDIGUARDIAN": [39, 43, 44, 55, 101, 107, 116],
     "CLASS_TYPE_JEDICONSULAR": [39, 43, 44, 55, 88, 107, 116],
     "CLASS_TYPE_JEDISENTINEL": [39, 43, 44, 55, 98, 107, 116],
+    # Battle Droid (class 9, the droid PC's class): blaster / rifle / heavy / lightsaber / melee proficiency, Droid Upgrade 1, Combat
+    # Logic Upgrade. Only ever the NEW class of pc_droid; it has no CLASS_TYPE_ constant, so it is not in the old-class list below.
+    "CLASS_TYPE_BATTLEDROID":  [39, 40, 42, 43, 44, 78, 110],
 }
-_ALL_CLASS_TYPE_CONSTS = list(CLASS_BASE_FEATS.keys())
+_ALL_CLASS_TYPE_CONSTS = [k for k in CLASS_BASE_FEATS if k != "CLASS_TYPE_BATTLEDROID"]
 
 # Armor Prof ordering, confirmed via feat.2da's prereqfeat1/2 columns:
 # Heavy(4) requires Medium(6)+Light(5); Medium(6) requires
@@ -274,6 +277,28 @@ _ALL_CLASS_TYPE_CONSTS = list(CLASS_BASE_FEATS.keys())
 # prerequisites are already satisfied the instant it's granted).
 _ARMOR_PROF_REMOVE_ORDER = {4: 0, 6: 1, 5: 2}
 _ARMOR_PROF_GRANT_ORDER = {5: 0, 6: 1, 4: 2}
+
+
+# Every companion's object tag and NPC constant (the 9 vanilla ones). Used by the XP sync below; the later _COMPANION_TAGS /
+# _COMPANION_NPC_CONST_ALL tables are not defined yet when APPLIES is built, so this keeps its own copy.
+_XP_SYNC_COMPANIONS = (
+    ("Bastila", "NPC_BASTILA"), ("Cand", "NPC_CANDEROUS"), ("Carth", "NPC_CARTH"), ("HK47", "NPC_HK_47"),
+    ("Jolee", "NPC_JOLEE"), ("Juhani", "NPC_JUHANI"), ("Mission", "NPC_MISSION"), ("t3m4", "NPC_T3_M4"),
+    ("Zaalbar", "NPC_ZAALBAR"),
+)
+
+
+def build_companion_xp_sync_lines(xp_var):
+    """Whenever the mod sets the PC's XP it raises the XP of every companion currently in the party to the same number,
+    because SetXP/GiveXPToCreature do nothing for a non-PC (the raw KSE_FIELD_XP write does work on companions). Companions
+    are only ever raised, never lowered: a raw write below the level a companion already holds would leave XP and level out
+    of step. Nothing reads a companion's level back, so no reconciler depends on this."""
+    lines = []
+    for i, (tag, npc_const) in enumerate(_XP_SYNC_COMPANIONS):
+        lines.append(f'object oXpC{i} = GetObjectByTag("{tag}");')
+        lines.append(f'if (IsNPCPartyMember({npc_const}) && GetIsObjectValid(oXpC{i}) && GetXP(oXpC{i}) < {xp_var})')
+        lines.append(f'    KSE_SetCreatureField(oXpC{i}, KSE_FIELD_XP(), {xp_var});')
+    return lines
 
 
 def build_class_feat_delta_lines(new_class_const, target_var, old_class_var="nOldClass", delay_grants=False, indent="    "):
@@ -395,8 +420,12 @@ APPLIES = {
         'int nNPC = NPC_BASTILA;',
         'string sTemplate = "p_bastilla";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
+        '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
+        'int nCrew = GetJournalEntry("ap_ent_bastila");',
+        'int nMayGrant = (nCrew < 20);',
+        'if (nCrew < 10) AddJournalQuestEntry("ap_ent_bastila", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable)',
+        'if (!nWasAvailable && nMayGrant)',
         '{',
         '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
         '    object oPC = GetFirstPC();',
@@ -404,14 +433,18 @@ APPLIES = {
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
         'SetNPCSelectability(nNPC, TRUE);',
-        'KSE_Diag(4, "AP|APPLIED|companion_bastila|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
+        'KSE_Diag(4, "AP|APPLIED|companion_bastila|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_bastila")));',
     ]),
     10: ("companion_canderous", [
         'int nNPC = NPC_CANDEROUS;',
         'string sTemplate = "p_cand";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
+        '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
+        'int nCrew = GetJournalEntry("ap_ent_canderous");',
+        'int nMayGrant = (nCrew < 20);',
+        'if (nCrew < 10) AddJournalQuestEntry("ap_ent_canderous", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable)',
+        'if (!nWasAvailable && nMayGrant)',
         '{',
         '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
         '    object oPC = GetFirstPC();',
@@ -427,13 +460,14 @@ APPLIES = {
         # free with no AP gating at all.
         'KSE_SetData("ap_canderous_legit", "1");',
         'SetNPCSelectability(nNPC, TRUE);',
-        'KSE_Diag(4, "AP|APPLIED|companion_canderous|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
+        'KSE_Diag(4, "AP|APPLIED|companion_canderous|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_canderous")));',
     ]),
     11: ("xp", [
         'object oPC = GetFirstPC();',
         'int nBefore = GetXP(oPC);',
         'SetXP(oPC, nBefore + 500);',
         'int nAfter = GetXP(oPC);',
+        *build_companion_xp_sync_lines("nAfter"),
         'KSE_Diag(5, "AP|APPLIED|xp|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
     # 12 (feat_toughness) RETIRED -- feats are left entirely to normal
@@ -583,8 +617,12 @@ APPLIES = {
         'int nNPC = NPC_CARTH;',
         'string sTemplate = "p_carth";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
+        '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
+        'int nCrew = GetJournalEntry("ap_ent_carth");',
+        'int nMayGrant = (nCrew < 20);',
+        'if (nCrew < 10) AddJournalQuestEntry("ap_ent_carth", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable)',
+        'if (!nWasAvailable && nMayGrant)',
         '{',
         '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
         '    object oPC = GetFirstPC();',
@@ -592,14 +630,18 @@ APPLIES = {
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
         'SetNPCSelectability(nNPC, TRUE);',
-        'KSE_Diag(50, "AP|APPLIED|companion_carth|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
+        'KSE_Diag(50, "AP|APPLIED|companion_carth|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_carth")));',
     ]),
     20: ("companion_hk47", [
         'int nNPC = NPC_HK_47;',
         f'string sTemplate = "{NEW_COMPANION_TEMPLATES.get(_NEW_COMPANION_MODE, "p_hk47")}";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
+        '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
+        'int nCrew = GetJournalEntry("ap_ent_hk47");',
+        'int nMayGrant = (nCrew < 20);',
+        'if (nCrew < 10) AddJournalQuestEntry("ap_ent_hk47", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable)',
+        'if (!nWasAvailable && nMayGrant)',
         '{',
         '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
         '    object oPC = GetFirstPC();',
@@ -607,14 +649,18 @@ APPLIES = {
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
         'SetNPCSelectability(nNPC, TRUE);',
-        'KSE_Diag(51, "AP|APPLIED|companion_hk47|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
+        'KSE_Diag(51, "AP|APPLIED|companion_hk47|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_hk47")));',
     ]),
     21: ("companion_jolee", [
         'int nNPC = NPC_JOLEE;',
         'string sTemplate = "p_jolee";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
+        '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
+        'int nCrew = GetJournalEntry("ap_ent_jolee");',
+        'int nMayGrant = (nCrew < 20);',
+        'if (nCrew < 10) AddJournalQuestEntry("ap_ent_jolee", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable)',
+        'if (!nWasAvailable && nMayGrant)',
         '{',
         '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
         '    object oPC = GetFirstPC();',
@@ -622,14 +668,18 @@ APPLIES = {
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
         'SetNPCSelectability(nNPC, TRUE);',
-        'KSE_Diag(52, "AP|APPLIED|companion_jolee|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
+        'KSE_Diag(52, "AP|APPLIED|companion_jolee|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_jolee")));',
     ]),
     22: ("companion_juhani", [
         'int nNPC = NPC_JUHANI;',
         'string sTemplate = "p_juhani";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
+        '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
+        'int nCrew = GetJournalEntry("ap_ent_juhani");',
+        'int nMayGrant = (nCrew < 20);',
+        'if (nCrew < 10) AddJournalQuestEntry("ap_ent_juhani", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable)',
+        'if (!nWasAvailable && nMayGrant)',
         '{',
         '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
         '    object oPC = GetFirstPC();',
@@ -637,14 +687,18 @@ APPLIES = {
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
         'SetNPCSelectability(nNPC, TRUE);',
-        'KSE_Diag(53, "AP|APPLIED|companion_juhani|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
+        'KSE_Diag(53, "AP|APPLIED|companion_juhani|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_juhani")));',
     ]),
     23: ("companion_mission", [
         'int nNPC = NPC_MISSION;',
         'string sTemplate = "p_mission";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
+        '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
+        'int nCrew = GetJournalEntry("ap_ent_mission");',
+        'int nMayGrant = (nCrew < 20);',
+        'if (nCrew < 10) AddJournalQuestEntry("ap_ent_mission", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable)',
+        'if (!nWasAvailable && nMayGrant)',
         '{',
         '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
         '    object oPC = GetFirstPC();',
@@ -652,14 +706,18 @@ APPLIES = {
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
         'SetNPCSelectability(nNPC, TRUE);',
-        'KSE_Diag(54, "AP|APPLIED|companion_mission|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
+        'KSE_Diag(54, "AP|APPLIED|companion_mission|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_mission")));',
     ]),
     24: ("companion_t3m4", [
         'int nNPC = NPC_T3_M4;',
         'string sTemplate = "p_t3m4";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
+        '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
+        'int nCrew = GetJournalEntry("ap_ent_t3m4");',
+        'int nMayGrant = (nCrew < 20);',
+        'if (nCrew < 10) AddJournalQuestEntry("ap_ent_t3m4", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable)',
+        'if (!nWasAvailable && nMayGrant)',
         '{',
         '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
         '    object oPC = GetFirstPC();',
@@ -667,14 +725,18 @@ APPLIES = {
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
         'SetNPCSelectability(nNPC, TRUE);',
-        'KSE_Diag(55, "AP|APPLIED|companion_t3m4|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
+        'KSE_Diag(55, "AP|APPLIED|companion_t3m4|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_t3m4")));',
     ]),
     25: ("companion_zaalbar", [
         'int nNPC = NPC_ZAALBAR;',
         'string sTemplate = "p_zaalbar";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
+        '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
+        'int nCrew = GetJournalEntry("ap_ent_zaalbar");',
+        'int nMayGrant = (nCrew < 20);',
+        'if (nCrew < 10) AddJournalQuestEntry("ap_ent_zaalbar", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable)',
+        'if (!nWasAvailable && nMayGrant)',
         '{',
         '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
         '    object oPC = GetFirstPC();',
@@ -682,7 +744,7 @@ APPLIES = {
         '    nAdded = AddPartyMember(nNPC, oNPC);',
         '}',
         'SetNPCSelectability(nNPC, TRUE);',
-        'KSE_Diag(56, "AP|APPLIED|companion_zaalbar|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded));',
+        'KSE_Diag(56, "AP|APPLIED|companion_zaalbar|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_zaalbar")));',
     ]),
     # Third Jedi class -- class_guardian/class_consular (13/14) covered
     # Guardian/Consular already; Sentinel was the missing one.
@@ -707,7 +769,7 @@ APPLIES = {
         # extender's confirmation parser swallow the closing '"' into the
         # name, so this arm never dequeued and kept re-arming/re-firing on
         # every subsequent area transition, repeatedly resetting the PC's
-        # real earned Sentinel level back to 1. Confirmed live 2026-09-16.
+        # real earned Sentinel level back to 1. Confirmed.
         'KSE_Diag(9, "AP|APPLIED|class_sentinel|ok=1");',
     ]),
     # Ability-score increases 27-31 -- same shape as grant_test_ability (18,
@@ -722,7 +784,7 @@ APPLIES = {
     # grant_test_ability/the 5 ability traps: the old approach stacks a new
     # effect object every firing, and firing N times in a row for a preset
     # is exactly the repeated pattern that exhausted a real character's
-    # stacked-effect budget live (confirmed by the tester's own follow-up:
+    # stacked-effect budget (confirmed by a follow-up:
     # equipping a real vanilla +DEX item afterward produced no change either
     # -- the ability's modifier-effect slot was completely full, not just
     # this project's own traps/grants being blocked). Same "+1 per firing"
@@ -864,7 +926,7 @@ APPLIES = {
     # extender/research_archive/generate_trampoline_batch_temp_arms_2026-09-06.py.txt,
     # same gap convention as 12/15/16/33 above -- IDs never reused.
     # 47 (test_hp_fp_natives) and 48 (test_alignment_shift) RETIRED --
-    # both LIVE-CONFIRMED working (see kse.log results
+    # both confirmed working (see kse.log results
     # archived below). All four new
     # KseGetCurrentHP/KSE_FIELD_CURRENT_HP/ADD_FORCE_POWER/
     # REMOVE_FORCE_POWER capabilities, plus the standard AdjustAlignment()
@@ -885,7 +947,7 @@ APPLIES = {
     # current-HP native behavior relevant to real features is now
     # confirmed. Archived at extender/research_archive/
     # test_hp_fp_alignment_arms_2026-09-06.py.txt.
-    # 51 (test_grant_active_feat) RETIRED -- CONFIRMED NEGATIVE, 2026-09-19,
+    # 51 (test_grant_active_feat) RETIRED -- CONFIRMED NEGATIVE,
     # via the Archipelago Vendor's real Train Feat option (not this arm
     # directly, but the same question, same underlying native): granting
     # Flurry (an active/toggle combat feat) to the PC via
@@ -897,9 +959,8 @@ APPLIES = {
     # Force Powers: KSE_SetCreatureField's ADD_FORCE_POWER field granted
     # Resist Energy I (a real, non-cut power, confirmed via spells.2da),
     # logged as fired, but never appeared in the Force Powers menu either,
-    # also unaffected by an area transition. See FutureDesign.md's
-    # "Archipelago Vendor" section for the full research trail and next
-    # steps (a save+reload test, and a promising unused-native lead in
+    # also unaffected by an area transition. See DEVELOPMENT_HISTORY.md's
+    # Archipelago Vendor section for the research trail; the next steps are a save+reload test and a promising unused-native lead in
     # offsets.h's KSE_CONTAINER_FEATLIST_OFF/KSE_LIST_FEAT_ADD_RVA family
     # -- reverse-engineered but never wired into the shipping grant path).
     # Passive feats (weapon/armor profs, Implant Level 1, Sneak Attack I,
@@ -933,7 +994,7 @@ APPLIES = {
     # usable powers for a droid-race (RACIAL_TYPE_DROID) character given a
     # Jedi Class0Type -- no hard UI-level block found. Lightsaber-equip
     # stayed inconclusive (feat grant never included in this test). See
-    # FutureDesign.md's droid-conversion research for the full writeup.
+    # DEVELOPMENT_HISTORY.md section 16 (droid-conversion research) for the full writeup.
     # No plan to use this -- not being carried forward as a feature.
     #
     # 58/59: same research shape as the retired 55/56, now against
@@ -945,35 +1006,65 @@ APPLIES = {
     # reload whether the stage survived. Retire both once persistence is
     # confirmed either way.
     58: ("diag_ap_tracker_write", [
+
         'string sPlot = "ap_tracker";',
+
         'int nBefore = GetJournalEntry(sPlot);',
-        # RemoveJournalQuestEntry first -- confirmed live the quest
+
+        # RemoveJournalQuestEntry first -- confirmed the quest
+
         # appeared in the Journal list with a BLANK name even after the
+
         # dialog.tlk stringref fix landed. Suspected cause: the engine
+
         # snapshots quest display text into the save at the moment
+
         # AddJournalQuestEntry first fires, rather than re-reading
+
         # global.jrl live every render -- the first add happened while
+
         # the name lookup was still broken (inline substring), so a
+
         # blank snapshot may be stuck regardless of later global.jrl/
+
         # dialog.tlk fixes. Remove+re-add forces a fresh pull.
+
         'RemoveJournalQuestEntry(sPlot);',
+
         # 1, not 0 -- see STAGES's own comment (build_ap_tracker_quest.py).
+
         'AddJournalQuestEntry(sPlot, 1);',
+
         'int nAfter = GetJournalEntry(sPlot);',
+
         # 160/165, NOT 58/59 -- those are already ability_strength/
+
         # ability_dexterity's own long-established codes (confirmed via a
+
         # full KSE_Diag(<code> scan across every .py/.nss source before
+
         # picking these -- 160/165 are genuinely unused gaps). This arm's
+
         # own NAME (arm 58 in this table) coincidentally matches the
+
         # NUMBER ability_strength logs under -- unrelated, harmless, and
+
         # not worth renumbering the whole table over.
+
         'KSE_Diag(160, "AP|APPLIED|diag_ap_tracker_write|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+
     ]),
+
     59: ("diag_ap_tracker_read", [
+
         'string sPlot = "ap_tracker";',
+
         'int nValue = GetJournalEntry(sPlot);',
+
         'KSE_Diag(165, "AP|APPLIED|diag_ap_tracker_read|value=" + IntToString(nValue));',
+
     ]),
+
     # 60-64: the real "Archipelago Tracker" journal stages (see
     # build_ap_tracker_quest.py) -- one arm per milestone, sent by
     # kotor_reconciliation.py's own check-percentage branch, replacing the
@@ -994,7 +1085,7 @@ for _i, _stage in enumerate((20, 40, 60, 80, 100)):
         f'AddJournalQuestEntry("ap_tracker", {_stage});',
         f'KSE_Diag(166, "AP|APPLIED|journal_tracker_{_stage}|ok=1");',
     ])
-# 65: stage 1 ("run has begun") -- a real bug found live (2026-09-30): the
+# 65: stage 1 ("run has begun") -- a real bug: the
 # reconciler's own percentage check never actually requested this stage at
 # all (it only ever checked the 20/40/60/80/100 thresholds, with a dead
 # "0" fallback that could never beat current_ap_tracker_stage's own
@@ -1009,6 +1100,60 @@ APPLIES[65] = ("journal_tracker_1", [
     'KSE_Diag(166, "AP|APPLIED|journal_tracker_1|ok=1");',
 ])
 
+# 66: StartingClass=droid -- the PC becomes a Battle Droid (class 9) at the first area transition, same moment/mechanism as
+# the other PC class arms. One step: unequip everything worn (changing race/class with gear on is the known hang risk, and human-only
+# gear cannot be re-equipped on a droid anyway), write race 5 and class 9, swap the base-class feats for the Battle Droid level-1 kit
+# (build_class_feat_delta_lines), create + equip the vanilla droid hide, give the HK-47 variant look (appearance row 1, a permanent
+# disguise effect that survives save/reload), re-equip the weapons (droid-legal ones go back on) and hand over repair kits.
+# Guarded on the class so a resend is a no-op; the final diag line keeps its trailing "|" (see pc_class_soldier's comment).
+APPLIES[66] = ("pc_droid", [
+    'object oPC = GetFirstPC();',
+    'int nOldClass = GetClassByPosition(1, oPC);',
+    'if (nOldClass != 9)',
+    '{',
+    '    object oIt;',
+    '    object oRW = GetItemInSlot(INVENTORY_SLOT_RIGHTWEAPON, oPC);',
+    '    object oLW = GetItemInSlot(INVENTORY_SLOT_LEFTWEAPON, oPC);',
+        '    oIt = GetItemInSlot(INVENTORY_SLOT_HEAD, oPC);',
+        '    if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));',
+        '    oIt = GetItemInSlot(INVENTORY_SLOT_BODY, oPC);',
+        '    if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));',
+        '    oIt = GetItemInSlot(INVENTORY_SLOT_HANDS, oPC);',
+        '    if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));',
+        '    oIt = GetItemInSlot(INVENTORY_SLOT_RIGHTWEAPON, oPC);',
+        '    if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));',
+        '    oIt = GetItemInSlot(INVENTORY_SLOT_LEFTWEAPON, oPC);',
+        '    if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));',
+        '    oIt = GetItemInSlot(INVENTORY_SLOT_LEFTARM, oPC);',
+        '    if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));',
+        '    oIt = GetItemInSlot(INVENTORY_SLOT_RIGHTARM, oPC);',
+        '    if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));',
+        '    oIt = GetItemInSlot(INVENTORY_SLOT_IMPLANT, oPC);',
+        '    if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));',
+        '    oIt = GetItemInSlot(INVENTORY_SLOT_BELT, oPC);',
+        '    if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));',
+    *build_class_feat_delta_lines("CLASS_TYPE_BATTLEDROID", "oPC"),
+    '    KSE_SetCreatureField(oPC, KSE_FIELD_SET_RACE(), 5);',
+    '    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), 9);',
+    '    if (!GetIsObjectValid(GetItemInSlot(INVENTORY_SLOT_CARMOUR, oPC)))',
+    '    {',
+    '        object oHide = CreateItemOnObject("g_i_crhide013", oPC, 1);',
+    '        AssignCommand(oPC, ActionEquipItem(oHide, INVENTORY_SLOT_CARMOUR, TRUE));',
+    '    }',
+    '    effect eOld = GetFirstEffect(oPC);',
+    '    while (GetIsEffectValid(eOld))',
+    '    {',
+    '        if (GetEffectType(eOld) == EFFECT_TYPE_DISGUISE) RemoveEffect(oPC, eOld);',
+    '        eOld = GetNextEffect(oPC);',
+    '    }',
+    '    ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectDisguise(1), oPC);',
+    '    if (GetIsObjectValid(oRW)) AssignCommand(oPC, ActionEquipItem(oRW, INVENTORY_SLOT_RIGHTWEAPON, TRUE));',
+    '    if (GetIsObjectValid(oLW)) AssignCommand(oPC, ActionEquipItem(oLW, INVENTORY_SLOT_LEFTWEAPON, TRUE));',
+    '    CreateItemOnObject("g_i_drdrepeqp001", oPC, 3);',
+    '}',
+    'KSE_Diag(9, "AP|APPLIED|pc_droid|ok=1");',
+])
+
 
 def build_set_xp_block(value):
     # Distinct diag name ("set_xp", not "xp") deliberately -- the extender's
@@ -1018,19 +1163,15 @@ def build_set_xp_block(value):
     # (a discrete +500 grant, accumulate-semantics). Reusing the same name
     # would make the confirmation logic ambiguous about which one fired.
     #
-    # A companion-XP-sync ("SetXP on party slots 1-2 too") was tried and
-    # dropped -- confirmed, across separate tests, that SetXP (like
-    # AddMultiClass and GiveXPToCreature before it) has zero effect on a
-    # non-PC party member in this engine build. Nothing in NWScript can
-    # modify a companion's core stats; only the game's own native
-    # combat/leveling code can. Companions keep earning real, un-clamped
-    # combat XP with no relation to the PC's granted-mode number -- an
-    # accepted, permanent divergence, not a bug to keep chasing.
+    # SetXP / GiveXPToCreature / AddMultiClass do nothing for a non-PC party member in this engine build, so the companions
+    # are raised with the raw KSE_FIELD_XP write instead (build_companion_xp_sync_lines): every companion currently in the
+    # party gets at least the PC's XP, in the same step.
     return [
         "object oPC = GetFirstPC();",
         "int nBefore = GetXP(oPC);",
         f"SetXP(oPC, {value});",
         "int nAfter = GetXP(oPC);",
+        *build_companion_xp_sync_lines("nAfter"),
         'KSE_Diag(5, "AP|APPLIED|set_xp|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]
 
@@ -1667,7 +1808,7 @@ def build_trap_block(trap_type, params_str):
         # Decrease amount computed LIVE here from a fresh GetSkillRank()
         # read, NOT client-side from KotorClient.py's reconciler.current_
         # skills (a cache from the last SKILLREPORT poll) -- same real bug
-        # class confirmed live for the 5 ability traps below (see that
+        # class confirmed for the 5 ability traps below (see that
         # block's own comment): a stale cached rank would halve the wrong
         # (stale) number instead of the true live one, and would compound
         # incorrectly if this trap type is ever received more than once.
@@ -1940,6 +2081,29 @@ def build_trap_block(trap_type, params_str):
             f'    oStray = GetObjectByTag("{tag}", nPurged);',
             "}",
             f'KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name={name}|destroyed=" + IntToString(nPurged));',
+        ]
+
+    elif trap_type == "trap_companion":
+        # The Remove a Companion trap item (KotorClient.py picks the target): the same removal as purge_companion plus the entitlement
+        # marker ap_ent_<key> written as 20, "trapped off for good" -- a journal quest only moves forward, so no ordinary write can
+        # undo it, and the companion grant arms refuse once it is set. The reconciler's own leak purge stays purge_companion and
+        # leaves the marker alone, so a leaked companion who is later granted for real is not blocked.
+        name = params_str
+        npc_const = _COMPANION_NPC_CONST_ALL[name]
+        tag = {**_COMPANION_TAGS, "t3m4": "t3m4"}[name]
+        lines = [
+            f'if (GetJournalEntry("ap_ent_{name}") < 20) AddJournalQuestEntry("ap_ent_{name}", 20);',
+            f"RemovePartyMember({npc_const});",
+            f"RemoveAvailableNPC({npc_const});",
+            "int nPurged = 0;",
+            f'object oStray = GetObjectByTag("{tag}", nPurged);',
+            "while (GetIsObjectValid(oStray))",
+            "{",
+            "    DestroyObject(oStray);",
+            "    nPurged++;",
+            f'    oStray = GetObjectByTag("{tag}", nPurged);',
+            "}",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name={name}|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_{name}")));',
         ]
 
     elif trap_type == "unparty_companion":

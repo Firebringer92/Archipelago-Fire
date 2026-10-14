@@ -2,5 +2,5 @@
 
 int StartingConditional()
 {
-    return !GetHasFeat(4, GetPCSpeaker());
+    return !GetHasFeat(4, GetPCSpeaker()) && GetRacialType(GetPCSpeaker()) != 5;
 }

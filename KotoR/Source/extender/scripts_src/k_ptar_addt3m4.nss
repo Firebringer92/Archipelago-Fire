@@ -30,6 +30,7 @@ void main()
     else
     {
         KSE_Diag(33, "AP|SUPPRESSED|companion_t3m4|skipped_already_recruited");
+        SetGlobalNumber("Tar_JaniceDro", 30);
     }
     // The check-fire below is atomic with the guard above within this one
     // script call -- no other script (including the regular poll's

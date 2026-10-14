@@ -1052,6 +1052,22 @@ void CheckRecruitMarkers()
         KSE_Diag(22, "AP|CHECK|COMPANION|8");
 }
 
+// Entitlement markers (build_ap_tracker_quest.py): per companion 0 = none, 10 = entitled (written by the grant arm), 20 = trapped off.
+void CheckCrewMarkers()
+{
+    string sReport = "AP|CREWREPORT";
+    sReport = sReport + "|bastila=" + IntToString(GetJournalEntry("ap_ent_bastila"));
+    sReport = sReport + "|canderous=" + IntToString(GetJournalEntry("ap_ent_canderous"));
+    sReport = sReport + "|carth=" + IntToString(GetJournalEntry("ap_ent_carth"));
+    sReport = sReport + "|hk47=" + IntToString(GetJournalEntry("ap_ent_hk47"));
+    sReport = sReport + "|jolee=" + IntToString(GetJournalEntry("ap_ent_jolee"));
+    sReport = sReport + "|juhani=" + IntToString(GetJournalEntry("ap_ent_juhani"));
+    sReport = sReport + "|mission=" + IntToString(GetJournalEntry("ap_ent_mission"));
+    sReport = sReport + "|t3m4=" + IntToString(GetJournalEntry("ap_ent_t3m4"));
+    sReport = sReport + "|zaalbar=" + IntToString(GetJournalEntry("ap_ent_zaalbar"));
+    KSE_Diag(192, sReport);
+}
+
 // Level of every party member, logged when it changes. Companions only
 // level from real combat XP (the PC's XP is set directly by AP items), so
 // this shows how far behind they are. The PC's tag is empty.
@@ -1081,16 +1097,29 @@ void CheckPartyLevels()
 
 // True while a scripted scene has companions staged or held on purpose: the
 // Leviathan sequence, the Zaalbar/Jolee temporary-companion scenes (PC local
-// booleans 77/78 and the Taris KSE flags) and the Bastila+Carth party gate
+// boolean 78 and the Taris KSE flags) and the Bastila+Carth party gate
 // (module local boolean 50). Shared by the roster report and the stuck-
 // companion check, which must both leave such scenes alone.
-int ApSceneBusy()
+// Which scene holds the busy flag, as bits (1 Leviathan sequence, 2 PC boolean 78 = Jolee's field scene, 4 forcefield Mission staging,
+// 8 Zaalbar Mission staging, 16 the Bastila+Carth party gate; the roster report adds 32 for a conversation and 64 for an Unknown World
+// module). The roster report carries it as bz= so a flag that never clears shows up in the log.
+int ApSceneBusyMask()
 {
     object oPC = GetFirstPC();
-    if (InLeviathanSequence()) return TRUE;
-    if (GetLocalBoolean(oPC, 77) || GetLocalBoolean(oPC, 78)) return TRUE;
-    if (KSE_GetData("ff_mission_staged") == "1" || KSE_GetData("zaal_mission_staged") == "1") return TRUE;
-    if (GetLocalBoolean(GetModule(), 50)) return TRUE;
+    int nMask = 0;
+    if (InLeviathanSequence()) nMask = nMask + 1;
+    // Not 77: that PC boolean is the Zaalbar cell scene's permanent "already played" marker (ap_zaal_mission.nss), so treating it as busy kept
+    // every busy-gated correction switched off for the rest of the game once the scene had played. Its staging is the KSE flag below.
+    if (GetLocalBoolean(oPC, 78)) nMask = nMask + 2;
+    if (KSE_GetData("ff_mission_staged") == "1") nMask = nMask + 4;
+    if (KSE_GetData("zaal_mission_staged") == "1") nMask = nMask + 8;
+    if (GetLocalBoolean(GetModule(), 50)) nMask = nMask + 16;
+    return nMask;
+}
+
+int ApSceneBusy()
+{
+    if (ApSceneBusyMask() != 0) return TRUE;
     return FALSE;
 }
 
@@ -1595,14 +1624,15 @@ void CheckRoster()
     object oPC = GetFirstPC();
     if (!GetIsObjectValid(oPC)) return;
     if (GetStringLeft(GetStringLowerCase(GetModuleFileName()), 7) == "end_m01") return;
-    int nBusy = 0;
-    if (ApSceneBusy()) nBusy = 1;
-    if (GetIsInConversation(oPC)) nBusy = 1;
+    int nMask = ApSceneBusyMask();
+    if (GetIsInConversation(oPC)) nMask = nMask + 32;
     // The Unknown World finale: its wrapper backfills Carth/Canderous/Mission/T3-M4
     // as available on purpose. The Star Forge is NOT busy: the reconciler's Star Forge
     // pass (sf/fc/bp below) cleans the roster there.
     string sRosterMod = GetStringLowerCase(GetModuleFileName());
-    if (GetStringLeft(sRosterMod, 4) == "unk_") nBusy = 1;
+    if (GetStringLeft(sRosterMod, 4) == "unk_") nMask = nMask + 64;
+    int nBusy = 0;
+    if (nMask != 0) nBusy = 1;
     string sReport = "AP|ROSTERREPORT|busy=" + IntToString(nBusy);
     sReport = sReport + "|bastila=" + IntToString(IsAvailableCreature(NPC_BASTILA));
     sReport = sReport + "|canderous=" + IntToString(IsAvailableCreature(NPC_CANDEROUS));
@@ -1638,34 +1668,68 @@ void CheckRoster()
         + IntToString(GetNPCSelectability(NPC_MISSION) > 0)
         + IntToString(GetNPCSelectability(NPC_T3_M4) > 0)
         + IntToString(GetNPCSelectability(NPC_ZAALBAR) > 0);
+    // bz = which busy sources are set (see ApSceneBusyMask); km = K_KOTOR_MASTER, the story stage (40 or more: the Unknown World trip has begun).
+    sReport = sReport + "|bz=" + IntToString(nMask) + "|km=" + IntToString(GetGlobalNumber("K_KOTOR_MASTER"));
     KSE_Diag(143, sReport);
 }
 
-// Reports whether the PC currently possesses each of the 8 tracked
+// Reports whether the PC currently possesses each tracked progression item
 // progression items, so the reconciler can re-grant any that go missing
 // (lost/sold/dropped) without waiting on a full inventory reconciliation --
 // see PROGRESSION_ITEM_RESREFS's own comment (entitlement.py) for why these
-// 8 specifically need this and the general gear pool doesn't.
+// specifically need this and the general gear pool doesn't.
 void CheckProgressionItems()
 {
     object oPC = GetFirstPC();
     string sReport = "AP|PROGRESSIONITEMSREPORT";
-    int bSithArmor = GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_sitharmor"));
-    sReport = sReport + "|sith_armor=" + IntToString(bSithArmor);
-    int bSithPapers = GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_sithpapers"));
-    sReport = sReport + "|sith_papers=" + IntToString(bSithPapers);
-    int bShieldCodes = GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_shieldcodes"));
-    sReport = sReport + "|shield_codes=" + IntToString(bShieldCodes);
-    int bEnviroSuit = GetIsObjectValid(GetItemPossessedBy(oPC, "man28_envirosuit"));
-    sReport = sReport + "|enviro_suit=" + IntToString(bEnviroSuit);
-    int bStarmapTatooine = GetIsObjectValid(GetItemPossessedBy(oPC, "tat_starpad"));
-    sReport = sReport + "|starmap_tatooine=" + IntToString(bStarmapTatooine);
-    int bStarmapKashyyyk = GetIsObjectValid(GetItemPossessedBy(oPC, "kas_starpad"));
-    sReport = sReport + "|starmap_kashyyyk=" + IntToString(bStarmapKashyyyk);
-    int bStarmapManaan = GetIsObjectValid(GetItemPossessedBy(oPC, "man_starpad"));
-    sReport = sReport + "|starmap_manaan=" + IntToString(bStarmapManaan);
-    int bStarmapKorriban = GetIsObjectValid(GetItemPossessedBy(oPC, "kor_starpad"));
-    sReport = sReport + "|starmap_korriban=" + IntToString(bStarmapKorriban);
+    int bTokTar1 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_tar1"));
+    sReport = sReport + "|tok_tar1=" + IntToString(bTokTar1);
+    int bTokTar2 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_tar2"));
+    sReport = sReport + "|tok_tar2=" + IntToString(bTokTar2);
+    int bTokTar3 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_tar3"));
+    sReport = sReport + "|tok_tar3=" + IntToString(bTokTar3);
+    int bTokDan1 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_dan1"));
+    sReport = sReport + "|tok_dan1=" + IntToString(bTokDan1);
+    int bTokDan2 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_dan2"));
+    sReport = sReport + "|tok_dan2=" + IntToString(bTokDan2);
+    int bTokDan3 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_dan3"));
+    sReport = sReport + "|tok_dan3=" + IntToString(bTokDan3);
+    int bTokTat1 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_tat1"));
+    sReport = sReport + "|tok_tat1=" + IntToString(bTokTat1);
+    int bTokTat2 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_tat2"));
+    sReport = sReport + "|tok_tat2=" + IntToString(bTokTat2);
+    int bTokTat3 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_tat3"));
+    sReport = sReport + "|tok_tat3=" + IntToString(bTokTat3);
+    int bTokKas1 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_kas1"));
+    sReport = sReport + "|tok_kas1=" + IntToString(bTokKas1);
+    int bTokKas2 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_kas2"));
+    sReport = sReport + "|tok_kas2=" + IntToString(bTokKas2);
+    int bTokKas3 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_kas3"));
+    sReport = sReport + "|tok_kas3=" + IntToString(bTokKas3);
+    int bTokMan1 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_man1"));
+    sReport = sReport + "|tok_man1=" + IntToString(bTokMan1);
+    int bTokMan2 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_man2"));
+    sReport = sReport + "|tok_man2=" + IntToString(bTokMan2);
+    int bTokMan3 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_man3"));
+    sReport = sReport + "|tok_man3=" + IntToString(bTokMan3);
+    int bTokKor1 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_kor1"));
+    sReport = sReport + "|tok_kor1=" + IntToString(bTokKor1);
+    int bTokKor2 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_kor2"));
+    sReport = sReport + "|tok_kor2=" + IntToString(bTokKor2);
+    int bTokKor3 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_kor3"));
+    sReport = sReport + "|tok_kor3=" + IntToString(bTokKor3);
+    int bTokUnk1 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_unk1"));
+    sReport = sReport + "|tok_unk1=" + IntToString(bTokUnk1);
+    int bTokUnk2 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_unk2"));
+    sReport = sReport + "|tok_unk2=" + IntToString(bTokUnk2);
+    int bTokUnk3 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_unk3"));
+    sReport = sReport + "|tok_unk3=" + IntToString(bTokUnk3);
+    int bTokFin1 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_fin1"));
+    sReport = sReport + "|tok_fin1=" + IntToString(bTokFin1);
+    int bTokFin2 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_fin2"));
+    sReport = sReport + "|tok_fin2=" + IntToString(bTokFin2);
+    int bTokFin3 = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_tk_fin3"));
+    sReport = sReport + "|tok_fin3=" + IntToString(bTokFin3);
     int bVendorSkill = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_vtok_skill"));
     sReport = sReport + "|vendor_skill=" + IntToString(bVendorSkill);
     int bVendorAbility = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_vtok_abil"));
@@ -2074,10 +2138,41 @@ void CheckDeath()
     }
 }
 
+// Bounty Card count -- replaces the old AP|INVENTORY-based
+// _bounty_card_count parsing, which relied on CheckInventory()'s giant
+// concatenated string (see the comment above for the 512-byte
+// truncation this hit). This scans for exactly ONE tag and emits a
+// single bounded integer, never a per-item string build, so it can't hit
+// that limit no matter how large the backpack is. Only generated when
+// additional_enemies_mode != 0 for this seed -- bounty carriers don't
+// exist at all otherwise, so the scan would be pure waste.
+void CheckBountyCount()
+{
+    object oPC = GetFirstPC();
+    int nCount = 0;
+    object oItem = GetFirstItemInInventory(oPC);
+    while (GetIsObjectValid(oItem))
+    {
+        if (GetTag(oItem) == "ap_bounty_card") nCount = nCount + GetItemStackSize(oItem);
+        oItem = GetNextItemInInventory(oPC);
+    }
+
+    // Only report on an actual change -- same only-when-it-moves shape as
+    // the rest of this file's stateful checks, avoids re-sending an
+    // unchanged count every 5s for as long as the player holds any cards.
+    int nLast = -1;
+    if (KSE_HasData("bounty_last_count")) nLast = StringToInt(KSE_GetData("bounty_last_count"));
+    if (nCount != nLast)
+    {
+        KSE_SetData("bounty_last_count", IntToString(nCount));
+        KSE_Diag(157, "AP|BOUNTY|COUNT|" + IntToString(nCount));
+    }
+}
+
 // Light/dark alignment, reported every poll -- same stateless design as
 // everything else here. GetGoodEvilValue is 0 (full dark) to 100 (full
 // light), 50 neutral. The client tracks the last-known value itself and
-// derives newly-crossed 10-point thresholds (and the True Neutral/Fallen
+// derives newly-crossed thresholds (and the Fallen
 // Jedi/Redeemed Sith bonus checks, which need a bit of history) -- see
 // kotor_location_tracker.py.
 void CheckAlignment()
@@ -2183,6 +2278,25 @@ void EnsureHeartbeat()
     }
 }
 
+// starting_class=droid: the PC's HK-47 variant look is a permanent EffectDisguise (the pc_droid arm applies it).
+// Vanilla scripts that end a disguise remove EVERY disguise effect on the party -- the Manaan underwater
+// level's RemoveSuits(), the Tatooine sand-person and Leviathan disguises -- which would silently drop that
+// look. This puts it back whenever the PC is a Battle Droid (race 5, class 9) with no disguise at all;
+// while a vanilla disguise is active it does nothing, so it never fights the suit or the sand-person robe.
+void CheckDroidLook()
+{
+    object oPC = GetFirstPC();
+    if (GetRacialType(oPC) != 5 || GetClassByPosition(1, oPC) != 9) return;
+    effect eFx = GetFirstEffect(oPC);
+    while (GetIsEffectValid(eFx))
+    {
+        if (GetEffectType(eFx) == EFFECT_TYPE_DISGUISE) return;
+        eFx = GetNextEffect(oPC);
+    }
+    ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectDisguise(1), oPC);
+    KSE_Diag(188, "AP|DROIDLOOK|restored");
+}
+
 void main()
 {
     // A begin without an end in kse.log marks a poll that stopped partway. The stage markers
@@ -2204,10 +2318,12 @@ void main()
     CheckPlot();
     CheckJournal();
     CheckRecruitMarkers();
+    CheckCrewMarkers();
     CheckXP();
     CheckCredits();
     CheckAbilityScores();
     CheckClasses();
+    CheckDroidLook();
     CheckCompanionClasses();
     CheckCompanionFeats();
     CheckRoster();
@@ -2223,6 +2339,7 @@ void main()
     CheckCharacterName();
     CheckSkills();
     CheckDeath();
+    CheckBountyCount();
     CheckAlignment();
     CheckGoal();
     CheckLevel();

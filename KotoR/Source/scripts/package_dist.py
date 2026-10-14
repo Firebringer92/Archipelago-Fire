@@ -86,8 +86,20 @@ EXTRA_RAW_FILES = [
     "ap_pid.uti",
     "cut00_convers.dlg", "k_player_dialog.dlg",
     # The sensor console that starts the Leviathan capture scene (ap_lev_cast.nss).
-    "ap_lev_console.utp", "ebo40_carthtlk.utt", "lev40_carth.dlg",
+    "ap_lev_console.utp", "ebo40_carthtlk.utt", "ap_lev_carth.dlg",
+    # Dantooine, Matale Grounds raider ambush: the trigger's OnEnter points straight at the preserved original (a short alias, since a
+    # template's script field is 16 characters), so the scene's conversation is started by the engine and not through the companion
+    # gate wrapper's ExecuteScript. See extender/scripts_src/ap_companion_gate.nss for why a scene that starts a conversation cannot go
+    # through it.
+    "and_mandtrig01.utt", "apo_dan14ab_c06.ncs",
+    # Progression System: the one-line dialog (the player speaking) a closed story gate starts; its text is set with a custom token.
+    "ap_gate_msg.dlg",
     "m12aa_c06.dlg", "tar02_carth022.dlg",
+    # Droid PC (class 9) fallbacks, same technique: the Endar Spire opening cutscene and Juhani's "what did you do before"
+    # question (scripts/build_class_fallback_dialogs.py).
+    "m01aa_c01.dlg", "k_hjuh_dialog.dlg",
+    # Unknown World, Bastila's final choice: the two branches now move the player to exactly 100 / 0 alignment.
+    "k_punk_goodfinal.ncs", "k_punk_evilfinal.ncs",
     # The 6 new lightsaber crystal colors (add_saber_crystal_colors.py) --
     # static, seed-independent item/model/texture content, same category
     # as the .dlg fixes above. upcrystals.2da is the row patch that makes
@@ -131,7 +143,7 @@ EXTRA_RAW_FILES = [
 # door into the Sith Base (tar02_sithdoor) has no Security-skill option
 # at all and only ever unlocks for a PC actively controlling T3-M4;
 # under companion_mode=ap_gated/none this was a permanent main-story
-# soft-lock, live-reported by the user. See docs/MODE_DEPENDENCIES.md.
+# soft-lock reported in play. See docs/MODE_DEPENDENCIES.md.
 #
 # k_ptar_startconv/apo_startconv_orig: the Undercity sewer forcefield
 # console's (tar05_ffcontrol) OnUsed wrapper and preserved original --
@@ -145,7 +157,11 @@ EXTRA_RAW_FILES = [
 # party, so the wrapper stages her when her item hasn't arrived. Her revert
 # lives in k_ptar_addzaal (already shipped via COMPANIONS). See
 # extender/scripts_src/ap_zaal_mission.nss and docs/MODE_DEPENDENCIES.md.
+# k_ptar_miszalchk: the starter condition of the Undercity forcefield conversation (tar05_ff_dlg2). A full replacement (no original
+# kept): vanilla needs Mission in the party AND Zaalbar on the roster; this also accepts the persistent Zaalbar-rescued marker, so a
+# rescued but not yet granted Zaalbar (companion_mode=ap_gated/ap_limited) does not block the way into the Black Vulkar Base.
 HAND_WRITTEN_EXTRA = [
+    "k_ptar_miszalchk",
     "k_ptar_addcarth", "apo_carth_orig", "k_ptar_candadd", "apo_cand_orig",
     "k_ptar_carbas_en", "apo_carbast_orig",
     "k_psta_init_cart", "apo_stainit_cart_orig",
@@ -172,6 +188,15 @@ HAND_WRITTEN_EXTRA = [
     # missing from every earlier package (only its source rode along in extender/scripts_src), so testers ran the
     # vanilla pod script. See DEVELOPMENT_HISTORY.md, "The escape pod's four independent bugs".
     "k_pend_pod02", "apo_pod02_org",
+    # The Dantooine ruins star-map node: adds 10 to K_STAR_MAP (vanilla wrote an absolute 10) and applies the 40 and 50 thresholds.
+    # A full replacement, no original kept.
+    "k_pdan_starmap02",
+    # The Ebon Hawk's galaxy map console (ebo_m12aa, a core script): raises K_KOTOR_MASTER to 30 when all five star maps are counted and
+    # the Leviathan is done, then runs the preserved original.
+    "k_pebn_galaxy", "apo_galaxy_orig",
+    # The Ebon Hawk exit-ramp trigger (two vanilla versions, ebo_m12aa and ebo_m41aa, reproduced by module name): raises a current planet below 10
+    # to Taris so a Hawk reached with the value unset still has an exit. A full replacement, no original kept.
+    "k_pebn_leavhawk",
 ]
 
 

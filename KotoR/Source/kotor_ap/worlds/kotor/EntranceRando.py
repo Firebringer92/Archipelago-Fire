@@ -432,8 +432,9 @@ def _repair_orphaned_modules(door_graph: dict, pairs: list, result: typing.Dict[
     steal from or need repair. In practice this touches 0-1 entries per
     seed -- most seeds place cleanly or fully resolve within the retry
     budget above, so this exists for the rare structural residual, not as
-    the primary mechanism. Returns the list of (key, new_dest_module)
-    changes made, for logging."""
+    the primary mechanism. In coupled mode it runs after _repair_keeping_pairs,
+    which keeps every door paired, and so only sees what that could not fix.
+    Returns the list of (key, new_dest_module) changes made, for logging."""
     incoming: typing.Dict[str, int] = {}
     for dest in result.values():
         incoming[dest["dest_module"]] = incoming.get(dest["dest_module"], 0) + 1
@@ -472,6 +473,138 @@ def _repair_orphaned_modules(door_graph: dict, pairs: list, result: typing.Dict[
         fixed.append((best_key, target_module))
 
     return fixed
+
+
+
+# Modules the player can be in without having walked through a door: the start, the six Ebon Hawk landing modules (reached from
+# the galaxy map) and the modules only entered by a scripted transition (they never appear as a destination in door_graph.json).
+HAWK_LANDING_MODULES = {"tar_m02aa", "danm13", "kas_m22aa", "manm26ad", "korr_m33aa", "tat_m17ab"}
+
+
+def _reachability_roots(door_graph: dict) -> typing.Set[str]:
+    sources = {e["module"] for e in door_graph.values()}
+    destinations = {e["dest_module"] for e in door_graph.values()}
+    return {STARTING_MODULE} | HAWK_LANDING_MODULES | (sources - destinations)
+
+
+def _unreachable_modules(door_graph: dict, result: typing.Dict[str, dict], roots: typing.Set[str]) -> typing.Set[str]:
+    """Modules that cannot be reached from `roots` by following the doors in `result` (module -> destination module)."""
+    edges: typing.Dict[str, typing.Set[str]] = {}
+    modules = set()
+    for key, entry in door_graph.items():
+        modules.add(entry["module"])
+        modules.add(entry["dest_module"])
+        edges.setdefault(entry["module"], set()).add(result[key]["dest_module"])
+    seen = set(roots)
+    stack = list(roots)
+    while stack:
+        for nxt in edges.get(stack.pop(), ()):
+            if nxt not in seen:
+                seen.add(nxt)
+                stack.append(nxt)
+    return modules - seen
+
+
+def _perfect_matchings(doors: list):
+    """Every way to split `doors` into pairs (the list is short: the doors the shuffle left over)."""
+    if not doors:
+        yield []
+        return
+    first, rest = doors[0], doors[1:]
+    for i, other in enumerate(rest):
+        for tail in _perfect_matchings(rest[:i] + rest[i + 1:]):
+            yield [(first, other)] + tail
+
+
+def _repair_keeping_pairs(door_graph: dict, pairs: list, result: typing.Dict[str, dict],
+                          engine_keys: typing.Set[str]) -> typing.Optional[dict]:
+    """Coupled-mode repair that keeps every door paired with the door it leads back through.
+
+    A door d is "paired" with a door x when walking through d arrives beside x and walking through x arrives beside d. The shuffle
+    leaves a few doors unpaired when it gives up; leaving them at their vanilla destinations strands the modules only they led to.
+    This pairs the leftover doors with each other (choosing the pairing that strands the fewest modules) and then, while a module
+    is still unreachable, swaps the partners of two existing pairs (x-y, u-v -> x-u, y-v), which keeps every door paired, until
+    everything is reachable. Returns {"leftover": n, "swaps": n, "unreachable": [modules still unreachable]} and rewrites `result`
+    for the pooled doors, or None when the shuffle's result is not a clean pairing (nothing is changed then)."""
+    partner: typing.Dict[str, str] = {}
+    for a, b in pairs:
+        partner[a] = b
+        partner[b] = a
+
+    def landing(key: str) -> dict:
+        return {"dest_module": door_graph[key]["module"], "dest_waypoint": door_graph[partner[key]]["dest_waypoint"]}
+
+    owner = {(landing(k)["dest_module"], landing(k)["dest_waypoint"]): k for k in partner}
+    if len(owner) != len(partner):
+        return None
+    matching: typing.Dict[str, str] = {}
+    for d in partner:
+        if d not in engine_keys:
+            continue
+        k = owner.get((result[d]["dest_module"], result[d]["dest_waypoint"]))
+        if k is None:
+            return None
+        matching[d] = k
+    if any(matching.get(k) != d for d, k in matching.items()):
+        return None
+    leftover = sorted(set(partner) - set(matching))
+    if len(leftover) % 2:
+        return None
+
+    roots = _reachability_roots(door_graph)
+    vanilla = {key: {"dest_module": e["dest_module"], "dest_waypoint": e["dest_waypoint"]} for key, e in door_graph.items()}
+    baseline = _unreachable_modules(door_graph, vanilla, roots)
+
+    def build(m: dict) -> dict:
+        out = dict(vanilla)
+        for d, k in m.items():
+            out[d] = landing(k)
+        return out
+
+    def stranded(m: dict) -> typing.Set[str]:
+        return _unreachable_modules(door_graph, build(m), roots) - baseline
+
+    if leftover:
+        best = None
+        candidates = _perfect_matchings(leftover) if len(leftover) <= 8 else iter([list(zip(leftover[::2], leftover[1::2]))])
+        for cand in candidates:
+            trial = dict(matching)
+            for a, b in cand:
+                trial[a] = b
+                trial[b] = a
+            score = (len(stranded(trial)), sum(1 for a, b in cand if door_graph[a]["module"] == door_graph[b]["module"]))
+            if best is None or score < best[0]:
+                best = (score, trial)
+        matching = best[1]
+
+    swaps = 0
+    current = stranded(matching)
+    while current and swaps < 200:
+        pair_list = sorted({tuple(sorted((d, k))) for d, k in matching.items()})
+        improved = False
+        for i in range(len(pair_list)):
+            for j in range(i + 1, len(pair_list)):
+                (x, y), (u, v) = pair_list[i], pair_list[j]
+                for a, b in (((x, u), (y, v)), ((x, v), (y, u))):
+                    trial = dict(matching)
+                    for p, q in (a, b):
+                        trial[p] = q
+                        trial[q] = p
+                    new = stranded(trial)
+                    if len(new) < len(current):
+                        matching, current, improved = trial, new, True
+                        swaps += 1
+                        break
+                if improved:
+                    break
+            if improved:
+                break
+        if not improved:
+            break
+
+    for d, k in matching.items():
+        result[d] = landing(k)
+    return {"leftover": len(leftover), "swaps": swaps, "unreachable": sorted(current)}
 
 
 def connect_entrances(world) -> typing.Dict[str, dict]:
@@ -546,6 +679,7 @@ def connect_entrances(world) -> typing.Dict[str, dict]:
             "dest_module": dest_entry["dest_module"],
             "dest_waypoint": dest_entry["dest_waypoint"],
         }
+    engine_keys = set(result)
 
     # Everything not in a confirmed coupled pair (both exclusion sets,
     # the Ebon Hawk pins, and the 8 no-reverse entries), plus anything a
@@ -556,6 +690,14 @@ def connect_entrances(world) -> typing.Dict[str, dict]:
             result[key] = {"dest_module": entry["dest_module"], "dest_waypoint": entry["dest_waypoint"]}
 
     pairs, _noreverse = _build_coupled_pairs(door_graph)
+    if coupled and not completed:
+        # Keep every door paired with the door it leads back through: pair the doors the shuffle left over and, if a module is
+        # still stranded, swap partners between two pairs. The older repair below (which repoints one door and so leaves a
+        # one-way trip) only runs for whatever this cannot fix.
+        paired = _repair_keeping_pairs(door_graph, pairs, result, engine_keys)
+        if paired is not None:
+            print(f"[kotor] Door randomization: paired {paired['leftover']} leftover door(s) and made {paired['swaps']} partner "
+                  f"swap(s); modules still unreachable: {paired['unreachable'] or 'none'}")
     repairs = _repair_orphaned_modules(door_graph, pairs, result)
     if repairs:
         print(f"[kotor] Door randomization: repaired {len(repairs)} orphaned module(s) by "

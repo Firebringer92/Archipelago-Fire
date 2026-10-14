@@ -30,6 +30,7 @@ void main()
     else
     {
         KSE_Diag(29, "AP|SUPPRESSED|companion_bastila|skipped_already_recruited");
+        DelayCommand(0.1, StartNewModule("tar_m02af", "tar02_wpcarbascs", "02"));
     }
     // The check-fire below is atomic with the guard above within this one
     // script call -- no other script (including the regular poll's

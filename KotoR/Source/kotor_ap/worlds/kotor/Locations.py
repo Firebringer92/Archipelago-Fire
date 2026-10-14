@@ -51,8 +51,7 @@ class LocationData(typing.NamedTuple):
     area_idx: int = -1
     # alignment: one of the 10 real threshold crossings (0-100, excluding 50).
     alignment_value: int = -1
-    # alignment_bonus: one of the 3 history-based bonus checks ("true_neutral"/
-    # "fallen_jedi"/"redeemed_sith").
+    # alignment_bonus: one of the 2 history-based bonus checks ("fallen_jedi"/"redeemed_sith").
     alignment_bonus: str = ""
     # level: character level 2-20 (1 is the starting value, not tracked).
     level_value: int = -1
@@ -83,9 +82,9 @@ class KotorLocation(Location):
 #   - companion: 9 checks, one per companion, firing when they'd first
 #     become available (recruitment point reached)
 #   - area: 78 checks, one per covered area, firing on first visit
-#   - alignment: 10 real threshold crossings (0-100, excluding 50)
-#   - alignment_bonus: 3 history-based checks (true_neutral/fallen_jedi/
-#     redeemed_sith)
+#   - alignment: 14 real threshold crossings (0-100, excluding 50): the 10 original ones plus 35/45/55/65
+#   - alignment_bonus: 2 history-based checks (fallen_jedi/redeemed_sith); id base+197 was
+#     "Alignment: True Neutral" and stays unused
 #   - level: character levels 2-20 (1 is the starting value)
 #   - malak_defeated: one-shot, Malak's defeat
 #   - bounty: 40 checks, one per Additional Enemies bounty card carried
@@ -306,7 +305,6 @@ location_table: typing.Dict[str, LocationData] = {
     "Alignment: Light Side 80": LocationData(base_id + 194, region="Character", location_type="alignment", alignment_value=80),
     "Alignment: Light Side 90": LocationData(base_id + 195, region="Character", location_type="alignment", alignment_value=90),
     "Alignment: Light Side 100": LocationData(base_id + 196, region="Character", location_type="alignment", alignment_value=100),
-    "Alignment: True Neutral": LocationData(base_id + 197, region="Character", location_type="alignment_bonus", alignment_bonus="true_neutral"),
     "Alignment: Fallen Jedi": LocationData(base_id + 198, region="Character", location_type="alignment_bonus", alignment_bonus="fallen_jedi"),
     "Alignment: Redeemed Sith": LocationData(base_id + 199, region="Character", location_type="alignment_bonus", alignment_bonus="redeemed_sith"),
     "Level 2 Reached": LocationData(base_id + 200, region="Character", location_type="level", level_value=2),
@@ -372,6 +370,11 @@ location_table: typing.Dict[str, LocationData] = {
     "Boss: Calo Nord": LocationData(base_id + 261, region="Bosses", location_type="datapad", datapad_key="calo"),
     "Boss: Darth Bandon": LocationData(base_id + 262, region="Bosses", location_type="datapad", datapad_key="bandon"),
     "Boss: Saul Karath": LocationData(base_id + 263, region="Bosses", location_type="datapad", datapad_key="karath"),
+    # Inner alignment thresholds (appended so no existing id moves): where players who mix both sides actually live.
+    "Alignment: Dark Side 35": LocationData(base_id + 264, region="Character", location_type="alignment", alignment_value=35),
+    "Alignment: Dark Side 45": LocationData(base_id + 265, region="Character", location_type="alignment", alignment_value=45),
+    "Alignment: Light Side 55": LocationData(base_id + 266, region="Character", location_type="alignment", alignment_value=55),
+    "Alignment: Light Side 65": LocationData(base_id + 267, region="Character", location_type="alignment", alignment_value=65),
 }
 
 location_name_to_id: typing.Dict[str, int] = {name: data.id for name, data in location_table.items()}

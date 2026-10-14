@@ -53,7 +53,7 @@ SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_
 # This file must not be dev-only: a hardcoded GAME_DIR constant, or
 # guessing area_randomizer from whichever AP_*.zip happened to be newest
 # in Archipelago/output/, is fine on a single dev machine generating one
-# seed at a time, but wrong the moment a tester's own machine/seed
+# seed at a time, but wrong the moment another machine/seed
 # differs from that -- and broken entirely for a player joining someone
 # ELSE's multiworld, who never has that zip at all. An earlier version
 # of the script also only ever wrote the .nss source -- compiling
@@ -101,6 +101,19 @@ def _connected_wants_additional_enemies() -> bool:
         with open(SLOT_DATA_PATH, encoding="utf-8") as f:
             data = json.load(f)
         return bool(data.get("additional_enemies_mode", 0))
+    except Exception as e:
+        print(f"  (couldn't read {SLOT_DATA_PATH}: {e})")
+        return False
+
+
+def _connected_wants_droid_look() -> bool:
+    """True if _slot_data.json has starting_class == 4 (droid). Gates CheckDroidLook(), the same way
+    _connected_wants_additional_enemies() gates CheckBountyCount(). False (the safe default) when the file is missing."""
+    if not os.path.isfile(SLOT_DATA_PATH):
+        return False
+    try:
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            return int(json.load(f).get("starting_class", 0)) == 4
     except Exception as e:
         print(f"  (couldn't read {SLOT_DATA_PATH}: {e})")
         return False
@@ -272,6 +285,22 @@ for _idx, (_key, _display) in enumerate(RECRUITS):
     lines.append(f'        KSE_Diag(22, "AP|CHECK|COMPANION|{_idx}");')
 lines.append("}")
 lines.append("")
+lines.append("// Entitlement markers (build_ap_tracker_quest.py): per companion 0 = none, 10 = entitled (written by the grant arm), 20 = trapped off.")
+lines.append("void CheckCrewMarkers()")
+lines.append("{")
+lines.append("    string sReport = \"AP|CREWREPORT\";")
+lines.append("    sReport = sReport + \"|bastila=\" + IntToString(GetJournalEntry(\"ap_ent_bastila\"));")
+lines.append("    sReport = sReport + \"|canderous=\" + IntToString(GetJournalEntry(\"ap_ent_canderous\"));")
+lines.append("    sReport = sReport + \"|carth=\" + IntToString(GetJournalEntry(\"ap_ent_carth\"));")
+lines.append("    sReport = sReport + \"|hk47=\" + IntToString(GetJournalEntry(\"ap_ent_hk47\"));")
+lines.append("    sReport = sReport + \"|jolee=\" + IntToString(GetJournalEntry(\"ap_ent_jolee\"));")
+lines.append("    sReport = sReport + \"|juhani=\" + IntToString(GetJournalEntry(\"ap_ent_juhani\"));")
+lines.append("    sReport = sReport + \"|mission=\" + IntToString(GetJournalEntry(\"ap_ent_mission\"));")
+lines.append("    sReport = sReport + \"|t3m4=\" + IntToString(GetJournalEntry(\"ap_ent_t3m4\"));")
+lines.append("    sReport = sReport + \"|zaalbar=\" + IntToString(GetJournalEntry(\"ap_ent_zaalbar\"));")
+lines.append("    KSE_Diag(192, sReport);")
+lines.append("}")
+lines.append("")
 lines.append("// Level of every party member, logged when it changes. Companions only")
 lines.append("// level from real combat XP (the PC's XP is set directly by AP items), so")
 lines.append("// this shows how far behind they are. The PC's tag is empty.")
@@ -301,16 +330,29 @@ lines.append("}")
 lines.append("")
 lines.append("// True while a scripted scene has companions staged or held on purpose: the")
 lines.append("// Leviathan sequence, the Zaalbar/Jolee temporary-companion scenes (PC local")
-lines.append("// booleans 77/78 and the Taris KSE flags) and the Bastila+Carth party gate")
+lines.append("// boolean 78 and the Taris KSE flags) and the Bastila+Carth party gate")
 lines.append("// (module local boolean 50). Shared by the roster report and the stuck-")
 lines.append("// companion check, which must both leave such scenes alone.")
-lines.append("int ApSceneBusy()")
+lines.append("// Which scene holds the busy flag, as bits (1 Leviathan sequence, 2 PC boolean 78 = Jolee's field scene, 4 forcefield Mission staging,")
+lines.append("// 8 Zaalbar Mission staging, 16 the Bastila+Carth party gate; the roster report adds 32 for a conversation and 64 for an Unknown World")
+lines.append("// module). The roster report carries it as bz= so a flag that never clears shows up in the log.")
+lines.append("int ApSceneBusyMask()")
 lines.append("{")
 lines.append("    object oPC = GetFirstPC();")
-lines.append("    if (InLeviathanSequence()) return TRUE;")
-lines.append("    if (GetLocalBoolean(oPC, 77) || GetLocalBoolean(oPC, 78)) return TRUE;")
-lines.append('    if (KSE_GetData("ff_mission_staged") == "1" || KSE_GetData("zaal_mission_staged") == "1") return TRUE;')
-lines.append("    if (GetLocalBoolean(GetModule(), 50)) return TRUE;")
+lines.append("    int nMask = 0;")
+lines.append("    if (InLeviathanSequence()) nMask = nMask + 1;")
+lines.append("    // Not 77: that PC boolean is the Zaalbar cell scene's permanent \"already played\" marker (ap_zaal_mission.nss), so treating it as busy kept")
+lines.append("    // every busy-gated correction switched off for the rest of the game once the scene had played. Its staging is the KSE flag below.")
+lines.append("    if (GetLocalBoolean(oPC, 78)) nMask = nMask + 2;")
+lines.append("    if (KSE_GetData(\"ff_mission_staged\") == \"1\") nMask = nMask + 4;")
+lines.append("    if (KSE_GetData(\"zaal_mission_staged\") == \"1\") nMask = nMask + 8;")
+lines.append("    if (GetLocalBoolean(GetModule(), 50)) nMask = nMask + 16;")
+lines.append("    return nMask;")
+lines.append("}")
+lines.append("")
+lines.append("int ApSceneBusy()")
+lines.append("{")
+lines.append("    if (ApSceneBusyMask() != 0) return TRUE;")
 lines.append("    return FALSE;")
 lines.append("}")
 lines.append("")
@@ -591,8 +633,7 @@ lines.append('    KSE_Diag(138, sReport);')
 lines.append("}")
 lines.append("")
 
-# Feats self-healing (see FutureDesign.md's "Entitlement/dispatch redesign"
-# entry) -- same per-companion GetObjectByTag+IsNPCPartyMember guard as
+# Feats self-healing (see DEVELOPMENT_HISTORY.md section 13) -- same per-companion GetObjectByTag+IsNPCPartyMember guard as
 # CheckCompanionClasses() above, but restricted to a small explicit id set
 # rather than the full 122-feat CheckFeats() scan below -- expected_feats
 # (kotor_reconciliation.py) can only ever contain ids from these two
@@ -637,25 +678,15 @@ lines.append('    KSE_Diag(139, sReport);')
 lines.append("}")
 lines.append("")
 
-# The 8 ItemClassification.progression give_item: entries confirmed
-# softlock-capable if silently lost (all 4 Star Maps are required to reach
-# the Star Forge) -- see FutureDesign.md's "Entitlement/dispatch redesign"
-# entry. A narrow, targeted GetItemPossessedBy() check per resref (~8
-# native calls), not full reconciliation -- these are simple possession
-# facts (has it or doesn't), not a repeatable/additive amount the way
-# skills are. Keep this list in sync by hand with entitlement.py's own
-# PROGRESSION_ITEM_RESREFS and worlds/kotor/Items.py's
-# PROGRESSION_ITEM_RESREFS (same reasoning as _ADDITIONAL_FEATS_POOL
-# above -- these three don't share an import boundary).
+# Items whose silent loss would strand the player (the 24 story-gate progression items and the Archipelago Vendor
+# passes). A narrow, targeted GetItemPossessedBy() check per resref, not full reconciliation -- these
+# are simple possession facts (has it or doesn't). Keep this list in sync by hand with entitlement.py's
+# own PROGRESSION_ITEM_RESREFS and worlds/kotor/Items.py's PROGRESSION_ITEM_RESREFS (same reasoning as
+# _ADDITIONAL_FEATS_POOL above -- these three don't share an import boundary).
 _PROGRESSION_ITEM_RESREFS = [
-    ("sith_armor", "ptar_sitharmor"),
-    ("sith_papers", "ptar_sithpapers"),
-    ("shield_codes", "ptar_shieldcodes"),
-    ("enviro_suit", "man28_envirosuit"),
-    ("starmap_tatooine", "tat_starpad"),
-    ("starmap_kashyyyk", "kas_starpad"),
-    ("starmap_manaan", "man_starpad"),
-    ("starmap_korriban", "kor_starpad"),
+    (f"tok_{_key}{_n}", f"ap_tk_{_key}{_n}")
+    for _key in ("tar", "dan", "tat", "kas", "man", "kor", "unk", "fin") for _n in (1, 2, 3)
+] + [
     # Archipelago Vendor passes -- same keys/order as entitlement.py's PROGRESSION_ITEM_RESREFS.
     ("vendor_skill", "ap_vtok_skill"),
     ("vendor_ability", "ap_vtok_abil"),
@@ -676,14 +707,15 @@ lines.append("{")
 lines.append("    object oPC = GetFirstPC();")
 lines.append("    if (!GetIsObjectValid(oPC)) return;")
 lines.append('    if (GetStringLeft(GetStringLowerCase(GetModuleFileName()), 7) == "end_m01") return;')
-lines.append("    int nBusy = 0;")
-lines.append("    if (ApSceneBusy()) nBusy = 1;")
-lines.append("    if (GetIsInConversation(oPC)) nBusy = 1;")
+lines.append("    int nMask = ApSceneBusyMask();")
+lines.append("    if (GetIsInConversation(oPC)) nMask = nMask + 32;")
 lines.append("    // The Unknown World finale: its wrapper backfills Carth/Canderous/Mission/T3-M4")
 lines.append("    // as available on purpose. The Star Forge is NOT busy: the reconciler's Star Forge")
 lines.append("    // pass (sf/fc/bp below) cleans the roster there.")
 lines.append("    string sRosterMod = GetStringLowerCase(GetModuleFileName());")
-lines.append('    if (GetStringLeft(sRosterMod, 4) == "unk_") nBusy = 1;')
+lines.append('    if (GetStringLeft(sRosterMod, 4) == "unk_") nMask = nMask + 64;')
+lines.append("    int nBusy = 0;")
+lines.append("    if (nMask != 0) nBusy = 1;")
 lines.append('    string sReport = "AP|ROSTERREPORT|busy=" + IntToString(nBusy);')
 lines.append('    sReport = sReport + "|bastila=" + IntToString(IsAvailableCreature(NPC_BASTILA));')
 lines.append('    sReport = sReport + "|canderous=" + IntToString(IsAvailableCreature(NPC_CANDEROUS));')
@@ -719,14 +751,16 @@ lines.append('        + IntToString(GetNPCSelectability(NPC_JUHANI) > 0)')
 lines.append('        + IntToString(GetNPCSelectability(NPC_MISSION) > 0)')
 lines.append('        + IntToString(GetNPCSelectability(NPC_T3_M4) > 0)')
 lines.append('        + IntToString(GetNPCSelectability(NPC_ZAALBAR) > 0);')
+lines.append("    // bz = which busy sources are set (see ApSceneBusyMask); km = K_KOTOR_MASTER, the story stage (40 or more: the Unknown World trip has begun).")
+lines.append('    sReport = sReport + "|bz=" + IntToString(nMask) + "|km=" + IntToString(GetGlobalNumber("K_KOTOR_MASTER"));')
 lines.append("    KSE_Diag(143, sReport);")
 lines.append("}")
 lines.append("")
-lines.append("// Reports whether the PC currently possesses each of the 8 tracked")
+lines.append("// Reports whether the PC currently possesses each tracked progression item")
 lines.append("// progression items, so the reconciler can re-grant any that go missing")
 lines.append("// (lost/sold/dropped) without waiting on a full inventory reconciliation --")
 lines.append("// see PROGRESSION_ITEM_RESREFS's own comment (entitlement.py) for why these")
-lines.append("// 8 specifically need this and the general gear pool doesn't.")
+lines.append("// specifically need this and the general gear pool doesn't.")
 lines.append("void CheckProgressionItems()")
 lines.append("{")
 lines.append("    object oPC = GetFirstPC();")
@@ -1007,6 +1041,7 @@ lines.append("    }")
 lines.append("}")
 lines.append("")
 wants_additional_enemies = bool(cli_args.additional_enemies) if cli_args.additional_enemies is not None else _connected_wants_additional_enemies()
+wants_droid_look = _connected_wants_droid_look()
 if wants_additional_enemies:
     lines.append("// Bounty Card count -- replaces the old AP|INVENTORY-based")
     lines.append("// _bounty_card_count parsing, which relied on CheckInventory()'s giant")
@@ -1042,7 +1077,7 @@ if wants_additional_enemies:
 lines.append("// Light/dark alignment, reported every poll -- same stateless design as")
 lines.append("// everything else here. GetGoodEvilValue is 0 (full dark) to 100 (full")
 lines.append("// light), 50 neutral. The client tracks the last-known value itself and")
-lines.append("// derives newly-crossed 10-point thresholds (and the True Neutral/Fallen")
+lines.append("// derives newly-crossed thresholds (and the Fallen")
 lines.append("// Jedi/Redeemed Sith bonus checks, which need a bit of history) -- see")
 lines.append("// kotor_location_tracker.py.")
 lines.append("void CheckAlignment()")
@@ -1156,7 +1191,7 @@ if wants_area_randomizer:
 
 lines.append("// Restarts the heartbeat when it is dead (see the comment below). Called FIRST in")
 lines.append("// main(), and again at the end: it used to run only at the end, so a poll that")
-lines.append("// stopped partway on an area entry (seen live, 2026-10-04: polling and the")
+lines.append("// stopped partway on an area entry (seen in play: polling and the")
 lines.append("// heartbeat stayed dead for almost three minutes until the area was reloaded)")
 lines.append("// never got to restart it.")
 lines.append("void EnsureHeartbeat()")
@@ -1195,6 +1230,26 @@ lines.append('        ExecuteScript("ap_heartbeat", OBJECT_SELF);')
 lines.append("    }")
 lines.append("}")
 lines.append("")
+if wants_droid_look:
+    lines.append("// starting_class=droid: the PC's HK-47 variant look is a permanent EffectDisguise (the pc_droid arm applies it).")
+    lines.append("// Vanilla scripts that end a disguise remove EVERY disguise effect on the party -- the Manaan underwater")
+    lines.append("// level's RemoveSuits(), the Tatooine sand-person and Leviathan disguises -- which would silently drop that")
+    lines.append("// look. This puts it back whenever the PC is a Battle Droid (race 5, class 9) with no disguise at all;")
+    lines.append("// while a vanilla disguise is active it does nothing, so it never fights the suit or the sand-person robe.")
+    lines.append("void CheckDroidLook()")
+    lines.append("{")
+    lines.append("    object oPC = GetFirstPC();")
+    lines.append("    if (GetRacialType(oPC) != 5 || GetClassByPosition(1, oPC) != 9) return;")
+    lines.append("    effect eFx = GetFirstEffect(oPC);")
+    lines.append("    while (GetIsEffectValid(eFx))")
+    lines.append("    {")
+    lines.append("        if (GetEffectType(eFx) == EFFECT_TYPE_DISGUISE) return;")
+    lines.append("        eFx = GetNextEffect(oPC);")
+    lines.append("    }")
+    lines.append("    ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectDisguise(1), oPC);")
+    lines.append('    KSE_Diag(188, "AP|DROIDLOOK|restored");')
+    lines.append("}")
+    lines.append("")
 lines.append("void main()")
 lines.append("{")
 lines.append("    // A begin without an end in kse.log marks a poll that stopped partway. The stage markers")
@@ -1216,10 +1271,13 @@ lines.append("    CheckQuests();")
 lines.append("    CheckPlot();")
 lines.append("    CheckJournal();")
 lines.append("    CheckRecruitMarkers();")
+lines.append("    CheckCrewMarkers();")
 lines.append("    CheckXP();")
 lines.append("    CheckCredits();")
 lines.append("    CheckAbilityScores();")
 lines.append("    CheckClasses();")
+if wants_droid_look:
+    lines.append("    CheckDroidLook();")
 lines.append("    CheckCompanionClasses();")
 lines.append("    CheckCompanionFeats();")
 lines.append("    CheckRoster();")

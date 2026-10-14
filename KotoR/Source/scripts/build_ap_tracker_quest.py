@@ -107,6 +107,21 @@ RECRUITS = [
 ]
 RECRUIT_STAGE = 1  # same "never 0" reasoning as STAGES below
 
+# Entitlement markers: one journal quest per companion, ap_ent_<key>, that records in the SAVE whether the player is entitled to that
+# companion. Stage 10 = entitled (written by the companion grant arm in the same script that adds the companion), stage 20 = trapped
+# off for good (written by the Remove a Companion trap). A quest only moves forward, so 20 cannot be overwritten by an ordinary
+# write. The reconciler (kotor_reconciliation.py) treats a companion on the roster with no marker, or with marker 20, as a leak.
+# Stage 10 is not an ending (it stays an active quest); stage 20 is.
+CREW_QUEST_PREFIX = "ap_ent_"
+CREW_ENTITLED = 10
+CREW_TRAPPED = 20
+
+
+def _crew_texts(display: str) -> tuple[str, str, str]:
+    return (f"Archipelago Crew: {display}",
+            f"{display} is part of your crew. Archipelago recorded this in your save.",
+            f"{display} has left your crew for good.")
+
 
 def _recruit_texts(display: str) -> tuple[str, str]:
     return (f"Archipelago Recruit: {display}",
@@ -137,7 +152,8 @@ STAGES = [
 # needs the recruit strings added after them.
 _TRACKER_TEXTS = [QUEST_NAME] + [text for _, text, _ in STAGES]
 _RECRUIT_TEXTS = [t for _, display in RECRUITS for t in _recruit_texts(display)]
-_TLK_TEXTS = _TRACKER_TEXTS + _RECRUIT_TEXTS
+_CREW_TEXTS = [t for _, display in RECRUITS for t in _crew_texts(display)]
+_TLK_TEXTS = _TRACKER_TEXTS + _RECRUIT_TEXTS + _CREW_TEXTS
 
 
 def _arg_value(flag, default):
@@ -181,6 +197,7 @@ def _ensure_tlk_strings(game_dir: str, check_running: bool = True) -> list[int]:
     texts = [e.text for e in tlk.entries]
     n = len(_TLK_TEXTS)
     t = len(_TRACKER_TEXTS)
+    r = len(_RECRUIT_TEXTS)
     if len(texts) >= n and texts[-n:] == _TLK_TEXTS:
         tail_start = len(texts) - n
         indices = list(range(tail_start, tail_start + n))
@@ -189,7 +206,7 @@ def _ensure_tlk_strings(game_dir: str, check_running: bool = True) -> list[int]:
 
     if check_running and _game_running():
         raise GameRunningError(
-            "dialog.tlk needs the Archipelago recruit-quest strings but swkotor.exe is running -- "
+            "dialog.tlk needs the Archipelago quest strings but swkotor.exe is running -- "
             "close the game and reconnect the client to apply them")
 
     backup_path = tlk_path + ".pre_ap_tracker_backup"
@@ -197,12 +214,20 @@ def _ensure_tlk_strings(game_dir: str, check_running: bool = True) -> list[int]:
         shutil.copy2(tlk_path, backup_path)
         print(f"  backed up original -> {backup_path}")
 
-    if len(texts) >= t and texts[-t:] == _TRACKER_TEXTS:
+    # Blocks sit at the tail in this order: tracker (7), recruit (18), crew (27). An install that already has a prefix of them
+    # at the tail (the tracker alone, or tracker + recruit from 0.1.8) only gets the missing blocks appended right after it.
+    if len(texts) >= t + r and texts[-(t + r):] == _TRACKER_TEXTS + _RECRUIT_TEXTS:
+        start = len(texts) - (t + r)
+        new_indices = [tlk.add(text) for text in _CREW_TEXTS]
+        indices = list(range(start, start + t + r)) + new_indices
+        print(f"  tracker + recruit strings already at {start}-{start + t + r - 1}; "
+              f"appended {len(new_indices)} crew entries at {new_indices[0]}-{new_indices[-1]}")
+    elif len(texts) >= t and texts[-t:] == _TRACKER_TEXTS:
         tracker_start = len(texts) - t
-        new_indices = [tlk.add(text) for text in _RECRUIT_TEXTS]
+        new_indices = [tlk.add(text) for text in _RECRUIT_TEXTS + _CREW_TEXTS]
         indices = list(range(tracker_start, tracker_start + t)) + new_indices
         print(f"  tracker strings already at {tracker_start}-{tracker_start + t - 1}; "
-              f"appended {len(new_indices)} recruit entries at {new_indices[0]}-{new_indices[-1]}")
+              f"appended {len(new_indices)} recruit and crew entries at {new_indices[0]}-{new_indices[-1]}")
     else:
         indices = [tlk.add(text) for text in _TLK_TEXTS]
         print(f"  appended {n} entries at {indices[0]}-{indices[-1]}")
@@ -218,11 +243,14 @@ def build_quests(jrl, stringrefs: list[int]) -> None:
     existing quest with one of those tags is dropped first, so a rerun never
     duplicates). stringrefs follows _TLK_TEXTS order."""
     t = len(_TRACKER_TEXTS)
+    r = len(_RECRUIT_TEXTS)
     name_ref, stage_refs = stringrefs[0], stringrefs[1:t]
-    recruit_refs = stringrefs[t:]
+    recruit_refs = stringrefs[t:t + r]
+    crew_refs = stringrefs[t + r:]
 
     recruit_tags = {f"{RECRUIT_QUEST_PREFIX}{key}" for key, _ in RECRUITS}
-    jrl.quests = [q for q in jrl.quests if q.tag != QUEST_TAG and q.tag not in recruit_tags]
+    crew_tags = {f"{CREW_QUEST_PREFIX}{key}" for key, _ in RECRUITS}
+    jrl.quests = [q for q in jrl.quests if q.tag != QUEST_TAG and q.tag not in recruit_tags and q.tag not in crew_tags]
 
     jrl.quests.append(JRLQuest(
         name=LocalizedString(name_ref),
@@ -246,7 +274,20 @@ def build_quests(jrl, stringrefs: list[int]) -> None:
             entries=[JRLEntry(end=True, entry_id=RECRUIT_STAGE,
                               text=LocalizedString(recruit_refs[2 * i + 1]))],
         ))
-    print(f"  added {len(RECRUITS)} recruit quests ({RECRUIT_QUEST_PREFIX}*) -> {len(jrl.quests)} total quests")
+    print(f"  added {len(RECRUITS)} recruit quests ({RECRUIT_QUEST_PREFIX}*)")
+
+    for i, (key, _display) in enumerate(RECRUITS):
+        jrl.quests.append(JRLQuest(
+            name=LocalizedString(crew_refs[3 * i]),
+            planet_id=-1,
+            priority=JRLQuestPriority.LOWEST,
+            tag=f"{CREW_QUEST_PREFIX}{key}",
+            entries=[
+                JRLEntry(end=False, entry_id=CREW_ENTITLED, text=LocalizedString(crew_refs[3 * i + 1])),
+                JRLEntry(end=True, entry_id=CREW_TRAPPED, text=LocalizedString(crew_refs[3 * i + 2])),
+            ],
+        ))
+    print(f"  added {len(RECRUITS)} crew quests ({CREW_QUEST_PREFIX}*) -> {len(jrl.quests)} total quests")
 
 
 def build(game_dir: str, dry_run_dir: str | None = None) -> None:

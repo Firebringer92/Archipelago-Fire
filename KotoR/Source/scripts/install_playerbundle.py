@@ -277,9 +277,11 @@ def uninstall() -> None:
     # manifest["game_dir"], silently wrong for anyone who installed to a
     # non-default KOTOR location.
     # Every patcher that rewrites a module file or writes Override files of its own must be listed
-    # here; the Galactic Shop and area poll hook patchers were missing and left their edits behind.
+    # here; the Galactic Shop and area poll hook patchers were missing and left their edits behind, and the story
+    # gate and droid asset patchers after them (gate scripts left in Override would keep gating a vanilla game).
     for name in ("patch_loot_disturb.py", "patch_item_suppression.py", "patch_door_randomizer.py", "patch_additional_enemies.py",
-                 "patch_boss_datapads.py", "patch_galactic_shop.py", "patch_area_poll_hooks.py"):
+                 "patch_boss_datapads.py", "patch_galactic_shop.py", "patch_area_poll_hooks.py", "patch_story_gates.py",
+                 "generate_droid_assets.py"):
         result = subprocess.run(
             [sys.executable, os.path.join(SCRIPT_DIR, name), "--restore", f"--game-dir={game_dir}"],
             capture_output=True, text=True,

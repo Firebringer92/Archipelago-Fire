@@ -12,7 +12,7 @@
 // different vanilla script of the same name, pick the right one via
 // GetModuleFileName()).
 //
-// Originally built 2026-09-17 for the Dantooine Jedi Council wrap-up
+// Originally built for the Dantooine Jedi Council wrap-up
 // family alone (live-reported story stall: player left in a locked room
 // with only a "cutstart" interactable instead of being returned to the
 // courtyard) -- root cause confirmed via disassembly: the vanilla
@@ -26,6 +26,10 @@
 // own standalone copy -- same underlying bug shape (a vanilla scene
 // expects both companions present, gets stuck under ap_gated/none if
 // neither has actually been received yet), just a different trigger.
+// The Hideout scene has since moved out of this brain: it starts a
+// conversation, which cannot be done from a script run through
+// ExecuteScript, so k_ptar_carbas_en.nss reproduces the scene itself.
+// Only scenes that do not start a conversation from the original belong here.
 // FLAGGED FOR FUTURE ATTENTION: Dantooine is large and this is the
 // SECOND unrelated scene found needing this exact treatment -- watch for
 // more of the same shape (any vanilla scene disassembly showing
@@ -51,9 +55,10 @@
 // fresh -- carbas_en's own original design note: CreateObject-ing a
 // SECOND "p_carth" in a module that already has one placed leaves a
 // stray, tag-colliding clone standing around forever after (RemoveParty
-// Member does not destroy the object). Bastila never has a pre-placed
-// stand-in anywhere this brain is used (confirmed for both module
-// families), so she's always a fresh CreateObject.
+// Member does not destroy the object). Bastila has no pre-placed stand-in
+// in these modules, but a creature an earlier run left behind is reused the
+// same way, and a creature this gate created is destroyed 45 seconds after
+// the scene (PurgeGateStrays), so repeated runs no longer pile up copies.
 #include "kse"
 
 int GetCompanionGateNPCIndex(object oCompanion)
@@ -71,6 +76,28 @@ int GetCompanionGateNPCIndex(object oCompanion)
     return -1;
 }
 
+// Destroys every creature carrying sTag. RemovePartyMember/RemoveAvailableNPC only edit the roster: the creature a temporary grant
+// created keeps standing in the area, and every later run of the gate added another one.
+void PurgeCompanionByTag(string sTag)
+{
+    int n = 0;
+    object oStray = GetObjectByTag(sTag, n);
+    while (GetIsObjectValid(oStray))
+    {
+        DestroyObject(oStray);
+        n++;
+        oStray = GetObjectByTag(sTag, n);
+    }
+}
+
+// Runs a while after the scene the temporary grant was made for. Only a creature the gate itself created is destroyed, and only while
+// its companion is not available, so a real recruit that happened in the meantime is never touched.
+void PurgeGateStrays(int bBastilaMade, int bCarthMade)
+{
+    if (bBastilaMade && !IsAvailableCreature(NPC_BASTILA)) PurgeCompanionByTag("bastila");
+    if (bCarthMade && !IsAvailableCreature(NPC_CARTH)) PurgeCompanionByTag("Carth");
+}
+
 // bAllowTempGrant lets a caller with its own extra real-story prerequisite
 // (e.g. k_ptar_carbas_en.nss's GetJournalEntry("tar_bastsearch") >= 99)
 // suppress ONLY the temp-grant/bench/revert dance while still always
@@ -81,7 +108,7 @@ int GetCompanionGateNPCIndex(object oCompanion)
 // inside the right dialogue node, so none of them need to pass FALSE).
 void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllowTempGrant = TRUE)
 {
-    // Reentrancy guard -- confirmed live (Taris Hideout, carbas_en's old
+    // Reentrancy guard -- confirmed (Taris Hideout, carbas_en's old
     // standalone predecessor) that the same OnEnter trigger can fire
     // several times within single-digit milliseconds for one physical
     // visit. Two independent invocations of this function each running
@@ -113,6 +140,8 @@ void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllo
     object oPC = GetFirstPC();
     int bBastilaTemp = FALSE;
     int bCarthTemp = FALSE;
+    int bBastilaMade = FALSE;
+    int bCarthMade = FALSE;
     int nBenchedA = -1; object oBenchedA = OBJECT_INVALID;
     int nBenchedB = -1; object oBenchedB = OBJECT_INVALID;
 
@@ -155,7 +184,13 @@ void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllo
     if (bAllowTempGrant && !IsAvailableCreature(NPC_BASTILA))
     {
         AddAvailableNPCByTemplate(NPC_BASTILA, "p_bastilla");
-        object oBastila = CreateObject(OBJECT_TYPE_CREATURE, "p_bastilla", GetLocation(oPC));
+        // Reuse a Bastila that is already standing (a placed one, or one an earlier run left behind) instead of adding another.
+        object oBastila = GetObjectByTag("bastila");
+        if (!GetIsObjectValid(oBastila))
+        {
+            oBastila = CreateObject(OBJECT_TYPE_CREATURE, "p_bastilla", GetLocation(oPC));
+            bBastilaMade = TRUE;
+        }
         AddPartyMember(NPC_BASTILA, oBastila);
         bBastilaTemp = TRUE;
     }
@@ -169,6 +204,7 @@ void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllo
         if (!GetIsObjectValid(oCarth))
         {
             oCarth = CreateObject(OBJECT_TYPE_CREATURE, "p_carth", GetLocation(oPC));
+            bCarthMade = TRUE;
         }
         AddAvailableNPCByTemplate(NPC_CARTH, "p_carth");
         AddPartyMember(NPC_CARTH, oCarth);
@@ -200,6 +236,8 @@ void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllo
     {
         AddPartyMember(nBenchedA, oBenchedA);
     }
+
+    if (bBastilaMade || bCarthMade) DelayCommand(45.0, PurgeGateStrays(bBastilaMade, bCarthMade));
 
     SetLocalBoolean(oModule, GATE_BUSY_INDEX, FALSE);
 }

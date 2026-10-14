@@ -142,6 +142,8 @@ item_table: typing.Dict[str, ItemData] = {
     "PC Class: Soldier": ItemData(base_id + 47, ItemClassification.progression, "pc_class_soldier"),
     "PC Class: Scout": ItemData(base_id + 48, ItemClassification.progression, "pc_class_scout"),
     "PC Class: Scoundrel": ItemData(base_id + 49, ItemClassification.progression, "pc_class_scoundrel"),
+    # StartingClass=droid: becomes a Battle Droid (race 5, class 9, HK-47 variant model) at the first area transition.
+    "PC Droid Conversion": ItemData(base_id + 62, ItemClassification.progression, "pc_droid"),
     # AdditionalFeats: one per eligible character (PC + the 7
     # non-droid companions, order matching __init__.py's COMPANION_CLASS_KEYS).
     # Receiving one grants nothing immediately -- the arm_name is a marker
@@ -204,26 +206,39 @@ item_table: typing.Dict[str, ItemData] = {
     "Progression Item: Star Map (Korriban)": ItemData(base_id + 67, ItemClassification.progression, "give_item:kor_starpad"),
 }
 
-# Real in-game item resref for each Progression System item above, keyed
-# by the SHORT key used everywhere else (suppression script tables,
-# reconciliation) -- redundant with the arm_name's give_item:<resref>
-# suffix above, kept as its own explicit table since the suppression/
-# reconciliation side needs to go resref -> key just as often as key ->
-# resref (e.g. "I found ptar_sitharmor already in inventory -- is that
-# one of the 8 tracked progression items, and if so is it legitimately
-# AP-granted yet?"). All 8 confirmed via the game's own compiled
-# scripts. (desert_map and
-# starmap_dantooine dropped -- see the comment above the item
-# table itself for why.)
+# Story-gate progression items (ProgressionSystem option). Eight families of three plot items that hold story beats
+# until enough of them are owned (scripts/patch_story_gates.py, DEVELOPMENT_HISTORY.md section 17). The items
+# above this block are the retired first design: they stay in the table so their ids remain reserved,
+# but nothing places or tracks them any more.
+#
+# STORY_TOKEN_FAMILIES maps a family key to (display name, resref prefix); the resrefs are
+# ap_tk_<key><1..3>, matching ApTokenCount() in extender/scripts_src/ap_gate.nss.
+STORY_TOKENS_PER_FAMILY = 3
+STORY_TOKEN_FAMILIES: typing.Dict[str, str] = {
+    "tar": "Taris",
+    "dan": "Dantooine",
+    "tat": "Tatooine",
+    "kas": "Kashyyyk",
+    "man": "Manaan",
+    "kor": "Korriban",
+    "unk": "Unknown World",
+    "fin": "Star Forge",
+}
+STORY_TOKEN_BASE_ID = base_id + 200000
+STORY_TOKEN_NAMES: typing.Dict[str, typing.List[str]] = {}
+for _fi, (_key, _label) in enumerate(STORY_TOKEN_FAMILIES.items()):
+    STORY_TOKEN_NAMES[_key] = []
+    for _n in range(1, STORY_TOKENS_PER_FAMILY + 1):
+        _name = f"{_label} Progression {_n}"
+        item_table[_name] = ItemData(STORY_TOKEN_BASE_ID + _fi * STORY_TOKENS_PER_FAMILY + (_n - 1),
+                                      ItemClassification.progression, f"give_item:ap_tk_{_key}{_n}")
+        STORY_TOKEN_NAMES[_key].append(_name)
+
+# Resref of every item the reconciler re-grants when it goes missing, keyed by the short name used in the
+# poll report and in entitlement.py (keep the two in sync by hand).
 PROGRESSION_ITEM_RESREFS: typing.Dict[str, str] = {
-    "sith_armor": "ptar_sitharmor",
-    "sith_papers": "ptar_sithpapers",
-    "shield_codes": "ptar_shieldcodes",
-    "enviro_suit": "man28_envirosuit",
-    "starmap_tatooine": "tat_starpad",
-    "starmap_kashyyyk": "kas_starpad",
-    "starmap_manaan": "man_starpad",
-    "starmap_korriban": "kor_starpad",
+    f"tok_{_key}{_n}": f"ap_tk_{_key}{_n}"
+    for _key in STORY_TOKEN_FAMILIES for _n in range(1, STORY_TOKENS_PER_FAMILY + 1)
 }
 
 # Archipelago Vendor passes (Options.py's ArchipelagoVendor): one plot item per vendor menu,

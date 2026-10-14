@@ -201,7 +201,7 @@ static const uintptr_t KSE_FEAT_ADD_RVA       = 0x005cb150u - 0x00400000u; // 0x
 // -----------------------------------------------------------------------------
 // Feat record-container addresses, retained but not currently used by the shipping
 // grant path. Kept for reference:
-//   KSE_CREATURE_GETHOLDER_RVA : years-old label, IDENTIFIED 2026-09-20 via
+//   KSE_CREATURE_GETHOLDER_RVA : years-old label, IDENTIFIED via
 //                                LaneDibello/Kotor-Patch-Manager's AddressDatabases/
 //                                kotor1_0_3.db as the real CSWSObject::GetClientObject()
 //                                -- __thiscall(CSWSObject* this) -> CSWCObject*, no other
@@ -423,10 +423,10 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 // engine's own setter over guessing a byte layout). These 5 addresses were
 // never independently reverse-engineered by this project: they come from
 // LaneDibello/Kotor-Patch-Manager's AddressDatabases/kotor1_0_3.db (queried
-// directly, 2026-09-19), the SAME build/version this project targets --
+// directly), the SAME build/version this project targets --
 // confirmed trustworthy because that same database's AddFeat entry is
 // byte-identical to KSE_ARRAYA_ADD_RVA above, which THIS project already
-// independently confirmed live. All 5 sit in the same tight address range as
+// independently confirmed. All 5 sit in the same tight address range as
 // AddFeat (0x5a9fe0-0x5aa170, AddFeat itself at 0x5aa810) alongside dozens of
 // other real CSWSCreatureStats members in that DB, consistent with genuine
 // adjacent member functions, not a fabricated/guessed cluster.
@@ -434,7 +434,7 @@ static const uintptr_t KSE_ARRAYA_ADD_RVA = 0x005aa810u - 0x00400000u; // 0x001a
 // WHY THIS EXISTS: the previous mechanism for ability traps/grants
 // (ApplyEffectToObject + EffectAbilityIncrease/EffectAbilityDecrease) stacks
 // a NEW, separate effect object on the creature every single call rather
-// than rewriting one value -- confirmed live, 2026-09-19, a real character's
+// than rewriting one value -- confirmed, a real character's
 // Dexterity got permanently stuck unable to rise past 11 after accumulating
 // ~20 stacked increase/decrease effects from repeated trap/admin activity,
 // while Strength (far fewer stacked effects on the same character) kept
@@ -480,7 +480,7 @@ static const uintptr_t KSE_STATS_CHA_BASE_OFF = 243;
 // hand-rolled raw known-powers-array poke KseForcePowerOp currently uses for
 // the ADD side (KSE_FIELD_ADD_FORCE_POWER). Same LaneDibello/Kotor-Patch-
 // Manager AddressDatabases/kotor1_0_3.db source as the ability-base setters
-// above (queried 2026-09-19), sitting in the same confirmed-trustworthy
+// above (queried), sitting in the same confirmed-trustworthy
 // address cluster. Signature per that DB/their CSWSCreatureStats.h:
 // AddKnownSpell(CSWSCreatureStats* this, BYTE classId, DWORD spellId) --
 // classId is WHICH class slot's known-spell list to add to, not part of
@@ -575,7 +575,26 @@ static const uintptr_t KSE_ADD_KNOWN_SPELL_RVA = 0x005aa9b0u - 0x00400000u; // 0
 // as KSE_AdjustCreatureSkills.
 #define KSE_FIELD_HALVE_SKILL_RANK 31
 
-// TEMPORARY RESEARCH DIAGNOSTIC (2026-09-20) -- retire once the offset
+// Read-only: logs the creature's RACE, subrace and gender straight from the stat block, plus the 24 raw
+// bytes around the race field, as one
+// `AP|RACEREPORT|race=..|raw=0x........|subrace=..|gender=..|bytes=..` line (KSE_Diag shape, code 186).
+// The offsets come from Kotor-Patch-Manager's AddressDatabases/kotor1_0_3.db (CSWSCreatureStats.race=220,
+// subrace_index=232, gender=100, the same block the ability-base offsets above (STR=233) and XP (104) live in)
+// and are CONFIRMED (race: PC/Mission/Zaalbar 6, T3-M4 5; gender: Mission 1, PC/T3-M4/Zaalbar 0;
+// subrace: Zaalbar 1, everyone else 0). The race field is ONE byte: the three bytes above it hold
+// unrelated, changing data, so only the low byte is ever written. Writes nothing. nValue is unused.
+#define KSE_FIELD_REPORT_RACE 32
+#define KSE_DIAG_CODE_RACE_REPORT 186
+static const uintptr_t KSE_STATS_RACE_OFF    = 220;
+static const uintptr_t KSE_STATS_SUBRACE_OFF = 232;
+static const uintptr_t KSE_STATS_GENDER_OFF  = 100;
+
+// Sets the creature's RACE byte (stat block +220). Guarded: nValue must be 5 (droid) or 6 (human), anything
+// else is refused with a logged anomaly. Writes the single byte only; logs old -> new. Race alone does not
+// change appearance, class or equipped gear. Call as KSE_SetCreatureField(oCreature, KSE_FIELD_SET_RACE(), 5).
+#define KSE_FIELD_SET_RACE 33
+
+// TEMPORARY RESEARCH DIAGNOSTIC -- retire once the offset
 // below is confirmed and wired into a real fix. Investigating why a
 // force power/feat correctly granted and PERSISTED on the server side
 // (CSWSCreatureStats, everything this file's KSE_FIELD_* family already
@@ -599,7 +618,7 @@ static const uintptr_t KSE_ADD_KNOWN_SPELL_RVA = 0x005aa9b0u - 0x00400000u; // 0
 #define KSE_OBJ_CLIENT_OBJECT_OFF 548          // CSWSObject.client_object (0x224)
 #define KSE_CLIENT_STATS_VTABLE_VA 0x751c60u   // CSWCCreatureStats's own vtable
 
-// PIVOT, 2026-09-20 -- a full read-only vtable dump of the resolved client
+// PIVOT -- a full read-only vtable dump of the resolved client
 // object (all 80 slots cross-referenced against Patch Manager's DB) came
 // back entirely animation/visual-effect/portrait/sync methods, no
 // GetStats-shaped getter anywhere. CSWCCreature::GetSelfForcePowers /
@@ -618,7 +637,7 @@ static const uintptr_t KSE_ADD_KNOWN_SPELL_RVA = 0x005aa9b0u - 0x00400000u; // 0
 static const uintptr_t KSE_GET_SELF_FORCE_POWERS_RVA = 0x00616230u - 0x00400000u; // 0x00216230
 #define KSE_FIELD_DIAG_CALL_GET_SELF_FORCE_POWERS 15   // nValue unused/reserved
 
-// RESOLVED, 2026-09-20 -- CONFIRMED LIVE via a real memory-snapshot diff
+// RESOLVED -- CONFIRMED via a real memory-snapshot diff
 // around a real level-up (Juhani learning Force Valor, spell id 22):
 // KSE_HOLDER_CONTAINER_OFF (0x2f8, defined near KSE_CREATURE_GETHOLDER_RVA
 // above) genuinely IS the offset from a resolved client CSWCCreature* to
@@ -672,7 +691,7 @@ static const uintptr_t KSE_CLIENT_ADD_KNOWN_SPELL_RVA = 0x00649f90u - 0x00400000
 // Force Powers (known-list) category record -- CONFIRMED at a
 // fixed offset from KseField_StatBlock()'s object, same base every other
 // field above uses. This "category table" IS the real CSWSCreatureStats::
-// classes[] array (confirmed 2026-09-20 against LaneDibello/Kotor-Patch-
+// classes[] array (confirmed against LaneDibello/Kotor-Patch-
 // Manager's AddressDatabases/kotor1_0_3.db: KSE_STATS_CATEGORY_TABLE_OFF/
 // STRIDE are byte-identical to classes[]'s own offset/stride, and
 // known_spells sits at offset 0 of each 40-byte ClassInfo entry, matching
@@ -680,7 +699,7 @@ static const uintptr_t KSE_CLIENT_ADD_KNOWN_SPELL_RVA = 0x00649f90u - 0x00400000
 // CLASS SLOT (0 or 1) a creature's known-spells list belongs to.
 #define KSE_STATS_CATEGORY_TABLE_OFF   0x8C  // + (category * KSE_STATS_CATEGORY_STRIDE)
 #define KSE_STATS_CATEGORY_STRIDE      40
-// RETIRED 2026-09-20 -- was a hardcoded "category 1" assumption, only ever
+// RETIRED -- was a hardcoded "category 1" assumption, only ever
 // confirmed correct for a naturally-leveled character (Jedi taken as a
 // genuine second class via the Dantooine trials, base class staying in
 // slot 0). Wrong for a character whose Jedi class lives in slot 0 instead

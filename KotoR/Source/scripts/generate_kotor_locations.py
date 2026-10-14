@@ -53,6 +53,9 @@ BASE_ID = 9210000
 # two extremes (0 and 100) or the locked-item goal placement silently
 # fails to find them.
 ALIGNMENT_THRESHOLDS = [0, 10, 20, 30, 40, 60, 70, 80, 90, 100]
+# Inner thresholds added later: emitted AFTER the boss datapad rows so every existing location id stays put. The tracker counts
+# crossings against ALIGNMENT_THRESHOLDS only, never these.
+EXTRA_ALIGNMENT_THRESHOLDS = [35, 45, 55, 65]
 
 
 def _alignment_display(value):
@@ -63,11 +66,12 @@ def _alignment_display(value):
     return f"Alignment: {'Dark' if value < 50 else 'Light'} Side {value}"
 
 
-# 3 bonus alignment checks -- key must match kotor_location_tracker.py's
-# _add_bonus() call keys exactly ("true_neutral"/"fallen_jedi"/
-# "redeemed_sith").
+# 2 bonus alignment checks -- key must match kotor_location_tracker.py's
+# _add_bonus() call keys exactly ("fallen_jedi"/"redeemed_sith"). The slot a retired
+# "True Neutral" check used (RETIRED_BONUS_SLOTS) is still counted so every later
+# location id stays where it was.
+RETIRED_BONUS_SLOTS = 1
 ALIGNMENT_BONUS = [
-    ("true_neutral", "Alignment: True Neutral"),
     ("fallen_jedi", "Alignment: Fallen Jedi"),
     ("redeemed_sith", "Alignment: Redeemed Sith"),
 ]
@@ -221,8 +225,7 @@ def main():
     lines.append("    area_idx: int = -1")
     lines.append("    # alignment: one of the 10 real threshold crossings (0-100, excluding 50).")
     lines.append("    alignment_value: int = -1")
-    lines.append("    # alignment_bonus: one of the 3 history-based bonus checks (\"true_neutral\"/")
-    lines.append("    # \"fallen_jedi\"/\"redeemed_sith\").")
+    lines.append("    # alignment_bonus: one of the 2 history-based bonus checks (\"fallen_jedi\"/\"redeemed_sith\").")
     lines.append('    alignment_bonus: str = ""')
     lines.append("    # level: character level 2-20 (1 is the starting value, not tracked).")
     lines.append("    level_value: int = -1")
@@ -254,8 +257,7 @@ def main():
     lines.append("#     become available (recruitment point reached)")
     lines.append("#   - area: 78 checks, one per covered area, firing on first visit")
     lines.append("#   - alignment: 10 real threshold crossings (0-100, excluding 50)")
-    lines.append("#   - alignment_bonus: 3 history-based checks (true_neutral/fallen_jedi/")
-    lines.append("#     redeemed_sith)")
+    lines.append("#   - alignment_bonus: 2 history-based checks (fallen_jedi/redeemed_sith)")
     lines.append("#   - level: character levels 2-20 (1 is the starting value)")
     lines.append("#   - malak_defeated: one-shot, Malak's defeat")
     lines.append("#   - bounty: 40 checks, one per Additional Enemies bounty card carried")
@@ -314,6 +316,7 @@ def main():
         )
         idx_counter += 1
 
+    idx_counter += RETIRED_BONUS_SLOTS  # the retired True Neutral id stays unused
     for key, display in ALIGNMENT_BONUS:
         lines.append(
             f'    "{display}": LocationData(base_id + {idx_counter}, region="Character", '
@@ -353,6 +356,13 @@ def main():
         lines.append(
             f'    "{display}": LocationData(base_id + {idx_counter}, region="Bosses", '
             f'location_type="datapad", datapad_key="{key}"),'
+        )
+        idx_counter += 1
+
+    for value in EXTRA_ALIGNMENT_THRESHOLDS:
+        lines.append(
+            f'    "{_alignment_display(value)}": LocationData(base_id + {idx_counter}, region="Character", '
+            f'location_type="alignment", alignment_value={value}),'
         )
         idx_counter += 1
 

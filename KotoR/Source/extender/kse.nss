@@ -368,7 +368,7 @@ void KSE_RemoveFeatArrayA(int nFeat, object oCreature = OBJECT_SELF) { _kse_remo
 //
 // A generic fixed-slot writer for class type, class level, and Force points --
 // the class/level/Force offsets this project's own live testing confirmed
-// (confirmed live: a companion converted to a working Level 20 Guardian
+// (confirmed: a companion converted to a working Level 20 Guardian
 // with 76 Force Points). Same one-write-per-call discipline as KSE_AdjustCreatureSkills
 // above: no lists, no counts, no capacity, just a value written to a slot
 // the engine's own reader already reads.
@@ -398,7 +398,7 @@ int KSE_FIELD_REMOVE_FORCE_POWER() { return 7; }  // nValue = spells.2da row id.
 // engine's own SetSTRBase/SetDEXBase/SetINTBase/SetWISBase/SetCHABase member
 // functions, NOT a relative Effect (EffectAbilityIncrease/Decrease stacks a
 // new effect object on every call and has no ceiling on how many can
-// accumulate -- confirmed live to permanently cap a character's Dexterity
+// accumulate -- confirmed to permanently cap a character's Dexterity
 // after enough stacked calls). nValue = the new base score, 0-255.
 int KSE_FIELD_SET_STR_BASE() { return 9; }
 int KSE_FIELD_SET_DEX_BASE() { return 10; }
@@ -459,6 +459,12 @@ int KSE_FIELD_REPORT_SKILL_RANKS() { return 30; }
 // nValue = the skill index (SKILL_*). Call as
 //   KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_STEALTH);
 int KSE_FIELD_HALVE_SKILL_RANK() { return 31; }
+// Read-only: logs the creature's race, subrace and gender and a raw byte window as one AP|RACEREPORT line.
+// Call as KSE_SetCreatureField(oCreature, KSE_FIELD_REPORT_RACE(), 0);
+int KSE_FIELD_REPORT_RACE() { return 32; }
+// Sets the creature's race byte. Only 5 (droid) or 6 (human) is accepted; anything else is refused.
+// Call as KSE_SetCreatureField(oCreature, KSE_FIELD_SET_RACE(), 5);
+int KSE_FIELD_SET_RACE() { return 33; }
 
 // TEMPORARY RESEARCH DIAGNOSTIC -- see offsets.h's own comment. Retire
 // once the client-stats offset is confirmed and wired into a real fix.
@@ -473,7 +479,7 @@ void KSE_SetCreatureField(object oCreature, int nFieldType, int nValue)
 }
 
 // -----------------------------------------------------------------------------
-// KOTOR AP ADDITION (2026-09-06): Current HP getter -- the read-side
+// KOTOR AP ADDITION: Current HP getter -- the read-side
 // counterpart to KSE_FIELD_CURRENT_HP() above. Max HP has NO equivalent
 // native: it has no memory field at all (confirmed via a thorough double-
 // diff), and is computed instead from class/level/CON
@@ -484,7 +490,7 @@ void KSE_SetCreatureField(object oCreature, int nFieldType, int nValue)
 //
 // ACTION 617 -- SWMG_GetMaxHitPoints's (object)->int shape carries it
 // exactly. Confirmed zero real callers via scan_opcode_usage.py
-// (2026-09-06) and not claimed by any other KSE host (see offsets.h's
+// and not claimed by any other KSE host (see offsets.h's
 // KSE_GETCURRENTHP_ID comment).
 int KSE_GetCurrentHP(object oCreature)
 {
@@ -492,7 +498,7 @@ int KSE_GetCurrentHP(object oCreature)
 }
 
 // KSE_DumpStatBlock (ACTION 638) and KSE_TestCreditsChain (ACTION 606) --
-// both TEMPORARY research wrappers -- were removed 2026-09-06 once the
+// both TEMPORARY research wrappers -- were removed once the
 // research they supported concluded and shipped as real natives/offsets.
 // Archived at extender/research_archive/kse_hook_temp_natives_2026-09-06.cpp.txt.
 // Both underlying ACTION ids are unclaimed again -- do not reuse without
@@ -500,7 +506,7 @@ int KSE_GetCurrentHP(object oCreature)
 
 // -----------------------------------------------------------------------------
 // KOTOR AP ADDITION (not part of upstream K1SE): SetCredits -- the real,
-// write-capable promotion of the old credits-chain diagnostic (2026-09-03).
+// write-capable promotion of the old credits-chain diagnostic.
 // Resolves pRes via the same confirmed chain and writes nValue directly to
 // [pRes+0xFC] -- an exact, bidirectional set. Replaces the old
 // GiveGoldToCreature/TakeGoldFromCreature dance (TakeGoldFromCreature is a
@@ -512,7 +518,7 @@ int KSE_GetCurrentHP(object oCreature)
 //
 // ACTION 683 -- SWMG_GetSoundFrequency's (object,int)->int shape carries
 // it exactly. Confirmed zero real callers via scan_opcode_usage.py
-// (2026-09-03) and not claimed by any other KSE host (see offsets.h's
+// and not claimed by any other KSE host (see offsets.h's
 // KSE_SET_CREDITS_ID comment).
 int KSE_SetCredits(object oPC, int nValue)
 {

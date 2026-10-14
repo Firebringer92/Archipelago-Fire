@@ -23,8 +23,7 @@ Every entry is also labeled with WHY it is or isn't randomizable, mirroring
 EntranceRando.py's own classification (excluded story-critical zones,
 Ebon Hawk boarding pins, no-reverse-door fixed entries, multi-door pairs
 resolved via waypoint suffix, repaired-orphan entries) rather than dumping
-one undifferentiated list -- see FutureDesign.md's door-randomizer section
-for why this breakdown was the explicit ask. The classification logic
+one undifferentiated list. The classification logic
 below is a deliberate READ-ONLY duplicate of EntranceRando.py's pure
 functions (not an import): that module's own top-level imports
 (BaseClasses, entrance_rando) require the full Archipelago core on

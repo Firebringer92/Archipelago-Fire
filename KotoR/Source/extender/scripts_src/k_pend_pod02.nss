@@ -90,10 +90,15 @@ void main()
     }
     KSE_Diag(159, "AP|POD02_DEBUG|heal_done");
 
+    // The vanilla pod script starts the conversation end_pod, whose last reply (R1) writes the quest stage end_attack 99 ("You and Carth escaped the
+    // Endar Spire...") and then plays the crash cutscene. This replacement skips that conversation, so without this line the stage is never written and
+    // the "Endar Spire: Attack on the Endar Spire" check can never fire.
+    AddJournalQuestEntry("end_attack", 99);
+    KSE_Diag(159, "AP|POD02_DEBUG|journal_end_attack_99");
+
     // The transition target must not be tar_m02aa: it is TWO hops past
-    // the actual next module -- this project's own docs/history/PHASE12.md
-    // documented the real chain: "Endar Spire -> Hideout -> tar_m02aa is
-    // the fixed prelude" (tar_m02af = Taris Hideout is the direct next
+    // the actual next module -- the real chain is "Endar Spire -> Hideout ->
+    // tar_m02aa", the fixed prelude (tar_m02af = Taris Hideout is the direct next
     // stop; tar_m02aa/South Apartments comes AFTER that, via the
     // Hideout's own real exit door, not a script). Independently
     // confirmed against LaneDibello's Kotor-Randomizer's own verified
@@ -103,9 +108,9 @@ void main()
     // reachable candidate (this script) -- so the call itself firing was
     // never in question, only its argument.
     //
-    // Cross-checked against the only real, live-confirmed StartNewModule
-    // call in this codebase (Bastila's recruit script, apo_bastila_orig,
-    // per docs/history/PHASE11.md) -- that call fires from INSIDE a
+    // Cross-checked against the only real, confirmed StartNewModule
+    // call in this codebase (Bastila's recruit script, apo_bastila_orig)
+    // -- that call fires from INSIDE a
     // dialogue script node, never from a raw OnUsed placeable handler.
     // OnUsed fires while the PC is still mid-AssignCommand "walk to and
     // use" action, so the ClearAllActions+DelayCommand wrapping stays --

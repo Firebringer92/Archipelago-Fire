@@ -47,6 +47,17 @@ def main():
         copied += 1
 
     print(f"Copied {copied} files -> {dest_override}")
+
+    # lev40_carth.dlg shipped in 0.1.8 as a replacement of that name, which also replaced the dialogs of the same name in the
+    # Leviathan prison and hangar. It is now ap_lev_carth.dlg; take the old copy out, but only when it is the one this project shipped.
+    new_copy = os.path.join(DIST_OVERRIDE, "ap_lev_carth.dlg")
+    old_copy = os.path.join(dest_override, "lev40_carth.dlg")
+    if os.path.isfile(new_copy) and os.path.isfile(old_copy):
+        with open(new_copy, "rb") as a, open(old_copy, "rb") as b:
+            same = a.read() == b.read()
+        if same:
+            os.remove(old_copy)
+            print("Removed the retired lev40_carth.dlg.")
     print("Base mod deployed. Item suppression and door randomization (if enabled in your")
     print("seed) are separate steps -- see patch_item_suppression.py / patch_door_randomizer.py.")
 

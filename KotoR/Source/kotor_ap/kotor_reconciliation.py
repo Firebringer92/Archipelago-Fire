@@ -158,8 +158,8 @@ _CLASSREPORT_RE = re.compile(
 # a single-class Jedi PC under the raw-overwrite rewrite, since baseclass
 # IS one of the Jedi types in that case). Used by the delevel reconciler
 # -- see on_area_transition()'s xp-clamp branch.
-# Companion class self-healing (see FutureDesign.md's "Entitlement/dispatch
-# redesign" entry) -- CheckCompanionClasses() (generate_poll_shared.py)
+# Companion class self-healing (see DEVELOPMENT_HISTORY.md section 13) --
+# CheckCompanionClasses() (generate_poll_shared.py)
 # reports the 7 non-droid companions' position-1 class every poll, -1 for
 # a companion not currently recruited (IsNPCPartyMember false) rather than
 # a real CLASS_TYPE_* value (including CLASS_TYPE_SOLDIER's own 0).
@@ -172,9 +172,8 @@ _COMPANION_CLASSREPORT_RE = re.compile(
 # companions are AVAILABLE (on the roster, in the active party or not), plus
 # busy=1 while a scripted scene has someone staged on purpose (the Leviathan
 # sequence, a conversation, the Zaalbar/Jolee temporary-companion scenes).
-# Anyone available who the player is not entitled to is purged once, after
-# several consecutive non-busy reports -- see ReconciliationTracker.
-# _roster_extras. Keys in the order the poll reports them; the index is the
+# Anyone available whose entitlement marker (CREWREPORT) is not 10 is a leak and is purged after
+# several settled reports across two area entries -- see ReconciliationTracker._roster_extras. Keys in the order the poll reports them; the index is the
 # NPC_* slot (0 Bastila, 1 Canderous, 2 Carth, 3 HK-47, 4 Jolee, 5 Juhani,
 # 6 Mission, 7 T3-M4, 8 Zaalbar).
 _ROSTER_KEYS = ["bastila", "canderous", "carth", "hk47", "jolee", "juhani", "mission", "t3m4", "zaalbar"]
@@ -183,15 +182,37 @@ _ROSTER_NPC_IDX = {"bastila": 0, "canderous": 1, "carth": 2, "hk47": 3, "jolee":
 _ROSTER_RE = re.compile(
     r"AP\|ROSTERREPORT\|busy=(\d)\|bastila=(\d)\|canderous=(\d)\|carth=(\d)\|hk47=(\d)\|"
     r"jolee=(\d)\|juhani=(\d)\|mission=(\d)\|t3m4=(\d)\|zaalbar=(\d)\|lev=(-?\d+)"
-    r"\|sf=(\d)\|fc=(-?\d+)\|bp=(\d)(?:\|md=(\d))?(?:\|sel=([01]{9}))?"
+    r"\|sf=(\d)\|fc=(-?\d+)\|bp=(\d)(?:\|md=(\d))?(?:\|sel=([01]{9}))?(?:\|bz=(\d+))?(?:\|km=(\d+))?"
 )
+# Entitlement markers (CheckCrewMarkers(), generate_poll_shared.py): per companion the journal quest ap_ent_<key>, written by the
+# companion grant arm (10 = entitled) and by the Remove a Companion trap (20 = trapped off for good). They live in the save, so
+# they are the only entitlement the reconciler consults for a purge, the Star Forge pass and the selectability fix. Order = _ROSTER_KEYS.
+_CREW_RE = re.compile(
+    r"AP\|CREWREPORT\|bastila=(\d+)\|canderous=(\d+)\|carth=(\d+)\|hk47=(\d+)\|"
+    r"jolee=(\d+)\|juhani=(\d+)\|mission=(\d+)\|t3m4=(\d+)\|zaalbar=(\d+)"
+)
+_CREW_ENTITLED = 10
+# Most times the reconciler sends the same missing feat set for one character before it stops trying.
+_FEATS_MAX_SENDS = 3
+_CREW_TRAPPED = 20
+# Leak purge: a companion on the roster whose marker is not 10 (never granted, or trapped off) is purged only after it has been seen
+# across this many area entries (and a few settled reports) with nothing busy. Not applied once the Unknown World trip has begun
+# (the story stage km=, K_KOTOR_MASTER, is 40 or more): the Unknown World finale stages the whole crew on purpose and the Star Forge
+# pass cleans up after it.
+_LEAK_AREA_ENTRIES = 2
+_LEAK_STORY_STAGE_BLOCK = 40
+# A busy source other than the Leviathan sequence, a conversation or an Unknown World module (bits 2, 4, 8, 16 of bz=) that stays set
+# this long is almost certainly stuck (a dropped revert); it is logged, nothing is changed.
+_BUSY_STUCK_SECONDS = 600
+_BUSY_STUCK_BITS = {2: "PC boolean 78 (Jolee field scene)", 4: "forcefield Mission staging", 8: "Zaalbar Mission staging",
+                    16: "Bastila+Carth party gate"}
 # Star Forge pass: companions that nothing in the Star Forge needs (its Carth and
 # Bastila scenes use stand-in creatures with their own tags), purged on arrival if
 # the player is not entitled to them. Bastila is handled by path, see
 # ReconciliationTracker._starforge_actions.
 _STARFORGE_PURGE_KEYS = ["carth", "canderous", "hk47", "jolee", "juhani", "mission", "t3m4", "zaalbar"]
 # lev_captured's final journal entry (global.jrl): the Leviathan has been
-# escaped. The roster cleanup only runs from then on.
+# escaped (reported as lev= and kept as roster_leviathan_done; the cleanup no longer depends on it).
 _LEVIATHAN_DONE_ENTRY = 99
 # Consecutive non-busy reports (5 s apart) an unentitled companion must be
 # seen in before a purge is sent, and how long after the first report of a
@@ -204,7 +225,7 @@ _ROSTER_WARMUP_SECONDS = 45
 # either "NONE" (not currently recruited), empty (recruited, holds none of
 # ADDITIONAL_FEATS_POOL), or a comma-joined list of held feat.2da ids, so a
 # generic capture handles all three shapes uniformly. MUST exclude '"' too,
-# not just '|' -- confirmed live: the raw kse.log line wraps the whole
+# not just '|' -- confirmed: the raw kse.log line wraps the whole
 # message in msg="...", so the LAST group (zaalbar, nothing bounding it on
 # the right) greedily swallowed that trailing '"' (e.g. "NONE" arrived as
 # NONE", which then failed the plain == "NONE" check and crashed int() on
@@ -419,7 +440,6 @@ class ReconciliationTracker:
         send_unparty: typing.Optional[typing.Callable[[str], typing.Awaitable[bool]]] = None,
         send_roster_remove: typing.Optional[typing.Callable[[str], typing.Awaitable[bool]]] = None,
         send_select: typing.Optional[typing.Callable[[str], typing.Awaitable[bool]]] = None,
-        entitled_companions: typing.Optional[typing.Callable[[], typing.Set[str]]] = None,
     ):
         self._send_apply = send_apply
         self._send_apply_value = send_apply_value
@@ -449,10 +469,9 @@ class ReconciliationTracker:
         # send_delevel/send_heavy above.
         self._send_feats = send_feats
         # Roster cleanup: send_purge(npc_key) removes a companion the player
-        # is not entitled to (the purge_companion trap); entitled_companions()
-        # returns the keys the delivery log says were granted for this
-        # seed/slot, the persistent half of "who should be on the roster".
-        # Both optional, same tolerant shape as the callbacks above.
+        # is not entitled to (the purge_companion trap). Who is entitled comes only from the
+        # entitlement markers in the save (current_crew, see _CREW_RE), never from the client's
+        # delivery log. Optional, same tolerant shape as the callbacks above.
         self._send_purge = send_purge
         # Star Forge pass only: out of the active party + objects destroyed, roster kept
         # (an entitled Bastila on the light path), and roster-only removal (a non-entitled
@@ -461,7 +480,6 @@ class ReconciliationTracker:
         self._send_unparty = send_unparty
         self._send_roster_remove = send_roster_remove
         self._send_select = send_select
-        self._entitled_companions = entitled_companions
         self._on_death = on_death
         # Optional, same reasoning as send_delevel/on_death above -- a
         # missing callable just means "nothing else knows about in-flight
@@ -476,8 +494,8 @@ class ReconciliationTracker:
     def reset_for_new_connection(self) -> None:
         """Every field this method sets must be reset on each new
         connection, not just set once in __init__: a single long-running
-        KotorClient process that connects to a DIFFERENT slot (e.g.
-        WaterKnight after FireKnight) without restarting the process
+        KotorClient process that connects to a DIFFERENT slot (a
+        second slot after the first) without restarting the process
         would otherwise keep every bit of the PREVIOUS slot's
         reconciliation state -- expected_scalar/_skill_baseline/
         expected_companions still reflecting the old slot's items,
@@ -537,7 +555,7 @@ class ReconciliationTracker:
         # ordinary vanilla play is exactly as wrong as one who's over it).
         # REPLACES an earlier "track cumulative lifetime spend, subtract it
         # from the raw formula" design -- confirmed via a real live
-        # incident (2026-09-28/29) to be a fatal one-way ratchet: any
+        # incident to be a fatal one-way ratchet: any
         # decrease it ever observed got treated as permanent spend with no
         # way to reset, INCLUDING a decrease caused by its own stale
         # set_credits correction landing late (corrections are staged
@@ -643,12 +661,12 @@ class ReconciliationTracker:
         self.trapped_off_companions: typing.Set[str] = set()
         # Roster cleanup state (see _ROSTER_RE). current_roster None = no
         # ROSTERREPORT yet this connection (nothing is ever purged on an
-        # unknown roster). trust_recruit_markers is set by the client for
-        # companion_mode=normal only: there a story-recruited companion is
-        # entitled the moment the recruit script's journal marker exists,
-        # which can be well before the auto-grant lands; under ap_gated/none
-        # the markers are just the location checks and entitle nobody.
+        # unknown roster); current_crew None = no CREWREPORT yet (nobody is entitled
+        # or leaked on unknown markers).
         self.current_roster: typing.Optional[typing.Dict[str, bool]] = None
+        self.current_crew: typing.Optional[typing.Dict[str, int]] = None
+        self.roster_busy_mask: typing.Optional[int] = None
+        self.roster_story_stage: typing.Optional[int] = None
         self.roster_busy = True
         self.roster_leviathan_done = False
         self.roster_in_starforge = False
@@ -662,18 +680,24 @@ class ReconciliationTracker:
         self._unsel_streak: typing.Dict[str, int] = {}
         self._unsel_inflight_since: typing.Dict[str, float] = {}
         self._sf_inflight_since: typing.Dict[str, float] = {}
-        # One-shot per connection: once a post-Leviathan roster has been seen
-        # clean (nothing unentitled), the cleanup stops for good, so later
-        # scenes that add companions on purpose can never be undone by it.
-        self._roster_cleanup_done = False
-        # "on" purges, "log" only reports who it would purge, "off" disables
-        # (KotorClient's /ap_roster_cleanup). Not reset per connection: it is
-        # an operator choice, not live state.
+        # "on" acts, "log" only reports what it would do, "off" disables (KotorClient's
+        # /ap_roster_cleanup). It governs the Star Forge pass and the selectability fix. Not reset per
+        # connection: it is an operator choice, not live state.
         self.roster_cleanup_mode = "on"
-        self.trust_recruit_markers = False
+        # The leak purge (a companion on the roster whose entitlement marker is not 10) has its own
+        # switch, report-only by default (KotorClient's /ap_leak_purge).
+        # "auto" (default): report only until the Leviathan has been escaped, purge from then on. "on" / "log" / "off" are explicit
+        # choices (/ap_leak_purge) that hold in every phase.
+        self.leak_purge_mode = "auto"
         self._roster_first_seen: typing.Optional[float] = None
         self._roster_extra_streak: typing.Dict[str, int] = {}
+        self._leak_seen: typing.Set[str] = set()
+        self._leak_area_count: typing.Dict[str, int] = {}
+        self._busy_flag_since: typing.Optional[float] = None
+        self._busy_warned_at: float = 0.0
         self._purge_inflight_since: typing.Dict[str, float] = {}
+        # Marker repair: when the grant arm was last re-sent for a received companion whose entitlement marker was missing.
+        self._marker_repair_since: typing.Dict[str, float] = {}
         # PC class self-healing (see entitlement.py's PC_CLASS_CONST_TO_ARM) --
         # tied to AP progress (the last class-switch item actually received),
         # not to any one running game process, same reasoning as
@@ -695,8 +719,7 @@ class ReconciliationTracker:
         self._pc_class_inflight_since: typing.Optional[float] = None
         self._companion_class_inflight: typing.Dict[str, int] = {}
         self._companion_class_inflight_since: typing.Dict[str, float] = {}
-        # Feats entitlement (see FutureDesign.md's "Entitlement/dispatch
-        # redesign" entry) -- "pc" plus each companion key -> every feat_id
+        # Feats entitlement (see DEVELOPMENT_HISTORY.md section 13) -- "pc" plus each companion key -> every feat_id
         # ever actually decided for them by a resolved Additional Feats
         # item (KotorClient.py's _resolve_additional_feats). UNLIKE
         # class/xp/credits, there is no formula to recompute this from
@@ -714,6 +737,9 @@ class ReconciliationTracker:
         # _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS) grant is still landing.
         self._feats_inflight: typing.Dict[str, typing.FrozenSet[int]] = {}
         self._feats_inflight_since: typing.Dict[str, float] = {}
+        # How many times the same missing set has been sent without it ever landing, and who the retries were given up for.
+        self._feats_attempts: typing.Dict[str, typing.Tuple[typing.FrozenSet[int], int]] = {}
+        self._feats_gave_up: typing.Set[str] = set()
         # Progression-item entitlement (see PROGRESSION_ITEM_RESREFS's own
         # comment, entitlement.py) -- which of the 8 tracked keys have
         # actually been sent via give_item: (note_item_received below),
@@ -739,7 +765,7 @@ class ReconciliationTracker:
         # area transition itself rather than waiting for that poll cycle's
         # own reports the way _reconcile()'s credits check effectively
         # does (SKILLREPORT-triggered, always last in a cycle). REAL
-        # CRASH CAUSED BY THIS (2026-09-17): extender reconnected mid-
+        # CRASH CAUSED BY THIS: extender reconnected mid-
         # session, reset_live_state() zeroed current_scalar, and the very
         # next AREA check fired before that cycle's XPREPORT arrived --
         # clamped real XP 38105 to a bogus 0 -> 40000 while the player was
@@ -864,6 +890,9 @@ class ReconciliationTracker:
         self.current_companion_classes = {k: -1 for k in _COMPANION_CLASS_KEYS}
         self.current_companion_feats = {k: None for k in _COMPANION_CLASS_KEYS}
         self.current_roster = None
+        self.current_crew = None
+        self.roster_busy_mask = None
+        self.roster_story_stage = None
         self.roster_busy = True
         self.roster_leviathan_done = False
         self.roster_in_starforge = False
@@ -874,10 +903,13 @@ class ReconciliationTracker:
         self.current_selectable = None
         self._unsel_streak = {}
         self._unsel_inflight_since = {}
-        self._roster_cleanup_done = False
         self._roster_first_seen = None
         self._roster_extra_streak = {}
+        self._leak_seen = set()
+        self._leak_area_count = {}
+        self._busy_flag_since = None
         self._purge_inflight_since = {}
+        self._marker_repair_since = {}
         self.current_progression_items = {k: False for k in PROGRESSION_ITEM_RESREFS}
         self.current_ap_tracker_stage = None
         self.current_level = None
@@ -912,6 +944,8 @@ class ReconciliationTracker:
         self._companion_class_inflight_since = {}
         self._feats_inflight = {}
         self._feats_inflight_since = {}
+        self._feats_attempts = {}
+        self._feats_gave_up = set()
         self._progression_item_inflight_since = {}
         self._ap_tracker_inflight_target = None
         self._ap_tracker_inflight_since = None
@@ -1197,13 +1231,13 @@ class ReconciliationTracker:
             self.roster_final_choice = values[12]
             self.roster_bastila_in_party = bool(values[13])
             self.roster_malak_dead = bool(values[14]) if len(values) > 14 else False
+            self.roster_busy_mask = int(m.group(17)) if m.group(17) else None
+            self.roster_story_stage = int(m.group(18)) if m.group(18) else None
             if self._roster_first_seen is None:
                 self._roster_first_seen = time.time()
+            self._watch_busy_sources()
             extras = set(self._roster_extras())
-            if (self.roster_leviathan_done and not self.roster_busy and not extras
-                    and not self.roster_in_starforge
-                    and time.time() - self._roster_first_seen >= _ROSTER_WARMUP_SECONDS):
-                self._roster_cleanup_done = True
+            leak_ok = self._leak_rule_applies()
             unsel = self._unselectable_entitled()
             for key in _ROSTER_KEYS:
                 if key in unsel and not self.roster_busy and not self.roster_in_starforge:
@@ -1220,13 +1254,21 @@ class ReconciliationTracker:
                     self._sf_streak[key] = 0
                     if key not in sf_actions:
                         self._sf_inflight_since.pop(key, None)
+            self._leak_seen = set()
             for key in _ROSTER_KEYS:
-                if key in extras and not self.roster_busy:
+                if key in extras and leak_ok:
                     self._roster_extra_streak[key] = self._roster_extra_streak.get(key, 0) + 1
+                    self._leak_seen.add(key)
                 else:
                     self._roster_extra_streak[key] = 0
+                    self._leak_area_count[key] = 0
                     if key not in extras:
                         self._purge_inflight_since.pop(key, None)
+                        self._marker_repair_since.pop(key, None)
+            return
+        m = _CREW_RE.search(event)
+        if m:
+            self.current_crew = {k: int(v) for k, v in zip(_ROSTER_KEYS, m.groups())}
             return
         m = _COMPANION_CLASSREPORT_RE.search(event)
         if m:
@@ -1252,6 +1294,9 @@ class ReconciliationTracker:
             # the XP clamp. The branches in between match other report
             # types, so falling through is safe.
             self._last_covered_area_entry_time = time.time()
+            # Leak purge: every area entry while a companion stays on the roster without an entitlement marker counts as one transition.
+            for key in self._leak_seen:
+                self._leak_area_count[key] = self._leak_area_count.get(key, 0) + 1
         m = _LEVEL_RE.search(event)
         if m:
             self.current_level = int(m.group(1))
@@ -1423,18 +1468,45 @@ class ReconciliationTracker:
             self._reconcile()
 
     def _entitled_keys(self) -> typing.Optional[typing.Set[str]]:
-        """Companion keys the player is entitled to (see _roster_extras), or None when
-        the entitlement could not be worked out (treat the roster as unknown)."""
-        entitled = {k for k, idx in _ROSTER_NPC_IDX.items() if idx in self.expected_companions}
-        if self._entitled_companions is not None:
-            try:
-                entitled |= set(self._entitled_companions())
-            except Exception:
-                logger.exception("[roster] entitled_companions callback failed, treating the roster as unknown")
-                return None
-        if self.trust_recruit_markers:
-            entitled |= {k for k, idx in _ROSTER_NPC_IDX.items() if idx in self.last_seen_companions}
-        return entitled - self.trapped_off_companions
+        """Companion keys the player is entitled to: the ones whose journal marker ap_ent_<key> reads 10 (written by
+        the grant arm in the same script that adds the companion). None while no CREWREPORT has arrived (treat the
+        roster as unknown). A companion trapped off (20) is not entitled."""
+        if self.current_crew is None:
+            return None
+        return {k for k, v in self.current_crew.items() if v == _CREW_ENTITLED}
+
+    def _trapped_keys(self) -> typing.Set[str]:
+        """Companions trapped off for good: the marker says 20, or the client's own record says so (only ever used to
+        stop a re-grant, never to decide a purge)."""
+        marked = {k for k, v in (self.current_crew or {}).items() if v >= _CREW_TRAPPED}
+        return marked | set(self.trapped_off_companions)
+
+    def _leak_rule_applies(self) -> bool:
+        """True when the leak rule may count this report: markers known, nothing busy, not in the Star Forge (its own pass
+        handles that) and the Unknown World trip has not begun (story stage km= below _LEAK_STORY_STAGE_BLOCK)."""
+        if self.current_roster is None or self.current_crew is None or self.roster_busy or self.roster_in_starforge:
+            return False
+        if self.roster_story_stage is not None and self.roster_story_stage >= _LEAK_STORY_STAGE_BLOCK:
+            return False
+        return True
+
+    def _watch_busy_sources(self) -> None:
+        """Diagnostics only: logs when a busy source that should be short-lived (see _BUSY_STUCK_BITS) has been set for
+        _BUSY_STUCK_SECONDS in a row. Nothing is cleared or changed."""
+        mask = self.roster_busy_mask
+        stuck = (mask & sum(_BUSY_STUCK_BITS)) if mask else 0
+        if not stuck:
+            self._busy_flag_since = None
+            return
+        now = time.time()
+        if self._busy_flag_since is None:
+            self._busy_flag_since = now
+            return
+        if now - self._busy_flag_since >= _BUSY_STUCK_SECONDS and now - self._busy_warned_at >= 3 * _BUSY_STUCK_SECONDS:
+            names = ", ".join(name for bit, name in _BUSY_STUCK_BITS.items() if stuck & bit)
+            logger.warning(f"[watchdog] the roster report has been busy for {int((now - self._busy_flag_since) // 60)} minutes "
+                           f"because of: {names} -- roster corrections are paused while it lasts")
+            self._busy_warned_at = now
 
     def _unselectable_entitled(self) -> typing.Set[str]:
         """Entitled companions who are on the roster but cannot be picked on the party screen
@@ -1491,27 +1563,19 @@ class ReconciliationTracker:
                     actions["bastila"] = "roster_remove"
         return actions
 
+    def effective_leak_purge_mode(self) -> str:
+        """The mode the leak purge acts on right now: "auto" means purge once the Leviathan has been escaped, report only before."""
+        if self.leak_purge_mode == "auto":
+            return "on" if self.roster_leviathan_done else "log"
+        return self.leak_purge_mode
+
     def _roster_extras(self) -> typing.List[str]:
-        """Companions the last ROSTERREPORT shows as available that the
-        player is not entitled to. Entitled = granted this connection
-        (expected_companions, fed by every received/auto-granted companion
-        arm) or granted earlier this seed/slot (the delivery log, via the
-        entitled_companions callback); under companion_mode=normal also any
-        companion whose recruit moment has been reached (their journal
-        marker, last_seen_companions). Empty when the roster is unknown."""
-        if not self.current_roster:
+        """Companions the last ROSTERREPORT shows as available whose entitlement marker is not 10 (never granted by a
+        grant arm, or trapped off): the leaks. Empty while the roster or the markers are unknown."""
+        if not self.current_roster or self.current_crew is None:
             return []
-        entitled = {k for k, idx in _ROSTER_NPC_IDX.items() if idx in self.expected_companions}
-        if self._entitled_companions is not None:
-            try:
-                entitled |= set(self._entitled_companions())
-            except Exception:
-                logger.exception("[roster] entitled_companions callback failed, treating the roster as unknown")
-                return []
-        if self.trust_recruit_markers:
-            entitled |= {k for k, idx in _ROSTER_NPC_IDX.items() if idx in self.last_seen_companions}
-        entitled -= self.trapped_off_companions
-        return [k for k in _ROSTER_KEYS if self.current_roster.get(k) and k not in entitled]
+        return [k for k in _ROSTER_KEYS
+                if self.current_roster.get(k) and self.current_crew.get(k, 0) != _CREW_ENTITLED]
 
     def _staged_arm_stale(self, since: typing.Optional[float]) -> bool:
         """Replaces a pure time.time() - since > TIMEOUT check for every
@@ -1780,8 +1844,9 @@ class ReconciliationTracker:
         self._inflight_companions &= self.expected_companions - self.last_seen_companions - roster_present
         missing_companions = self.expected_companions - self.last_seen_companions - roster_present
         # A trapped-off companion is meant to stay gone: never re-grant them.
+        trapped_now = self._trapped_keys()
         missing_companions = {i for i in missing_companions
-                              if not any(_ROSTER_NPC_IDX.get(k) == i for k in self.trapped_off_companions)}
+                              if not any(_ROSTER_NPC_IDX.get(k) == i for k in trapped_now)}
         for npc_idx in missing_companions:
             if npc_idx in self._inflight_companions:
                 continue
@@ -1808,36 +1873,61 @@ class ReconciliationTracker:
             corrections.append(arm_name)
             self._inflight_companions.add(npc_idx)
 
-        # Roster cleanup: a companion who is available but not entitled (a
-        # scene's temporary staging that was left behind, a vanilla leak) is
-        # purged, but only once the Leviathan has been escaped
-        # (roster_leviathan_done: journal lev_captured at its final entry).
-        # Waits for a settled roster: not busy (no scene is staging
-        # someone on purpose), the same extra in _ROSTER_STABLE_REPORTS
-        # consecutive reports, and the warm-up after connect so the item
-        # replay and delivery log have had time to say who is entitled. One
-        # purge per cycle; a purge already sent is not repeated until a
-        # covered area has been entered since (the staged-arm rule) or the
-        # staged-arm timeout has passed.
-        if (self.roster_cleanup_mode != "off"
-                and self._send_purge is not None and self.current_roster is not None and not self.roster_busy
-                and self.roster_leviathan_done and not self._roster_cleanup_done
-                and not self.roster_in_starforge
-                and self._roster_first_seen is not None
-                and time.time() - self._roster_first_seen >= _ROSTER_WARMUP_SECONDS):
+        # Marker repair: a companion the server says was received (expected_companions) who is on the roster but whose entitlement
+        # marker is not 10. That happens when the save is older than the grant (a reload without reconnecting) or something wrote the
+        # roster without the marker. The grant arm is idempotent for a companion already on the roster: it writes the marker and
+        # makes her selectable without adding anyone, so it is simply re-sent (a correction, so no companion_class follow-up).
+        # Same settle rules as the leak purge (not busy, _ROSTER_STABLE_REPORTS consecutive reports), once per area load. A
+        # trapped-off companion (marker 20) is never re-granted.
+        if (self.current_roster is not None and self.current_crew is not None and not self.roster_busy
+                and not self.roster_in_starforge):
+            for key in _ROSTER_KEYS:
+                npc_idx = _ROSTER_NPC_IDX.get(key)
+                if npc_idx not in self.expected_companions or key in trapped_now:
+                    continue
+                if not self.current_roster.get(key) or self.current_crew.get(key, 0) >= _CREW_ENTITLED:
+                    continue
+                if self._roster_extra_streak.get(key, 0) < _ROSTER_STABLE_REPORTS:
+                    continue
+                since = self._marker_repair_since.get(key)
+                if (since is not None and not self._staged_arm_stale(since)
+                        and time.time() - since < _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS):
+                    continue
+                arm_name = next((name for name, v in ARM_EFFECT.items() if v[0] == "companion" and v[1] == npc_idx), None)
+                if arm_name is None or self._is_awaiting_confirmation(arm_name):
+                    continue
+                self._marker_repair_since[key] = time.time()
+                logger.warning(f"[reconcile] {key} was received but has no entitlement marker in this save, "
+                               f"re-sending her grant to write it")
+                corrections.append(arm_name)
+
+        # Leak purge: a companion who is on the roster but whose entitlement marker is not 10 (a scene's temporary staging that was
+        # left behind, a vanilla leak, or a companion trapped off) is purged once it has been seen across _LEAK_AREA_ENTRIES area
+        # entries and _ROSTER_STABLE_REPORTS settled reports (not busy, not in the Star Forge, Unknown World trip not begun: see
+        # _leak_rule_applies). No warm-up and no "after the Leviathan" condition: the Leviathan modules are busy, the Unknown World
+        # onwards is skipped, and the markers live in the save so nothing depends on this connection's history. One purge per
+        # cycle; a purge already sent is not repeated until a covered area has been entered since (the staged-arm rule) or the
+        # staged-arm timeout has passed. Report-only unless the effective mode is "on" (see effective_leak_purge_mode).
+        if (self.effective_leak_purge_mode() != "off" and self._send_purge is not None and self._leak_rule_applies()):
             for key in self._roster_extras():
                 if self._roster_extra_streak.get(key, 0) < _ROSTER_STABLE_REPORTS:
                     continue
+                if self._leak_area_count.get(key, 0) < _LEAK_AREA_ENTRIES:
+                    continue
+                if _ROSTER_NPC_IDX.get(key) in self.expected_companions and key not in trapped_now:
+                    continue  # received from the server: the marker repair above rewrites her marker, she is not a leak
                 since = self._purge_inflight_since.get(key)
                 if (since is not None and not self._staged_arm_stale(since)
                         and time.time() - since < _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS):
                     continue
                 self._purge_inflight_since[key] = time.time()
-                if self.roster_cleanup_mode == "log":
-                    logger.warning(f"[reconcile] {key} is on the roster but not entitled "
-                                   f"(roster cleanup is log-only, not purging)")
+                marker = (self.current_crew or {}).get(key, 0)
+                why = "a trapped-off marker" if marker >= _CREW_TRAPPED else "no entitlement marker"
+                if self.effective_leak_purge_mode() == "log":
+                    logger.warning(f"[reconcile] {key} is on the roster with {why} after "
+                                   f"{self._leak_area_count.get(key, 0)} area entries (leak purge is log-only, not purging)")
                     continue
-                logger.warning(f"[reconcile] {key} is on the roster but not entitled, purging")
+                logger.warning(f"[reconcile] {key} is on the roster with {why}, purging")
                 asyncio.create_task(self._send_purge(key))
                 break
 
@@ -1896,8 +1986,8 @@ class ReconciliationTracker:
                 asyncio.create_task(sender(key))
                 break
 
-        # Class self-healing -- PC and companions -- see FutureDesign.md's
-        # "Entitlement/dispatch redesign" entry. Both share the shape
+        # Class self-healing -- PC and companions (DEVELOPMENT_HISTORY.md section 13).
+        # Both share the shape
         # already proven above for missing companions: only acts once real
         # state is actually known (classes_known for the PC; a real,
         # non-sentinel COMPANIONCLASSREPORT value for a companion, meaning
@@ -1947,8 +2037,8 @@ class ReconciliationTracker:
                 self._companion_class_inflight[npc_key] = expected_const
                 self._companion_class_inflight_since[npc_key] = time.time()
 
-            # Feats self-healing -- PC and companions -- see FutureDesign.md's
-            # "Entitlement/dispatch redesign" entry. Two independent sources
+            # Feats self-healing -- PC and companions (DEVELOPMENT_HISTORY.md section 13).
+            # Two independent sources
             # feed "expected" here: expected_feats (recorded, randomized
             # Additional Feats draws -- see note_feats_granted, no formula,
             # it's just the union of every id ever actually decided) and,
@@ -1984,13 +2074,28 @@ class ReconciliationTracker:
                 if not missing:
                     self._feats_inflight.pop(character_key, None)
                     self._feats_inflight_since.pop(character_key, None)
+                    self._feats_attempts.pop(character_key, None)
+                    self._feats_gave_up.discard(character_key)
                     continue
                 target = frozenset(missing)
                 since = self._feats_inflight_since.get(character_key)
                 stale = self._staged_arm_stale(since)
                 if self._feats_inflight.get(character_key) == target and not stale:
                     continue
+                # A grant that never changes what the character holds (the companion is not really there when it runs) would be
+                # re-sent on every area load for good. Stop after a few sends of the same set; a different missing set starts over.
+                tried, sends = self._feats_attempts.get(character_key, (None, 0))
+                if tried != target:
+                    sends = 0
+                    self._feats_gave_up.discard(character_key)
+                if sends >= _FEATS_MAX_SENDS:
+                    if character_key not in self._feats_gave_up:
+                        self._feats_gave_up.add(character_key)
+                        logger.warning(f"[reconcile] {character_key} is still missing feats {sorted(target)} after {sends} sends; "
+                                       f"not sending them again unless the missing set changes or the client reconnects")
+                    continue
                 feats_corrections.append((character_key, sorted(missing)))
+                self._feats_attempts[character_key] = (target, sends + 1)
                 self._feats_inflight[character_key] = target
                 self._feats_inflight_since[character_key] = time.time()
 

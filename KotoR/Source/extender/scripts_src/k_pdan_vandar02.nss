@@ -30,6 +30,9 @@ void main()
     else
     {
         KSE_Diag(31, "AP|SUPPRESSED|companion_juhani|skipped_already_recruited");
+        SetGlobalBoolean("DAN_JUHANI_JOINED", TRUE);
+        object oPlacedJuhani = GetObjectByTag("dan13_juhani");
+        if (GetIsObjectValid(oPlacedJuhani)) DestroyObject(oPlacedJuhani);
     }
     // The check-fire below is atomic with the guard above within this one
     // script call -- no other script (including the regular poll's

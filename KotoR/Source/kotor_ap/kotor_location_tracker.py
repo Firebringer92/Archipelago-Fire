@@ -50,7 +50,8 @@ _AREASVISITED_RE = re.compile(r"AP\|AREASVISITED\|([\d,]+)")
 
 # The 10 real threshold checks -- 50 itself doesn't count as a crossing
 # (see Locations.py's alignment location comment).
-ALIGNMENT_THRESHOLDS = [0, 10, 20, 30, 40, 60, 70, 80, 90, 100]
+# Every alignment location: the 10 original thresholds plus the inner 35/45/55/65.
+ALIGNMENT_THRESHOLDS = [0, 10, 20, 30, 35, 40, 45, 55, 60, 65, 70, 80, 90, 100]
 
 # Character level 2-20 -- 1 (starting level) doesn't count, same "starting
 # value isn't an accomplishment" convention as alignment excluding 50.
@@ -108,14 +109,13 @@ class LocationTracker:
 
         # Alignment crossing state -- unlike the other three location types
         # above (which are pure functions of one event line), this needs
-        # memory of the last-seen value across polls. Lost on client
-        # restart, same "one process's worth of history" limitation as
-        # everything else client-tracked in this project; see
-        # _handle_alignment's bootstrap comment for how a reconnect is
-        # handled without inventing false crossing-count history.
+        # memory of the last-seen value across polls. The last value is saved per
+        # playthrough by the client (alignment_state()/restore_alignment_state()),
+        # so movement made while the client was closed still counts; the high/low
+        # extreme flags are read from the server-persisted location checks
+        # instead (see _handle_alignment).
         self._last_alignment: typing.Optional[int] = None
         self._alignment_reached: typing.Set[int] = set()
-        self._alignment_crossings = 0
         self._alignment_ever_high = False  # ever reached 80-100
         self._alignment_ever_low = False  # ever reached 0-20
 
@@ -155,6 +155,23 @@ class LocationTracker:
         self._companion_index[3] = ("Companion Recruited: New Companion" if on
                                      else "Companion Recruited: HK-47")
 
+    def alignment_state(self) -> dict:
+        """What must survive a client restart: the last alignment value seen."""
+        return {"last": self._last_alignment}
+
+    def restore_alignment_state(self, state: typing.Optional[dict]) -> None:
+        """Called on Connect with this playthrough's saved state (None for a playthrough never seen before, which also wipes any
+        state left over from a previously connected one). The next reading is then compared against the saved last value, so
+        movement made while the client was closed still counts as crossings along a straight path."""
+        self._alignment_reached = set()
+        self._alignment_ever_high = False
+        self._alignment_ever_low = False
+        if state:
+            last = state.get("last")  # older saves also hold a "crossings" count, now unused
+            self._last_alignment = int(last) if last is not None else None
+        else:
+            self._last_alignment = None
+
     def true_balance_reached(self, already_checked_ids: typing.Set[int]) -> bool:
         """True once the player has reached BOTH alignment extremes at some
         point -- not simultaneously, just each at some point (same
@@ -180,15 +197,8 @@ class LocationTracker:
         return high_id in already_checked_ids and low_id in already_checked_ids
 
 
-#BK Notes: Future updates should include some inferernce to locations based on mapping of locations. If we know character is in location Y, and we have a log of this character
-#Then on reconnect a check by the areas is performed to see what areas would the character had to have gone to get to that location. Then provide them those checks.
-#Essentially KotorClient disconnects from game the user keeps playing and is now in says area X they would have had to pass areas A and B which they dont have checks for to get there
-#Grant them the check. Note even this methodology isn't perfect. If we can simploy tell the game client to write a log file regardless that we read from constantly (not rely on TCP connection
-#This removes need for this brute force mapping
-#
-# Confirmed real gap -- see docs/MODE_DEPENDENCIES.md's "Area-check
-# backfill gap on client disconnect" open item for the failure mode and
-# both candidate fix directions (graph inference vs. kse.log replay).
+# Visited-area checks do not depend on the client being connected: the game creates a marker item per area on first entry, the poll reports
+# them (AP|AREASVISITED|...), and the tracker credits every reported area on connect, so areas entered while the client was closed are caught up.
 
     def check_event(self, event: str, already_checked_ids: typing.Set[int]) -> typing.List[int]:
         """Returns AP ids for every location this event just newly reached
@@ -342,10 +352,7 @@ class LocationTracker:
             # First reading this process -- bootstrap by assuming a
             # monotonic path from neutral (50) to wherever we are now, so a
             # reconnect mid-playthrough doesn't need to re-observe every
-            # step to unlock thresholds already passed. Deliberately does
-            # NOT add to _alignment_crossings: that counter is about
-            # observed oscillation during this tracked session (for the
-            # True Neutral bonus), not inferred historical position.
+            # step to unlock thresholds already passed.
             self._last_alignment = value
             lo, hi = min(50, value), max(50, value)
             crossed = [t for t in ALIGNMENT_THRESHOLDS if lo <= t <= hi]
@@ -360,7 +367,6 @@ class LocationTracker:
                     crossed = [t for t in ALIGNMENT_THRESHOLDS if lo < t <= hi]
                 else:
                     crossed = [t for t in ALIGNMENT_THRESHOLDS if lo <= t < hi]
-                self._alignment_crossings += len(crossed)
 
         newly_reached_ids = []
         for t in crossed:
@@ -371,9 +377,13 @@ class LocationTracker:
                 if loc_id not in already_checked_ids:
                     newly_reached_ids.append(loc_id)
 
-        if any(t in self._alignment_reached for t in (80, 90, 100)):
+        # "Ever reached an extreme" comes from the server-persisted location checks (the same ids true_balance_reached() uses), so
+        # it survives a client restart; the in-memory flags only cover what was crossed this session.
+        high_id = location_table["Alignment: Light Side 80"].id
+        low_id = location_table["Alignment: Dark Side 20"].id
+        if any(t in self._alignment_reached for t in (80, 90, 100)) or high_id in already_checked_ids:
             self._alignment_ever_high = True
-        if any(t in self._alignment_reached for t in (0, 10, 20)):
+        if any(t in self._alignment_reached for t in (0, 10, 20)) or low_id in already_checked_ids:
             self._alignment_ever_low = True
 
         def _add_bonus(key: str, condition: bool):
@@ -386,7 +396,6 @@ class LocationTracker:
             if loc_id not in already_checked_ids and loc_id not in newly_reached_ids:
                 newly_reached_ids.append(loc_id)
 
-        _add_bonus("true_neutral", self._alignment_crossings >= 6 and 40 <= value <= 60)
         _add_bonus("fallen_jedi", self._alignment_ever_high and value <= 20)
         _add_bonus("redeemed_sith", self._alignment_ever_low and value >= 80)
 

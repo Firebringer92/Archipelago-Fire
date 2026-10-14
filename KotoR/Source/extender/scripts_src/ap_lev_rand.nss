@@ -1,5 +1,5 @@
 // Action script of the "Let fate decide" branch added to the capture-plan
-// conversation lev40_carth (extender/raw_override_files/lev40_carth.dlg).
+// conversation ap_lev_carth (extender/raw_override_files/ap_lev_carth.dlg).
 // Picks who escapes capture at random instead of asking the player to choose:
 // it does what the choice's own reply script does (k_plev_escplot<N> is just
 // SetGlobalNumber("Lev_Escape", N)) and the conversation carries on to the

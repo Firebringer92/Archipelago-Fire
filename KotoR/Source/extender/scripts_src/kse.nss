@@ -409,7 +409,7 @@ int KSE_FIELD_XP()                 { return 8; }  // raw XP, 4-byte int, same
 // engine's own SetSTRBase/SetDEXBase/SetINTBase/SetWISBase/SetCHABase member
 // functions, NOT a relative Effect (EffectAbilityIncrease/Decrease stacks a
 // new effect object on every call and has no ceiling on how many can
-// accumulate -- confirmed live to permanently cap a character's Dexterity
+// accumulate -- confirmed to permanently cap a character's Dexterity
 // after enough stacked calls). nValue = the new base score, 0-255.
 int KSE_FIELD_SET_STR_BASE() { return 9; }
 int KSE_FIELD_SET_DEX_BASE() { return 10; }

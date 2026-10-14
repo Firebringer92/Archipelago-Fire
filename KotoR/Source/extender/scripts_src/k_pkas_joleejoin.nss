@@ -31,6 +31,8 @@ void main()
     else
     {
         KSE_Diag(30, "AP|SUPPRESSED|companion_jolee|skipped_already_recruited");
+        SetGlobalBoolean("G_JoleeJoined", TRUE);
+        DelayCommand(1.0, DestroyObject(OBJECT_SELF));
     }
     // The check-fire below is atomic with the guard above within this one
     // script call -- no other script (including the regular poll's

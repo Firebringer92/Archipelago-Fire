@@ -5,7 +5,7 @@
 // override instead and k_pebo_carthtlk itself is left alone (ebo_m41aa keeps its
 // vanilla one).
 //   ebo_m40aa (captured Hawk): no conversation from here; a sensor console is
-//       placed on the deck and using it stages the cast and starts lev40_carth
+//       placed on the deck and using it stages the cast and starts ap_lev_carth
 //       (ap_lev_cast.nss, ap_lev_use.nss).
 //   ebo_m40ad (after the escape): the vanilla behaviour -- hold the fade, start
 //       conversation ebo_carth from Carth, which is what enables the Hawk's

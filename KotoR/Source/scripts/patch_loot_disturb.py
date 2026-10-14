@@ -247,7 +247,7 @@ def revert_stale_onacquireitem_wrappers(game_dir):
         # file's CONTENT did, and only if this specific install ever
         # actually had the old mechanism deployed (a leftover
         # apo_<name>_orig.ncs marker is the proof either way). Confirmed
-        # live, 2026-09-19 (a real sandbox test caught this): the true
+        # live (a real sandbox test caught this): the true
         # original does NOT live in global chitin for these 11 -- per
         # patch_item_suppression.py's own comment, "the compiled .ncs
         # itself lives in the _s.rim instance overlay, not the base
@@ -804,7 +804,7 @@ def main():
               f"at their real container/corpse source.")
 
     if mode == "skip" and not progression_resrefs:
-        print("mode is 'skip' (loot_mode=normal) and Progression System is off -- nothing to wire up, vanilla loot left alone.")
+        print("mode is 'skip' (loot_mode=normal) and no progression quest items need stripping -- nothing to wire up, vanilla loot left alone.")
         # Still clean up any manifest from a PREVIOUS mode/seed that no
         # longer applies -- a mode switch to skip+off must not leave
         # stale destroy/replace/bonus edits behind.

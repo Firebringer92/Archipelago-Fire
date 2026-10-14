@@ -10,10 +10,8 @@ class CompanionMode(Choice):
     ap_gated: companions are real AP checks/items. Their vanilla recruit
     trigger is suppressed; the moment would-be-recruit is still reported as
     a completed check, but the companion only actually joins once you
-    receive that companion's item from the multiworld. Mission's item is
-    always placed on a Taris or Endar Spire check (Zaalbar's recruit needs
-    her), and each companion's own Ebon Hawk quest check needs that
-    companion's item.
+    receive that companion's item from the multiworld. Each companion's own
+    Ebon Hawk quest check needs that companion's item.
 
     normal (default): companions join exactly like stock KOTOR, with no AP gating --
     the recruit moment still registers as a completed check (for tracking),
@@ -24,11 +22,22 @@ class CompanionMode(Choice):
     Mother, Canderous, Jagi's Challenge, Carth, HK-47, Jolee Bindo, Juhani,
     Threat from Xor, Mission's Brother) are removed from the pool entirely
     rather than left permanently uncompletable.
+
+    ap_limited: no companion items exist. Companions are earned by your own
+    progress instead: every 25 checks you complete (a fixed number, not an
+    option) the next companion on a seeded random order joins you: the first
+    after 25 of YOUR OWN checks, the ninth after 225, whether or not you have
+    reached that companion's recruit moment. Their vanilla recruit triggers are suppressed
+    exactly as in ap_gated, and the recruit moment still counts as a check.
+    The 10 companion-specific Ebon Hawk quest locations are removed from the
+    pool (they need that companion present at one exact moment, which a
+    random order cannot promise); the 9 recruit locations stay.
     """
     display_name = "Companion Mode"
     option_ap_gated = 0
     option_normal = 1
     option_none = 2
+    option_ap_limited = 3
     default = 1
 
 
@@ -51,6 +60,8 @@ class NewCompanion(Choice):
     exact same item/location pair -- mystery and malak differ only in
     which character/template is actually deployed underneath, never in
     AP item/location identity.
+
+    Ignored (treated as off) when companion_class is droid.
 
     Both are also folded into companion_class and additional_feats
     exactly like the 7 non-droid companions (so 8 companions in total; no_jedi/randomize_all
@@ -98,6 +109,16 @@ class StartingClass(Choice):
     becomes a real multiclass exactly like jedi_start/jedi_granted; a
     base-class roll REPLACES your character-creation class instead.
 
+    droid: ignores jedi_class -- your character becomes a Battle Droid
+    (HK-47 variant model, black with silver trim) at the first area
+    transition, applied immediately like "jedi_start" above. A droid can
+    never become a Jedi. Droids equip droid gear (sensors, plating,
+    shields, utility devices) instead of armor, robes and medpacs, heal
+    with repair kits, and cannot use Stealth, Persuade or Treat Injury.
+    If companion_class is also droid, the item pool and shop stock are
+    droid-only so every piece of gear is useful; with only one of the two
+    set to droid, droid gear is simply more common.
+
     Under any mode except "off", Dantooine's real trial-completion script
     is suppressed so simply playing through it normally can't ALSO grant
     (or duplicate) a class outside this option's own control.
@@ -107,6 +128,7 @@ class StartingClass(Choice):
     option_jedi_start = 1
     option_jedi_granted = 2
     option_random_class = 3
+    option_droid = 4
     default = 0
 
 
@@ -147,12 +169,20 @@ class CompanionClass(Choice):
     randomize_all: all 7 companions independently roll one of all 6
     classes (Soldier/Scout/Scoundrel/Guardian/Consular/Sentinel), applied
     automatically at recruit like no_jedi.
+
+    droid: all 7 non-droid companions are rebuilt as droids (droid race,
+    droid hide, a droid look) and dealt one of three droid classes -- 3
+    Combat Droids, 2 Expert Droids and 2 Battle Droids, shuffled per seed.
+    Only Battle Droids use melee weapons and lightsabers. The new_companion
+    option is ignored (HK-47 stays HK-47). If starting_class is also droid,
+    the item pool and shop stock are droid-only.
     """
     display_name = "Companion Class"
     option_off = 0
     option_no_jedi = 1
     option_jedi_companion = 2
     option_randomize_all = 3
+    option_droid = 4
     default = 0
 
 
@@ -178,50 +208,37 @@ class AdditionalFeats(Toggle):
 
 
 class ProgressionSystem(Toggle):
-    """Gates 8 real main-questline items (Sith Armor, Sith Papers, Taris
-    Shield Codes, Manaan Enviro Suit, and 4 Star Maps -- Tatooine/
-    Kashyyyk/Manaan/Korriban) behind real AP checks instead of their
-    normal vanilla pickup. (The Tatooine Desert Map and the Dantooine Star
-    Map gate nothing in vanilla, so they are not included.)
+    """Holds the main story back until you have found enough Archipelago
+    progression items, instead of letting the quest line run straight through.
 
-    Two different mechanisms depending on the item: Sith Armor/Papers/
-    Shield Codes/Enviro Suit are suppressed at their normal vanilla
-    acquisition point and instead exist as items in the multiworld; you
-    get each one when it is received, wherever it was placed (the first
-    three are always placed on Taris or Endar Spire checks). The 4 Star
-    Maps use a DIFFERENT mechanism -- vanilla KOTOR has no travel
-    restriction to any planet at all, so this option creates an
-    artificial one: Tatooine/Kashyyyk/Manaan/Korriban are unreachable via
-    the galaxy map until that planet's Star Map item is received.
+    Eight families of three plot items exist in the pool, named after
+    their world: Taris Progression 1 to 3, Dantooine Progression 1 to 3,
+    and likewise Tatooine, Kashyyyk, Manaan, Korriban, Unknown World and
+    Star Forge. A story event waits until you hold enough items of its
+    family: for example the Vulkar engine rooms need one Taris item,
+    Canderous's first meeting two, and recruiting him and leaving Taris
+    three; on Dantooine the Jedi class conversation needs one Dantooine
+    item, the confrontation with Juhani two and the final council three;
+    each of the four open-world planets holds its main story beats and
+    its Star Map behind its own three items; the Unknown World and the
+    final fight with Malak work the same way. They are plot items, so
+    they cannot be sold or dropped, and a lost one is re-granted.
 
-    A real access-rule layer rides on this (see Rules.py): Taris' Lower
-    City and everything past it requires Sith Armor, the Sith Base
-    additionally requires Sith Papers, Escaping Taris requires the Shield
-    Codes, Manaan's Hrakert Rift (and its own Star Map) requires the
-    Enviro Suit, every other location on the 4 travel-gated planets
-    (each planet's own Star Map check is exempt) requires that planet's
-    own Star Map item, and Leviathan/Unknown World/Star
-    Forge/the ending require ALL 4 Star Maps. This is a REAL logic layer,
-    not flavor -- Archipelago's own generation-time reachability sweep
-    uses it to guarantee the seed is actually completable, the same
-    mechanism every other Archipelago game's world uses for progression
-    gating.
+    Only story beats wait: you can still travel anywhere, enter every
+    area, and do side quests, shops and fights freely. The Ebon Hawk is
+    not locked, and no door is locked or unlocked by this option.
 
-    Off (default): vanilla -- all 8 items behave normally, no access
-    rules, no suppression, no artificial travel gate.
+    A real logic layer rides on this (see StoryGates.py): Archipelago's
+    own reachability sweep uses it to guarantee the seed is completable.
+    A planet's own progression items are never placed on that planet, and no such item
+    is placed on a world you cannot return to once you leave it.
 
-    INCOMPATIBLE with area_randomizer -- door/entrance randomization would
-    make the reachability logic above impossible to reason about (the
-    whole point of the rules above is knowing which real locations sit on
-    which side of each gate; scrambling area connections breaks that
-    entirely). Enabling both raises an error at generation time, not just
-    a description note.
+    Works with area_randomizer too, because the gates sit on story events
+    rather than on doors. With the area randomizer on, the Taris Upper
+    City elevator guard no longer asks for the Sith armor.
 
-    Also REQUIRES goal to be defeat_malak or reach_leviathan -- true_balance
-    and max_level don't require ever reaching the Leviathan or later, so a
-    player could legitimately "win" without needing (or ever finding) the
-    Star Maps this option gates. Enabling progression_system with an incompatible goal raises an error
-    at generation time, same as the area_randomizer check above."""
+    Off (default): vanilla -- no progression items, no gates, every story event plays
+    as in the base game."""
     display_name = "Progression System"
     default = False
 
@@ -364,7 +381,9 @@ class ArchipelagoVendor(Toggle):
     purchases of each in total), Feat Training and Force Power Training
     3,000 each (each feat or power once), and Alignment Change 10 points
     toward the dark side for a gain of 1,000 credits, or 10 points toward
-    the light side for 5,000 credits.
+    the light side for 5,000 credits. Alignment Change has no use limit, but
+    the dark option is refused at an alignment of 10 or below and the light
+    option at 90 or above, with nothing charged.
 
     Character Respec is the one thing that is always available: 6,000
     credits, up to 5 times. It resets your character to level 1 with no
@@ -453,17 +472,20 @@ class ExperienceMode(Choice):
 class ExperienceLimiter(Range):
     """XP granted per YOUR OWN completed check, when experience_mode is
     "ap_limited". Total expected XP = (your own checks completed) x this
-    value, recalculated as you complete more checks. There are about 220
-    locations by default and about 260 with additional_enemies. The default
-    of 905 reaches level 20 (190,000 XP) after about 210 checks, which is
-    80% of the checks with additional_enemies on (about 94% without it), and a
-    full-completion run ends around 238,000 XP with additional_enemies. Lower
-    it to make leveling scarcer; level 20 and the max_level goal need your
-    checks times this value to reach 190,000."""
+    value, recalculated as you complete more checks. There are about 266
+    locations by default with additional_enemies on (about 226 without it,
+    about 216 without it and with companion_mode ap_limited). The default
+    of 1000 reaches level 20 (190,000 XP) after 190 checks, which is about
+    71% of the checks with additional_enemies on (about 84% without it,
+    about 88% in the smallest case), and a full-completion run ends around
+    266,000 XP with additional_enemies. Lower it to make leveling scarcer;
+    level 20 and the max_level goal need your checks times this value to
+    reach 190,000. The minimum is 500: lower values cannot reach level 20 and
+    leave fights unwinnable well before the end of the story."""
     display_name = "EXP Limiter"
-    range_start = 1
+    range_start = 500
     range_end = 20000
-    default = 905
+    default = 1000
 
 
 class ExperienceItem(Range):
@@ -472,19 +494,24 @@ class ExperienceItem(Range):
     level table (level 10 = 45000, level 15 = 105000, level 16 = 120000,
     level 20/cap = 190000). With every item category available and the
     default distribution (Weapon 30/Armor 20/Consumable 30/EXP 20/Credit
-    10/Skill 5/Ability 5), a full playthrough with additional_enemies on
-    contains about 43 Experience Points items, and the default of 5500
-    reaches level 20 after about 35 of them, which is 80% of the items.
-    Without additional_enemies (about 37 items) it takes about 95% of them.
-    With fewer item categories enabled the EXP share of the pool is larger,
-    so level 20 comes sooner. Raise it for a faster power curve, lower it to
-    make leveling scarcer. Note: the actual item count varies with your other
-    options (gear/credits toggles, item_distribution_type, additional_enemies)
-    since it's drawn from a weighted pool, not a fixed count."""
+    10/Skill 5/Ability 5), a full playthrough with additional_enemies and
+    progression_system on contains 28 to 41 Experience Points items (about
+    36 on average; the 24 progression items take slots from the draw), and
+    the default of 8000 reaches level 20 after 24 of them: about 86% of the
+    items in the smallest case and about 67% on average. Without
+    additional_enemies there are 23 to 33 items and the smallest case
+    cannot quite reach level 20 (184,000 XP). With fewer item categories
+    enabled the EXP share of the pool is larger, so level 20 comes sooner.
+    Raise it for a faster power curve, lower it to make leveling scarcer.
+    The minimum is 500: lower values cannot reach level 20 and leave fights
+    unwinnable well before the end of the story. Note: the actual item count
+    varies with your other options (gear/credits toggles,
+    item_distribution_type, additional_enemies, progression_system) since
+    it is drawn from a weighted pool, not a fixed count."""
     display_name = "EXP Item"
-    range_start = 1
+    range_start = 500
     range_end = 20000
-    default = 5500
+    default = 8000
 
 
 class CreditMode(Choice):
@@ -747,10 +774,13 @@ class AreaRandomizer(Choice):
     vanilla data) always keep their normal vanilla destination, as do a
     handful of story-critical zones (Endar Spire, the Leviathan, the Star
     Forge, Unknown World), the Taris hideout exit and the six ramps into
-    the Ebon Hawk, excluded from shuffling entirely. On the rare
-    seed where the shuffle can't fully resolve on its own, a small repair
-    step guarantees every area still has a real way in, at the cost of that
-    one connection not necessarily leading back the way you came.
+    the Ebon Hawk, excluded from shuffling entirely. The shuffle
+    usually cannot place the last couple of doors on its own; those are
+    paired with each other and, if an area would still be cut off, two
+    existing pairs swap partners, so every door still leads back the way you
+    came and every area still has a way in. Only if that cannot fix an area
+    does a last-resort step repoint one door, leaving that one connection
+    one-way.
 
     decoupled: the same 110 entries as coupled are shuffled, but each side
     of a door is placed independently, so walking through a door tells you
@@ -769,7 +799,8 @@ class AreaRandomizer(Choice):
     edits the game's files for this the first time you connect to a seed;
     the new layout appears when the game next loads those areas.
 
-    Cannot be combined with progression_system (generation fails)."""
+    Can be combined with progression_system: its gates sit on story
+    events, not on doors."""
     display_name = "Area Randomizer"
     option_off = 0
     option_coupled = 1
@@ -817,7 +848,7 @@ class ItemDistributionType(Choice):
     """Controls how almost the entire item pool is composed. Only a few
     kinds of item are placed outside this draw (guaranteed to exist):
     ap_gated companions, the jedi_granted class item, Jedi Training items
-    (companion_class jedi_companion), Additional Feats items, the 8
+    (companion_class jedi_companion), Additional Feats items, the 24
     progression_system items, the 5 vendor passes and fixed_amount traps.
     Everything else (curated gear, Skills, Abilities, EXP, Credits) is
     drawn proportionally from the 8 categories below, across the
@@ -943,7 +974,7 @@ class Goal(Choice):
     true_balance: the game is won once you've reached BOTH alignment
     extremes (Light Side 80 or higher and Dark Side 20 or lower) at some
     point in the same playthrough -- not simultaneously, just visited each extreme at some
-    point, tracked the same way the True Neutral/Fallen Jedi/Redeemed
+    point, tracked the same way the Fallen Jedi/Redeemed
     Sith alignment bonus checks already are.
 
     max_level: the game is won on reaching character level 20, KOTOR's
@@ -955,10 +986,10 @@ class Goal(Choice):
     of the Leviathan (the "Visited: Leviathan - Prison Block" check). A
     shorter alternative to defeat_malak that still
     requires completing the same core story beats (under
-    progression_system, reaching the Leviathan already requires all 4 Star
-    Maps -- see ProgressionSystem's own docstring) without the long
-    Star Forge/Unknown World endgame after it. The only other goal
-    progression_system can be combined with.
+    progression_system, reaching the Leviathan already requires the
+    story beats and progression items of all four open-world planets -- see
+    ProgressionSystem's own docstring) without the long
+    Star Forge/Unknown World endgame after it.
     """
     display_name = "Goal"
     option_defeat_malak = 0

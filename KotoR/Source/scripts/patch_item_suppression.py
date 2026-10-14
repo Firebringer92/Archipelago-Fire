@@ -1,8 +1,10 @@
 r"""
-Deploys Progression System's checkpoint wrappers (apply_progression_
-checkpoint_wrappers(), see main()) -- an Override-swap "gate-and-delegate"
-mechanism for Sith Papers/Manaan Enviro Suit, unrelated to loot pickups.
-Only active when Options.py's ProgressionSystem is on; a no-op otherwise.
+Retired: the first Progression System design's checkpoint wrappers (an
+Override-swap "gate-and-delegate" mechanism for Sith Papers, the Manaan
+Enviro Suit and a locked galaxy map). main() now only takes a leftover
+deployment of those wrappers back out; the story gates in
+patch_story_gates.py replace them. The deploy code below is kept as the
+documented origin of that design.
 
 Loot Mode's own destroy/bonus/replace handling of ordinary pickups (via
 KOTOR's native Mod_OnAcquirItem module event) used to live in this file,
@@ -612,7 +614,7 @@ def apply_progression_checkpoint_wrappers(game_dir):
             # permanently corrupting apo_<name>_orig.ncs into a copy of the
             # wrapper itself -- the exact same class of bug already caught
             # and fixed in patch_loot_disturb.py's discover_chitin_
-            # templates(). Confirmed live: all 3 of these had exactly this
+            # templates(). Confirmed: all 3 of these had exactly this
             # corruption (apo_*_orig.ncs byte-identical to the deployed
             # wrapper, both far smaller than the real chitin original),
             # causing ExecuteScript("apo_<name>_orig", ...) to call the
@@ -672,6 +674,37 @@ def restore_progression_checkpoint_wrappers(game_dir):
     return restored
 
 
+def remove_retired_sithpaper_gate(game_dir):
+    """k_ptar_sithpaper was a full reimplementation (no preserved original to copy back), so the retired gate is
+    removed by deleting the Override file -- but only when it is the script this project compiled, in case another
+    tool deployed one under that name."""
+    path = os.path.join(game_dir, "Override", "k_ptar_sithpaper.ncs")
+    built = os.path.join(SRC_DIR, "k_ptar_sithpaper_progression.ncs")
+    if not (os.path.isfile(path) and os.path.isfile(built)):
+        return False
+    with open(path, "rb") as a, open(built, "rb") as b:
+        same = a.read() == b.read()
+    if not same:
+        return False
+    os.remove(path)
+    return True
+
+
+def remove_retired_lev_carth(game_dir):
+    """lev40_carth.dlg was an Override replacement of the Hawk's capture dialog, but the Leviathan prison and hangar have their own,
+    different dialogs of that name and an Override file replaces them all. The copy is now ap_lev_carth.dlg; the old one is removed
+    only when it is byte-identical to the one this project ships."""
+    path = os.path.join(game_dir, "Override", "lev40_carth.dlg")
+    ours = os.path.join(REPO_ROOT, "extender", "raw_override_files", "ap_lev_carth.dlg")
+    if not (os.path.isfile(path) and os.path.isfile(ours)):
+        return False
+    with open(path, "rb") as a, open(ours, "rb") as b:
+        if a.read() != b.read():
+            return False
+    os.remove(path)
+    return True
+
+
 def restore():
     # Checkpoint wrappers are an Override-file swap, not a module RIM edit,
     # so they're not covered by the BACKUP_DIR loop below at all -- revert
@@ -725,41 +758,23 @@ def _connected_progression_system() -> bool:
 
 
 def main():
-    # See this file's module docstring for why the Mod_OnAcquirItem-based
-    # loot-suppression mechanism below is retired in favor of
-    # scripts/patch_loot_disturb.py.
-    #
-    # What's LEFT here, still real and still needed: Sith Papers/Enviro
-    # Suit's Progression System gating (apply_progression_checkpoint_
-    # wrappers() below) never went through Mod_OnAcquirItem at all -- it's
-    # a completely separate "gate-and-delegate" Override-swap mechanism
-    # (see PROGRESSION_CHECKPOINT_WRAPPERS above), so main() now ONLY
-    # drives that, nothing else. Sith Armor/Shield Codes' progression
-    # suppression (the 2 items that DID go through Mod_OnAcquirItem) has
-    # moved to patch_loot_disturb.py's own progression_resrefs handling,
-    # verified against their real corpse/container acquisition point.
-    #
-    # --restore still works (restores any of this file's PAST RIM edits
-    # from backup) but nothing here creates new RIM edits anymore --
-    # checkpoint wrappers are Override-swap only, same as before.
+    # Nothing here creates new edits any more: the loot-suppression mechanism lives in patch_loot_disturb.py and
+    # the Progression System's checkpoint wrappers are retired in favour of patch_story_gates.py (see below).
+    # --restore still puts back any of this file's past RIM edits from the shared backup.
     if "--restore" in sys.argv:
         restore()
         return
 
-    if "--force" in sys.argv:
-        progression_system = "--progression-system" in sys.argv
-    else:
-        progression_system = _connected_progression_system()
-
-    if not progression_system:
-        restored = restore_progression_checkpoint_wrappers(GAME_DIR)
-        print("Progression System is off -- nothing for this file to do any more "
-              "(loot suppression itself now lives in patch_loot_disturb.py)."
-              + (f" Reverted {restored} stale checkpoint wrapper(s) from a prior seed." if restored else ""))
-        return
-
-    deployed = apply_progression_checkpoint_wrappers(GAME_DIR)
-    print(f"Progression System checkpoint wrappers: {deployed}/{len(PROGRESSION_CHECKPOINT_WRAPPERS)} deployed.")
+    # The checkpoint wrappers belong to the first Progression System design (real quest items as keys, a locked
+    # galaxy map). That design is retired -- the story gates in patch_story_gates.py replace it -- so this only
+    # takes a leftover deployment back out, whatever the seed's options are.
+    restored = restore_progression_checkpoint_wrappers(GAME_DIR)
+    removed = remove_retired_sithpaper_gate(GAME_DIR)
+    if remove_retired_lev_carth(GAME_DIR):
+        print("Removed the retired lev40_carth.dlg (replaced by ap_lev_carth.dlg).")
+    print("Progression checkpoint wrappers are retired (story gates replace them)."
+          + (f" Reverted {restored} stale wrapper(s)." if restored else "")
+          + (" Removed the stale Sith Papers condition." if removed else ""))
     return
 
     # Everything below this point is RETIRED/unreachable -- kept in place

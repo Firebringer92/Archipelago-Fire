@@ -1,43 +1,58 @@
-// Trampoline for the Taris Hideout "escape plan" scene's real OnEnter
-// script (originally tar_m02af's k_ptar_carbas_en, trigger tag
-// tar02_carbas, preserved byte-exact as apo_carbast_orig -- starts
-// dialogue tar02_carbast once its gate passes). See
-// ap_companion_gate.nss's own header for the full shared root-cause
-// story (this scene and the Dantooine Jedi Council wrap-up family both
-// need Bastila+Carth temporarily present to pass a vanilla gate, and
-// both share the exact same temp-grant/bench/revert logic -- folded
-// into one shared brain 2026-09-17 rather than duplicated).
+// Replacement for the Taris Hideout "escape plan" trigger script (tar_m02af, trigger tar02_carbas, originally k_ptar_carbas_en).
 //
-// Root cause (unchanged from this file's original standalone version):
-// the vanilla gate is `IsAvailableCreature(NPC_BASTILA) &&
-// IsAvailableCreature(NPC_CARTH)` (confirmed via disassembly -- the
-// debug string "SPAWNING CARTH AND BASTILA" is compiled directly into
-// apo_carbast_orig). Under companion_mode=ap_gated/none, if neither has
-// actually been received yet by the time the player walks into this
-// trigger, the gate can never pass, so this scene (and the rest of the
-// Taris departure sequence gated behind it) never fires -- a real,
-// live-reported story stall, not a hypothetical.
+// Vanilla: when Bastila and Carth are both on the available roster and the trigger has not fired, set its once-only flag, block
+// clicks for 2.2 seconds, hold the world fade, and after 2 seconds have the creature tagged "bastila" start the conversation
+// tar02_carbast with the player. That conversation is where the quest "Taris: The Search for Bastila" gets its final stage (99)
+// and the escape quest starts.
 //
-// Hard prerequisite: GetJournalEntry("tar_bastsearch") >= 99 -- the real
-// (and, confirmed via global.jrl, ONLY) End=1 stage for "Taris: The
-// Search for Bastila". Without this, the shared brain's temp-grant logic
-// would fire for ANY reason !IsAvailableCreature happens to be true
-// under ap_gated/none -- which is also true, for entirely unrelated
-// reasons, at every point BEFORE Bastila is ever rescued at all. Passed
-// as HandleBastilaCarthGate's bAllowTempGrant parameter rather than
-// wrapped around the whole call, so apo_carbast_orig -- the real trigger
-// -- still always runs exactly like the original standalone version did
-// (its own internal availability gate is what actually decides whether
-// anything happens); only the temp-grant/bench/revert dance is
-// suppressed when this prerequisite isn't met. The Council family passes
-// no third argument (defaults to TRUE) since it has no equivalent
-// prerequisite -- it only ever fires from inside an active dialogue
-// node, which is its own natural gate.
+// Under companion_mode ap_gated/none neither companion is on the roster yet, so the vanilla condition never passes and the
+// scene never plays. The first fix ran the preserved original through ExecuteScript behind a temporary roster grant, but a
+// conversation started from a script reached through ExecuteScript silently fails to queue: the fade is held, nobody speaks and
+// the screen stays black. So the scene is written out here. It does not need the companions on the roster at all: the dialog has
+// no availability conditions, only two speakers (tags "Bastila" and "Carth") who have to be standing in the area. Nothing is
+// granted, so there is nothing to revert, and a companion who arrived early through an item is untouched.
+//
+// Window: the journal stage of "tar_bastsearch" is 60 (race won, Bastila freed) until the conversation writes 99 on its first line.
+// Own once-only flag: local boolean 10 on the trigger, cleared again if the scene could not start so a re-entry can retry.
 #include "kse"
-#include "ap_companion_gate"
+
+// Runs a few seconds after the conversation was queued. If nothing is being said (Bastila never appeared), release the held fade and
+// allow another attempt on the next entry. It never starts the conversation itself: that is done directly from main() below.
+void ReleaseHideoutFade()
+{
+    if (GetIsInConversation(GetFirstPC())) return;
+    KSE_Diag(171, "AP|BASTILA_CARTH_GATE|carbas_en|no_conversation|bastila=" + IntToString(GetIsObjectValid(GetObjectByTag("bastila"))));
+    SetGlobalFadeIn(0.0, 0.5);
+    SetLocalBoolean(OBJECT_SELF, 10, FALSE);
+}
 
 void main()
 {
-    HandleBastilaCarthGate("apo_carbast_orig", "carbas_en",
-                            GetJournalEntry("tar_bastsearch") >= 99);
+    int nStage = GetJournalEntry("tar_bastsearch");
+    if (nStage < 60 || nStage >= 99) return;
+    if (GetLocalBoolean(OBJECT_SELF, 10)) return;
+    SetLocalBoolean(OBJECT_SELF, 10, TRUE);
+
+    object oPC = GetFirstPC();
+    float fDelay = 2.0;
+
+    // A speaker who is not standing here is created first. A script-created creature appears several seconds late, so wait longer.
+    if (!GetIsObjectValid(GetObjectByTag("bastila")))
+    {
+        CreateObject(OBJECT_TYPE_CREATURE, "p_bastilla", GetLocation(oPC));
+        fDelay = 8.0;
+        KSE_Diag(171, "AP|BASTILA_CARTH_GATE|carbas_en|placed_bastila");
+    }
+    if (!GetIsObjectValid(GetObjectByTag("Carth")))
+    {
+        CreateObject(OBJECT_TYPE_CREATURE, "p_carth", GetLocation(oPC));
+        fDelay = 8.0;
+        KSE_Diag(171, "AP|BASTILA_CARTH_GATE|carbas_en|placed_carth");
+    }
+
+    NoClicksFor(fDelay + 0.2);
+    HoldWorldFadeInForDialog();
+    DelayCommand(fDelay, AssignCommand(GetObjectByTag("bastila"),
+        ActionStartConversation(oPC, "tar02_carbast", FALSE, CONVERSATION_TYPE_CINEMATIC, TRUE)));
+    DelayCommand(fDelay + 3.0, ReleaseHideoutFade());
 }

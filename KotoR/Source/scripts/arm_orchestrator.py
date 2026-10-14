@@ -258,7 +258,7 @@ _had_failure = False
 # prologue's own scripts hand Trask into the party and run scripted fights
 # with the party locked; a grant there either claims that slot first (Bastila
 # left Trask unable to join) or, with AddPartyMember refused, leaves a loose
-# companion creature standing in the scene (a tester's Malak grant, in
+# companion creature standing in the scene (a Malak grant, in
 # a prologue whose scripted Sith fight then misbehaved). A blocked grant is not
 # lost: it stays queued and is armed into the next covered area. Centralized
 # here (rather than at each regenerate() call site) so every caller -- area
@@ -295,7 +295,7 @@ def _regenerate_unfiltered(area_bases, batch_items):
     if not area_bases:
         return
     # sys.executable, not a bare "python" -- same bug class as
-    # ap_extender.c's ap_run_orchestrator() (fixed 2026-10-01, see its own
+    # ap_extender.c's ap_run_orchestrator() (fixed, see its own
     # comment): a bare "python" trusts PATH resolution from whatever
     # environment this process inherited, which can silently resolve to
     # the Microsoft Store's placeholder stub or nothing at all. This
@@ -534,7 +534,7 @@ def _dispatch():
             # will fire once confirmations are flowing again.
             print(f"arm {arm_id} already pending (one-shot arm, not re-queuing a duplicate)")
             # Diagnostic breadcrumb for ONE_SHOT_ARM_IDS specifically: a
-            # real incident (companion_canderous, 2026-09-25) showed two
+            # real incident (companion_canderous) showed two
             # --queue-add= calls for the same arm_id 3s apart, during the
             # single riskiest window in a session (seconds after the
             # game's first post-launch dispatcher burst), and the arm's

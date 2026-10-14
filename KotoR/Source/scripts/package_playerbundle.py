@@ -35,7 +35,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # Step 1). No shared constant between the two scripts on purpose: bumping
 # one without the other would be a silent mistake either way, so each
 # script's own default should be updated by hand at release time.
-BUNDLE_VERSION = "0.1.8"
+BUNDLE_VERSION = "0.1.9"
 
 # REMINDER: this list does not update itself. Every time a NEW file (not
 # just an edit to an existing one) becomes something a tester needs to run
@@ -119,7 +119,7 @@ FILES = [
     (("scripts", "arm_orchestrator.py"), "scripts/arm_orchestrator.py"),
     (("scripts", "generate_makejedi_suppressor.py"), "scripts/generate_makejedi_suppressor.py"),
     (("scripts", "generate_poll_shared.py"), "scripts/generate_poll_shared.py"),
-    # Found missing entirely, 2026-09-19 -- a real player hit
+    # Found missing entirely -- a real player hit
     # FileNotFoundError on this exact path on every Connect, since
     # generate_poll_shared.py's REPO_ROOT (dirname(dirname(__file__)),
     # i.e. the PlayerBundle root itself once shipped) needs this file
@@ -137,6 +137,12 @@ FILES = [
     # the ad hoc script those releases were built from never included them.
     (("scripts", "patch_item_suppression.py"), "scripts/patch_item_suppression.py"),
     (("scripts", "patch_door_randomizer.py"), "scripts/patch_door_randomizer.py"),
+    # Progression System story gates: run from KotorClient.py on Connect (apply_story_gates()). The gate and
+    # helper scripts (ap_gate.nss, sg_*.nss and their precompiled .ncs) ship with the extender/scripts_src copy below.
+    (("scripts", "patch_story_gates.py"), "scripts/patch_story_gates.py"),
+    # The dialog edits patch_story_gates.py deploys (imported by name, so they must sit next to it).
+    (("scripts", "story_gate_dialogs_unknown.py"), "scripts/story_gate_dialogs_unknown.py"),
+    (("scripts", "story_gate_dialogs_korriban.py"), "scripts/story_gate_dialogs_korriban.py"),
     # Same gap: patch_loot_disturb.py
     # replaces patch_item_suppression.py's old Mod_OnAcquirItem mechanism
     # for Loot Mode entirely -- it's called automatically from
@@ -187,6 +193,9 @@ FILES = [
     # extender/scripts_src copy below -- only this script itself needed
     # adding.
     (("scripts", "generate_new_companion_assets.py"), "scripts/generate_new_companion_assets.py"),
+    # Droid options: run on every Connect from KotorClient.py (apply_droid_assets()). Installs or removes the droid models,
+    # appearance rows, Battle Droid class tables and companion templates; its models live in extender/raw_override_files.
+    (("scripts", "generate_droid_assets.py"), "scripts/generate_droid_assets.py"),
     (("extender", "area_trampolines", "_enemy_spawn_points.json"), "extender/area_trampolines/_enemy_spawn_points.json"),
     (("extender", "area_trampolines", "_enemy_cr_bands.json"), "extender/area_trampolines/_enemy_cr_bands.json"),
     (("extender", "area_trampolines", "_enemy_category_pools.json"), "extender/area_trampolines/_enemy_category_pools.json"),

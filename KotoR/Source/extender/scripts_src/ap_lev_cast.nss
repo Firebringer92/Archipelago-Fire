@@ -3,7 +3,7 @@
 // cast) and from ap_poll_shared (InLeviathanSequence, for the roster report).
 //
 // Why this exists: when the Ebon Hawk is captured (module ebo_m40aa) the
-// conversation lev40_carth has the crew pick who escapes capture. It assumes
+// conversation ap_lev_carth (a copy of the Hawk's lev40_carth, renamed because an Override dialog replaces every module's dialog of the same name) has the crew pick who escapes capture. It assumes
 // Carth, Bastila, Canderous, Mission and T3-M4 are always present: its trigger
 // script (k_pebo_carthtlk) only starts it when the Carth and Bastila objects
 // exist, three of its escape options (Canderous, T3-M4, Mission) are offered

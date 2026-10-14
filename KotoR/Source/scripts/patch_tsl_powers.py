@@ -150,7 +150,7 @@ POWERS = [
 ]
 LEVEL_GATE_COLUMNS = ("guardian", "consular", "sentinel", "inate")
 AI_COLUMNS = ("forcehostile", "forcefriendly", "forcepassive")
-# FOUND 2026-09-20 -- this was the actual reason none of the 9 ported rows
+# FOUND -- this was the actual reason none of the 9 ported rows
 # ever showed up in the in-game Force Powers menu (confirmed known via a
 # real granted-without-error test; see ap_extender.c's disabled
 # ap_bootstrap_tsl_force_powers() for the original, never-root-caused

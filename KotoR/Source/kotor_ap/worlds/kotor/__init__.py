@@ -6,7 +6,7 @@ from worlds.AutoWorld import World, WebWorld
 from worlds.LauncherComponents import Component, components, Type
 
 from . import EntranceRando
-from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS, VENDOR_UNLOCK_ITEMS
+from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS, VENDOR_UNLOCK_ITEMS, STORY_TOKEN_NAMES
 from .Locations import KotorLocation, location_table, location_name_to_id, COMPANION_SUBPLOT_LOCATIONS
 from .Options import (
     Goal, KotorOptions, STARTING_ABILITY_ARMS, STARTING_SKILL_ARMS,
@@ -27,13 +27,14 @@ from .Rules import set_rules, set_completion_rules
 # the install-path marker that script writes on every install.
 
 
-def launch_kotor_client(*args: str) -> None:
+def _launch_kotor_client(log, *args: str) -> None:
     import os
     import subprocess
     import sys
 
     state_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "KotorAP")
     marker_path = os.path.join(state_dir, "install_path.txt")
+    log(f"button clicked; marker {marker_path!r} exists={os.path.isfile(marker_path)}")
     if not os.path.isfile(marker_path):
         print("KOTOR Client: no PlayerBundle install found. Extract the PlayerBundle zip and "
               "double-click Install.bat inside it first (see README.md), then use this button "
@@ -47,6 +48,7 @@ def launch_kotor_client(*args: str) -> None:
     # path must match that layout or the button's isfile check below
     # fails silently.
     kotor_client_path = os.path.join(install_path, "KotorClient.py")
+    log(f"client path {kotor_client_path!r} exists={os.path.isfile(kotor_client_path)}")
     if not os.path.isfile(kotor_client_path):
         print(f"KOTOR Client: the recorded install path ({install_path!r}) doesn't have "
               f"KotorClient.py any more -- was it moved, renamed, or deleted? "
@@ -85,14 +87,28 @@ def launch_kotor_client(*args: str) -> None:
     # anyone can read why. Routed through `cmd /K` instead, which leaves
     # the console open after the command finishes so any error is
     # actually readable; the user closes it manually when done. Also
-    # defaults to --nogui unless the caller already specified a GUI-mode
-    # flag -- this launch path has no obvious reason to risk GUI mode's
-    # extra Kivy dependency (see README's Python-version caveat) when
-    # --nogui already covers the same client.
+    # falls back to --nogui (below) when Kivy can't be imported, unless
+    # the caller already specified --gui/--nogui.
+    log(f"python interpreter {python_exe!r}")
     args_list = list(args)
     if "--nogui" not in args_list and "--gui" not in args_list:
-        args_list.append("--nogui")
-    # Found live: launched from the compiled Launcher.exe (a windowed app
+        # GUI mode (the normal connect window) when this interpreter can
+        # import Kivy/KivyMD, the same dependency every other Archipelago
+        # client needs; otherwise the console client, so a broken or
+        # missing Kivy can't crash the launch.
+        try:
+            kivy_ok = subprocess.run(
+                [python_exe, "-c", "import kivy, kivymd"],
+                capture_output=True, timeout=60,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            ).returncode == 0
+        except (OSError, subprocess.SubprocessError) as e:
+            log(f"kivy probe failed to run: {e!r}")
+            kivy_ok = False
+        log(f"kivy importable={kivy_ok}")
+        if not kivy_ok:
+            args_list.append("--nogui")
+    # Launched from the compiled Launcher.exe (a windowed app
     # with no console of its own), a bare `cmd /K` Popen has nowhere to
     # actually attach an interactive console -- the process starts but
     # --nogui's "enter your slot name" stdin prompt is unreachable, so the
@@ -103,8 +119,35 @@ def launch_kotor_client(*args: str) -> None:
     # launching its own REPL from the Launcher and fixes it the same way:
     # CREATE_NEW_CONSOLE forces a real, fresh console window regardless of
     # what console context (or lack of one) the parent process has.
+    log(f"starting: cmd /K {python_exe} {kotor_client_path} {' '.join(args_list)}")
     subprocess.Popen(["cmd", "/K", python_exe, kotor_client_path, *args_list],
                       creationflags=subprocess.CREATE_NEW_CONSOLE)
+    log("process started")
+
+
+def launch_kotor_client(*args: str) -> None:
+    # Every step goes to %LOCALAPPDATA%\KotorAP\launcher.log: this runs
+    # inside the Launcher, where prints and exceptions are invisible, so
+    # a button that "does nothing" otherwise leaves no trace at all.
+    import os
+    import time
+    import traceback
+
+    log_path = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "KotorAP", "launcher.log")
+
+    def log(message: str) -> None:
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+        except OSError:
+            pass
+
+    try:
+        _launch_kotor_client(log, *args)
+    except Exception:
+        log("FAILED:\n" + traceback.format_exc())
+        raise
 
 
 components.append(Component("KOTOR Client", "KOTORClient", func=launch_kotor_client, component_type=Type.CLIENT))
@@ -154,6 +197,67 @@ BASE_CLASS_NAMES = ["soldier", "scout", "scoundrel"]
 JEDI_CLASS_NAMES = ["guardian", "consular", "sentinel"]
 ALL_CLASS_NAMES = BASE_CLASS_NAMES + JEDI_CLASS_NAMES
 
+# CompanionClass=droid. Looks are appearance.2da rows, grouped by model: at most 2 companions share a model, and then only
+# with different paint jobs. Rows 58 (war droid) and 82 (assassin droid) are the human-rig models patched in by
+# scripts/generate_droid_assets.py; the rest are vanilla rows. HK-47's own look (3), his PC-only variant (1) and
+# T3-M4's (2) are deliberately not in the pool, nor are the protocol (63, 233-235) and probe (62) droids.
+DROID_LOOK_MODEL = {
+    58: "war", 82: "assassin", 64: "sentry", 65: "spyder", 437: "spyder", 60: "markone", 436: "markone",
+    61: "marktwo", 59: "markfour", 57: "astromech", 231: "astromech", 232: "astromech",
+}
+DROID_HUMAN_RIG_LOOKS = (58, 82)
+DROID_COMBAT, DROID_EXPERT, DROID_BATTLE = 6, 7, 9
+DROID_CLASS_HAND = [DROID_COMBAT] * 3 + [DROID_EXPERT] * 2 + [DROID_BATTLE] * 2
+
+# Base item types a droid (race 5) can actually use once the droid patch has opened melee weapons to it. Everything else in
+# gear_items.json (armor, robes, masks, gloves, belts, implants, forearm bands, medpacs, stims, saber crystals) is human-only.
+DROID_USABLE_BASE_ITEMS = frozenset({
+    "Quarter_Staff", "Stun_Baton", "Long_Sword", "Vibro_Sword", "Short_Sword", "Vibro_Blade", "Double_Bladed_Sword",
+    "Vibro_Double_Blade", "Lightsaber", "Double_Bladed_Lightsaber", "Short_Lightsaber", "Ghaffi_Stick", "Wookie_Warblade",
+    "Gammorean_Battleaxe",
+    "Blaster_Pistol", "Heavy_Blaster", "Hold_Out_Blaster", "Ion_Blaster", "Disrupter_Pistol", "Sonic_Pistol", "Ion_Rifle",
+    "Bowcaster", "Blaster_Carbine", "Disrupter_Rifle", "Sonic_Rifle", "Repeating_Blaster", "Heavy_Repeating_Blaster",
+    "Blaster_Rifle",
+    "Fragmentation_Grenades", "Stun_Grenades", "Thermal_Detonator", "Poison_Grenade", "Flash_Grenade", "Sonic_Grenade",
+    "Adhesive_Grenade", "Cryoban_Grenade", "Fire_Grenade", "Ion_Grenade",
+    "Trap_Kit", "Security_Spikes", "Programming_Spikes",
+    "Droid_Light_Plating", "Droid_Medium_Plating", "Droid_Heavy_Plating", "Droid_Search_Scope_x", "Droid_Motion_Sensors_x",
+    "Droid_Sonic_Sensors_x", "Droid_Targeting_Computers", "Droid_Computer_Spike_Mount_x", "Droid_Security_Spike_Mount",
+    "Droid_Shield", "Droid_Utility_Device", "Droid_Repair_Equipment",
+})
+
+
+# Skills a droid cannot use (skills.2da droidcanuse = 0). With starting_class=droid their skill items and starting boosts are
+# left out, so no item is a dead one.
+DROID_UNUSABLE_SKILL_ARMS = frozenset({"stealth", "persuade", "treat_injury"})
+# Items that only make sense for a character with Force powers; left out of the pool when the PC is a droid (a droid PC never
+# becomes a Jedi). The vendor pass is the only way into the vendor's Force power menu.
+DROID_PC_EXCLUDED_ITEMS = frozenset({"Vendor Pass: Force Power Training", "Trap: Remove Half Known Force Powers"})
+
+
+def roll_droid_companions(rng, keys) -> typing.Dict[str, typing.List[int]]:
+    """{companion key: [appearance row, droid class]} for CompanionClass=droid. Seven distinct looks (max 2 per model) and
+    the 3/2/2 Combat/Expert/Battle hand dealt out at random; then the human-rig looks (war and assassin droid, the only
+    pool models with real hands) are swapped onto Battle Droids when one is available, since only that class equips melee."""
+    rows = sorted(DROID_LOOK_MODEL)
+    rng.shuffle(rows)
+    picked: typing.List[int] = []
+    per_model: typing.Dict[str, int] = {}
+    for row in rows:
+        model = DROID_LOOK_MODEL[row]
+        if len(picked) < len(keys) and per_model.get(model, 0) < 2:
+            picked.append(row)
+            per_model[model] = per_model.get(model, 0) + 1
+    hand = list(DROID_CLASS_HAND)
+    rng.shuffle(hand)
+    plan = {key: [row, cls] for key, row, cls in zip(keys, picked, hand)}
+    for key, (row, cls) in plan.items():
+        if row in DROID_HUMAN_RIG_LOOKS and cls != DROID_BATTLE:
+            swap = next((k for k, (r, c) in plan.items() if c == DROID_BATTLE and r not in DROID_HUMAN_RIG_LOOKS), None)
+            if swap is not None:
+                plan[swap][1], plan[key][1] = cls, DROID_BATTLE
+    return plan
+
 # The completion-condition markers (Rules.py's set_completion_rules) --
 # real items (see Items.py's own comment on why NOT code=None Events)
 # locked via place_locked_item() at their matching Locations.py locations
@@ -171,50 +275,6 @@ GOAL_EVENT_LOCATIONS: typing.Dict[str, str] = {
     "Alignment: Light Side 100": "Reached Light Side 100",
     "Visited: Leviathan - Prison Block": "Reached Leviathan",
 }
-
-# CompanionMode=ap_gated Mission/Zaalbar dependency, part 2 of
-# 2 -- Rules.py's set_rules() already guarantees "Companion: Mission Vao"
-# can never be placed AT "Companion Recruited: Zaalbar" itself (the pure
-# circular case), but that alone doesn't stop the general random fill from
-# placing Mission's item behind some check on a LATER planet entirely.
-# Taris is a real one-way point of no return in this game (once you leave
-# for the Ebon Hawk, Taris's own modules are gone for the rest of the
-# playthrough) -- if Mission's item lands anywhere past that departure,
-# the player physically cannot go back for Zaalbar's recruit at all,
-# regardless of what Rules.py's access rule believes is theoretically
-# satisfiable. Since this world's regions are flat/ungated (no real
-# entrance-based reachability model exists to express "before you leave
-# Taris" as an access rule -- see the KotorWorld class docstring), the
-# only way to actually guarantee this is to constrain WHERE the item can
-# be placed, not just what's needed to reach one specific location.
-# "Taris: Escaping Taris" is deliberately excluded -- its own journal
-# completion likely coincides with the departure itself, the exact
-# knife-edge case this is trying to avoid, not a safe margin before it.
-#
-# "Taris: Inside the Vulkar Base" is excluded for the same reason, found
-# live: its own journal completion (tar_vulkarbase, global.jrl) requires
-# having ALREADY infiltrated the Black Vulkar Base, and confirmed via
-# disassembly that BOTH of the base's two real entrances (front door
-# tar03_blkdoor, back-way forcefield console tar05_ffcontrol) require
-# Mission Vao specifically to open on first entry -- the front door only
-# ever unlocks from INSIDE the base, an unrelated chicken-and-egg, and
-# the forcefield has no Security-skill bypass (lockable=FALSE). So under
-# companion_mode=ap_gated, if Mission's own recruit item landed here, no
-# player could ever reach the location that grants it -- a genuine
-# permanent story soft-lock, not just an inconvenience. A live safety
-# net for seeds already generated before this fix exists too (see
-# extender/scripts_src/k_ptar_startconv.nss).
-MISSION_ITEM_EXCLUDED_LOCATIONS = {"Taris: Escaping Taris", "Taris: Inside the Vulkar Base"}
-
-
-def _mission_item_eligible_locations() -> typing.List[str]:
-    """Every location physically completable before Taris's one-way
-    departure (Endar Spire happens first and is equally irreversible, so
-    it's just as safe a candidate) -- sorted for a deterministic
-    self.random.choice() regardless of location_table's own dict order."""
-    return sorted(name for name, data in location_table.items()
-                   if data.region in ("Endar Spire", "Taris")
-                   and name not in MISSION_ITEM_EXCLUDED_LOCATIONS)
 
 # equipment_slot values (gear_items.json) that count as "Armor/Equipment"
 # for item_distribution_type's weighted draw -- everything else with a
@@ -272,6 +332,11 @@ def _shop_pool() -> typing.List[str]:
     can shift as the user hand-edits it)."""
     gear = read_gear_json()
     return sorted(resref for resref, data in gear.items() if data.get("shop_randomize"))
+
+
+def _is_droid_gear(gear_data: dict) -> bool:
+    """Whether a gear_items.json entry is something a droid can use (see DROID_USABLE_BASE_ITEMS)."""
+    return gear_data.get("base_item_type") in DROID_USABLE_BASE_ITEMS
 
 
 class KotorWebWorld(WebWorld):
@@ -352,6 +417,9 @@ class KotorWorld(World):
             result = {name: data for name, data in result.items()
                        if data.location_type != "companion"
                        and name not in COMPANION_SUBPLOT_LOCATIONS}
+        elif self.options.companion_mode == 3:  # ap_limited: the recruit moments stay, the subplot checks cannot be promised
+            result = {name: data for name, data in result.items()
+                       if name not in COMPANION_SUBPLOT_LOCATIONS}
         if self.options.additional_enemies == 0:  # off
             result = {name: data for name, data in result.items()
                        if data.location_type != "bounty"}
@@ -404,13 +472,6 @@ class KotorWorld(World):
                 # goes through item_table like everything else and can't
                 # drift out of sync with it.
                 location.place_locked_item(self.create_item(event_item_name))
-            elif loc_name == self.mission_item_location:
-                # Guarantees "Companion: Mission Vao" lands somewhere still
-                # reachable before Taris's one-way departure -- see
-                # _mission_item_eligible_locations()'s comment. create_items()
-                # excludes this item name from the general weighted pool to
-                # match (it's already placed here, not left for random fill).
-                location.place_locked_item(self.create_item("Companion: Mission Vao"))
 
         # Separate physical-module region graph purely for door/trigger
         # entrance randomization -- does not touch the thematic regions
@@ -428,36 +489,16 @@ class KotorWorld(World):
         data = item_table[name]
         return KotorItem(name, data.classification, data.code, self.player)
 
-    def generate_early(self) -> None:
-        # Progression System's real access-rule layer (see
-        # Rules.py) depends entirely on knowing which real locations sit
-        # on which side of each gate -- area_randomizer scrambling door/
-        # entrance connections makes that reasoning impossible (a location
-        # "behind" the Sith Base checkpoint in the vanilla layout could be
-        # entrance-randomized to connect somewhere completely different).
-        # Hard-enforced here, not just documented in the option's own
-        # docstring -- same OptionError pattern other AP worlds use for
-        # incompatible option combinations (e.g. worlds/blasphemous).
-        if self.options.progression_system and self.options.area_randomizer:
-            raise OptionError(
-                f"[KotOR - '{self.player_name}'] Progression System and Area Randomizer cannot both be "
-                "enabled -- Progression System's access rules depend on the vanilla area layout to know "
-                "which locations are actually behind each gate, which Area Randomizer scrambles.")
+    def _droid_mode(self) -> int:
+        """How many of starting_class / companion_class are set to droid (0, 1 or 2). 2 means droid-only item pool and
+        shops; 1 means droid gear is simply more common."""
+        return int(self.options.starting_class == 4) + int(self.options.companion_class == 4)
 
-        # Confirmed live: a real seed combining progression_system with
-        # goal=max_level left 2 of the 4 Star Maps permanently unfound --
-        # nothing in that goal ever requires reaching the Leviathan or
-        # later, so there's no narrative pull to go find them. Restricting
-        # to the two goals that actually require completing the gated
-        # content (defeat_malak requires it directly; reach_leviathan is
-        # gated behind all 4 Star Maps via Rules.py, see
-        # ProgressionSystem's own docstring) closes that gap at generation
-        # time rather than leaving it as a possible dead-end mid-seed.
-        if self.options.progression_system and self.options.goal not in (0, 3):  # defeat_malak, reach_leviathan
-            raise OptionError(
-                f"[KotOR - '{self.player_name}'] Progression System requires goal to be defeat_malak or "
-                "reach_leviathan -- true_balance and max_level don't require ever reaching the Leviathan "
-                "or later, so the Star Maps this option gates could go permanently unfound.")
+    def generate_early(self) -> None:
+        # CompanionClass=droid rebuilds the 7 non-droid companions and leaves HK-47 alone, so a new_companion
+        # replacement is silently ignored rather than rejected.
+        if self.options.companion_class == 4:
+            self.options.new_companion.value = 0
 
         """Precollected (starting-inventory) items: the starting_class
         choice (only when starting_class is "jedi_start" -- "jedi_granted"
@@ -476,6 +517,9 @@ class KotorWorld(World):
             rolled_class = self.random.choice(ALL_CLASS_NAMES)
             item_name = CLASS_NAME_TO_ITEM[rolled_class]
             self.multiworld.push_precollected(self.create_item(item_name))
+        elif self.options.starting_class == 4:  # droid
+            # Ignores jedi_class; precollected like jedi_start, so the conversion arrives as soon as the client connects.
+            self.multiworld.push_precollected(self.create_item("PC Droid Conversion"))
 
         # CompanionClass companion rolls -- computed once, here, using this
         # player's own seeded RNG, so both create_items() (jedi_companion's
@@ -503,16 +547,19 @@ class KotorWorld(World):
             for key in self._companion_class_keys():
                 self.companion_class_rolls[key] = self.random.choice(ALL_CLASS_NAMES)
 
-        # Mission/Zaalbar Taris departure guarantee (see
-        # _mission_item_eligible_locations()'s comment above) -- only
-        # meaningful when companion_mode=ap_gated, the one mode where
-        # "Companion: Mission Vao" is a real placeable pool item at all.
-        # Rolled here (not in create_items()) so create_regions() can lock
-        # it in immediately when it builds each location, matching
-        # GOAL_EVENT_LOCATIONS's own ordering.
-        self.mission_item_location: typing.Optional[str] = None
-        if self.options.companion_mode == 0:  # ap_gated
-            self.mission_item_location = self.random.choice(_mission_item_eligible_locations())
+        # CompanionClass=droid: looks and droid classes are dealt here (seeded) and sent in slot_data; the client's
+        # droid patcher writes them into the companion templates. Nothing is delivered at recruit time.
+        self.companion_droid_plan: typing.Dict[str, typing.List[int]] = {}
+        if mode == 4:  # droid
+            self.companion_droid_plan = roll_droid_companions(self.random, COMPANION_CLASS_KEYS)
+
+        # CompanionMode=ap_limited: the order the nine companions are earned in. Drawn only for that mode so every
+        # other mode's later random draws are unchanged.
+        self.companion_unlock_order: typing.List[str] = []
+        if self.options.companion_mode == 3:  # ap_limited
+            keys = ["bastila", "canderous", "carth", "hk47", "jolee", "juhani", "mission", "t3m4", "zaalbar"]
+            self.random.shuffle(keys)
+            self.companion_unlock_order = keys
 
         for arm_name, option_name in STARTING_ABILITY_ARMS.items():
             points = getattr(self.options, option_name).value
@@ -521,6 +568,8 @@ class KotorWorld(World):
                 self.multiworld.push_precollected(self.create_item(item_name))
 
         for arm_name, option_name in STARTING_SKILL_ARMS.items():
+            if self.options.starting_class == 4 and arm_name in DROID_UNUSABLE_SKILL_ARMS:
+                continue
             points = getattr(self.options, option_name).value
             item_name = arm_name_to_item[arm_name]
             firings = -(-points // 2)  # +2 points per firing, rounded up
@@ -546,14 +595,8 @@ class KotorWorld(World):
         # -len(self._goal_event_locations()): the selected goal's marker
         # locations got a locked item in create_regions() instead of drawing
         # from this pool -- without this adjustment the pool would be short
-        # of the real number of fillable (non-event) location slots. The extra -1
-        # when companion_mode=ap_gated matches "Companion: Mission Vao"
-        # getting the same locked-in-create_regions() treatment (see
-        # mission_item_location above) -- one more pre-filled location,
-        # one more subtraction, same reasoning.
+        # of the real number of fillable (non-event) location slots.
         active_count = len(self._active_locations()) - len(self._goal_event_locations())
-        if self.mission_item_location is not None:
-            active_count -= 1
 
         # Companions (when companion_mode is ap_gated) and the starting_class
         # class item (when starting_class is "jedi_granted") are the only
@@ -568,9 +611,6 @@ class KotorWorld(World):
         # item at all any more (see Items.py) -- left entirely to normal
         # in-game level-up choices.
         if self.options.companion_mode == 0:  # ap_gated
-            # "Companion: Mission Vao" excluded -- already placed directly
-            # in create_regions() via mission_item_location, not left for
-            # the general weighted fill (see that field's comment above).
             # new_companion: swap "Companion: HK-47" for
             # "Companion: New Companion" -- exactly one of the two is ever
             # placed, matching _active_locations()'s companion-location
@@ -581,7 +621,7 @@ class KotorWorld(World):
                     "Companion: New Companion" if n == "Companion: HK-47" else n
                     for n in companion_names
                 ]
-            mandatory_names = [n for n in companion_names if n != "Companion: Mission Vao"]
+            mandatory_names = list(companion_names)
         else:
             mandatory_names = []
         if self.options.starting_class == 2:  # jedi_granted
@@ -615,27 +655,17 @@ class KotorWorld(World):
                     for key in self._companion_class_keys()
                 ]
 
-        # ProgressionSystem: all 8 items are guaranteed
-        # placement, same reasoning as Additional Feats above -- these
-        # carry real access rules (Rules.py), so unlike a weighted-draw
-        # item there's no sense in which "maybe it doesn't appear this
-        # seed" would even be coherent; the rules assume all 8 exist.
-        # (Originally 10 -- Tatooine Desert Map and Star Map (Dantooine)
-        # dropped after tracing each one's real checkpoint
-        # script; see Items.py's comment on the item table and Rules.py.)
+        # ProgressionSystem: the 24 story-gate progression items (8 families of 3) are guaranteed placement. The
+        # access rules in StoryGates.py assume every item exists, so there is no weighted draw.
         if self.options.progression_system:
-            mandatory_names = mandatory_names + [
-                "Progression Item: Sith Armor", "Progression Item: Sith Papers",
-                "Progression Item: Taris Shield Codes", "Progression Item: Manaan Enviro Suit",
-                "Progression Item: Star Map (Tatooine)",
-                "Progression Item: Star Map (Kashyyyk)", "Progression Item: Star Map (Manaan)",
-                "Progression Item: Star Map (Korriban)",
-            ]
+            for token_names in STORY_TOKEN_NAMES.values():
+                mandatory_names = mandatory_names + list(token_names)
 
         # ArchipelagoVendor: the five Vendor Pass items are guaranteed placement (they replace filler,
         # so the pool size is unchanged). Useful, never progression.
         if self.options.archipelago_vendor:
-            mandatory_names = mandatory_names + list(VENDOR_UNLOCK_ITEMS.keys())
+            mandatory_names = mandatory_names + [
+                n for n in VENDOR_UNLOCK_ITEMS if not (self.options.starting_class == 4 and n in DROID_PC_EXCLUDED_ITEMS)]
 
         # Traps=fixed_amount: all 12
         # items guaranteed placement, same reasoning as Additional Feats/
@@ -646,7 +676,8 @@ class KotorWorld(World):
         # TRAP_ITEMS for the full list/arm_name mapping and Options.py's
         # Traps docstring for what each one does.
         if self.options.enable_traps == 2:  # fixed_amount
-            mandatory_names = mandatory_names + list(TRAP_ITEMS.keys())
+            mandatory_names = mandatory_names + [
+                n for n in TRAP_ITEMS if not (self.options.starting_class == 4 and n in DROID_PC_EXCLUDED_ITEMS)]
 
         pool = [self.create_item(name) for name in mandatory_names]
         pool += self._distribute_items(active_count - len(pool))
@@ -676,13 +707,20 @@ class KotorWorld(World):
             # (and as duplicates of the mandatory copies with it on).
             if not gear_data.get("included_as_item"):
                 continue
+            # Both options droid: only gear a droid can use. One option droid: droid gear is listed three times so it is
+            # drawn about three times as often (the draw is with replacement, so a repeat is harmless).
+            droid_mode = self._droid_mode()
+            is_droid_gear = _is_droid_gear(gear_data)
+            if droid_mode == 2 and not is_droid_gear:
+                continue
+            copies = 3 if (droid_mode == 1 and is_droid_gear) else 1
             slot = gear_data.get("equipment_slot") or ""
             if slot == "Weapon":
-                pools["weapon"].append(name)
+                pools["weapon"] += [name] * copies
             elif slot in _ARMOR_SLOTS:
-                pools["armor"].append(name)
+                pools["armor"] += [name] * copies
             else:
-                pools["consumable"].append(name)
+                pools["consumable"] += [name] * copies
         return pools
 
     def _skill_ability_pools(self) -> typing.Tuple[typing.List[str], typing.List[str]]:
@@ -690,7 +728,8 @@ class KotorWorld(World):
         derived from Options.py's STARTING_SKILL_ARMS/STARTING_ABILITY_ARMS
         arm-name keys (the same source of truth generate_early() uses for
         starting boosts) rather than a second hand-written list."""
-        skills = [arm_name_to_item[arm] for arm in STARTING_SKILL_ARMS if arm in arm_name_to_item]
+        skills = [arm_name_to_item[arm] for arm in STARTING_SKILL_ARMS if arm in arm_name_to_item
+                  and not (self.options.starting_class == 4 and arm in DROID_UNUSABLE_SKILL_ARMS)]
         abilities = [arm_name_to_item[arm] for arm in STARTING_ABILITY_ARMS if arm in arm_name_to_item]
         return skills, abilities
 
@@ -729,7 +768,8 @@ class KotorWorld(World):
             # index) dedup keys on the item index, not the name). Empty for
             # off (no traps anywhere) and fixed_amount (create_items()
             # already placed exactly 12 as mandatory items).
-            "trap": list(TRAP_ITEMS.keys()) if self.options.enable_traps == 1 else [],
+            "trap": [n for n in TRAP_ITEMS if not (self.options.starting_class == 4 and n in DROID_PC_EXCLUDED_ITEMS)]
+                    if self.options.enable_traps == 1 else [],
         }
 
         dist_type = self.options.item_distribution_type.value
@@ -780,6 +820,8 @@ class KotorWorld(World):
         pool alone."""
         return {
             "companion_mode": self.options.companion_mode.value,
+            # ap_limited: the seeded order companions are earned in (empty for every other mode)
+            "companion_unlock_order": self.companion_unlock_order,
             "new_companion": self.options.new_companion.value,
             "starting_class": self.options.starting_class.value,
             "experience_mode": self.options.experience_mode.value,
@@ -833,6 +875,9 @@ class KotorWorld(World):
             # companion DOES have a class change still coming, just not
             # reflected in companion_class_rolls; off means none ever will).
             "companion_class_mode": self.options.companion_class.value,
+            # CompanionClass=droid only: {companion key: [appearance row, droid class]}, written into the companion
+            # templates by scripts/generate_droid_assets.py on Connect. Empty otherwise.
+            "companion_droid_plan": self.companion_droid_plan,
             # Additional Enemies mode (0=off/1=area_appropriate/
             # 2=random_sane/3=fully_random) -- read by the local,
             # tester-run scripts/patch_additional_enemies.py, which consumes
@@ -876,6 +921,21 @@ class KotorWorld(World):
             return {planet: [] for planet in PLANET_MODULE_PREFIXES}
         count = self.options.shop_item_count.value
         pool = _shop_pool()
+        droid_mode = self._droid_mode()
+        if droid_mode:
+            gear = read_gear_json()
+            droid_pool = [r for r in pool if _is_droid_gear(gear.get(r, {}))]
+            if droid_mode == 2:  # both droid: every shop item is something a droid can use
+                pool = droid_pool
+            else:  # one droid: at least ~40% of each shop is droid gear
+                droid_set = set(droid_pool)
+                human_pool = [r for r in pool if r not in droid_set]
+                droid_share = min(len(droid_pool), -(-count * 2 // 5))
+                return {
+                    planet: self.random.sample(droid_pool, droid_share)
+                    + self.random.sample(human_pool, min(count - droid_share, len(human_pool)))
+                    for planet in PLANET_MODULE_PREFIXES
+                }
         return {
             planet: self.random.sample(pool, min(count, len(pool)))
             for planet in PLANET_MODULE_PREFIXES

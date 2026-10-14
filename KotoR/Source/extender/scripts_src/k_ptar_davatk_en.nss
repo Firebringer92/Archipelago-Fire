@@ -9,7 +9,7 @@
 // field anywhere in the game (see docs/MODE_DEPENDENCIES.md's "Canderous
 // AP check never fires" entry for the full archaeology) -- a whole-game
 // raw-byte search found the literal resref in exactly one place, its own
-// unused-looking resource entry. Live-confirmed the AP check for him
+// unused-looking resource entry. Confirmed the AP check for him
 // (companion_idx=1) never fires even after boarding the Ebon Hawk.
 //
 // Rather than keep chasing the real vanilla hook (or risk touching
@@ -33,9 +33,9 @@
 // this can't fire prematurely off some other reason the door happens to
 // open.
 //
-// REAL BUG FOUND LIVE TESTING THIS FIX (2026-09-17): the first version of
+// REAL BUG: the first version of
 // this file guarded on `!IsAvailableCreature(NPC_CANDEROUS)`, matching
-// k_ptar_candadd.nss's own guard -- but live-tested on FireKnight's seed
+// k_ptar_candadd.nss's own guard -- but in play, on a seed
 // (companion_canderous confirmed via kotor_delivery_log.jsonl to have
 // NEVER been legitimately delivered to this slot), the check fired but
 // Canderous was NOT suppressed, because IsAvailableCreature() was

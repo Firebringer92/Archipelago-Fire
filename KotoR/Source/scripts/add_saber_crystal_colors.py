@@ -1,7 +1,7 @@
 """
 Adds new lightsaber crystal colors to the game and the AP gear loot pool:
 Cyan, Orange, Bronze, Silver, Black (assets from Crixler's New Saber
-Crystals Pack I V2.1, https://deadlystream.com -- downloaded by the user)
+Crystals Pack I V2.1, https://deadlystream.com)
 plus Purple (built here from scratch, reusing that pack's own unused
 `w_lsabrepurp01` texture -- the pack ships the texture but never wires it
 to a model/crystal/2da row).

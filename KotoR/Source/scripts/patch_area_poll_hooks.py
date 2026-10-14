@@ -39,7 +39,7 @@ HANDLER_RESREF = "ap_area_poll"
 HANDLER_NCS = os.path.join(REPO_ROOT, "extender", "scripts_src", f"{HANDLER_RESREF}.ncs")
 HANDLER_NSS = os.path.join(REPO_ROOT, "extender", "scripts_src", f"{HANDLER_RESREF}.nss")
 # Every play area whose ARE has an empty OnEnter and is not already covered by a trampoline
-# (found by scanning all modules 2026-10-04: Star Forge Deck 2 left polling dead in the final
+# (found by scanning all modules: Star Forge Deck 2 left polling dead in the final
 # stretch, with companion fixes and the Star Forge reconcile silently not running). Left out
 # on purpose: the minigame modules (*mg), the STUNT cutscene modules, and the Leviathan Hawk
 # modules (ebo_m40aa, ebo_m40ad, ebo_m46ab), which have their own scene scripts.

@@ -21,9 +21,7 @@ call that's the actual periodic 5s report, (3) the DelayCommand
 self-reschedule that keeps this ticking forever.
 
 DIAGNOSTIC INSTRUMENTATION: added to localize the recurring
-silent-heartbeat-death bug (root cause still open -- see
-docs/history/FIXED_ITEMS.md's "Recurring silent-heartbeat-death bug" (closed)
-item). Two markers per tick, deliberately kept to two (not three+) to
+silent-heartbeat-death bug (root cause since found and fixed). Two markers per tick, deliberately kept to two (not three+) to
 avoid meaningfully adding to log/relay volume: "TICK_START|<n>" right
 when Tick() begins (before the ExecuteScript call), and
 "TICK_RESCHEDULED|<n>" right before the DelayCommand(5.0, Tick())

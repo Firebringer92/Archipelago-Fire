@@ -57,8 +57,8 @@
 // blocking, so an immediate same-tick revert likely cancelled it
 // silently) -- fixing each of those individually with scripted
 // DelayCommand delays never got the real dialogue to actually fire,
-// even after 8+ real seconds. The user's own suggestion, confirmed to
-// work by matching how they actually play it: split this across TWO
+// even after 8+ real seconds. Confirmed to work by matching
+// how a player actually plays it: split this across TWO
 // REAL, PLAYER-DRIVEN clicks instead of trying to script-simulate
 // enough settling time in one shot.
 //   - Click 1 (Mission not yet available): stage her (bench a companion
@@ -72,7 +72,7 @@
 //     to the preserved original via ExecuteScript -- but even with every
 //     gate condition fully traced and confirmed passing (!GetIsOpen(FF)
 //     && IsNPCPartyMember(Mission)), the conversation never actually
-//     played. CONFIRMED LIVE, a new engine-behavior finding for this
+//     played. CONFIRMED, a new engine-behavior finding for this
 //     project: ActionStartConversation, called from a script reached
 //     via ExecuteScript rather than directly by the native OnUsed event,
 //     silently fails to queue -- same general category as the
@@ -113,6 +113,21 @@ int GetCompanionNPCIndex(object oCompanion)
     return -1;
 }
 
+// The staged Mission is a creature that keeps standing after RemovePartyMember/RemoveAvailableNPC (and a later click on the console
+// created another one). Destroyed a while after the revert, only if she has not been recruited for real in the meantime.
+void PurgeForcefieldMission()
+{
+    if (IsAvailableCreature(NPC_MISSION)) return;
+    int n = 0;
+    object oStray = GetObjectByTag("mission", n);
+    while (GetIsObjectValid(oStray))
+    {
+        DestroyObject(oStray);
+        n++;
+        oStray = GetObjectByTag("mission", n);
+    }
+}
+
 void RevertForcefieldMission()
 {
     // KSE_HasData only checks key EXISTENCE, not value truthiness -- a
@@ -136,6 +151,7 @@ void RevertForcefieldMission()
 
     KSE_SetData("ff_mission_staged", "0");
     KSE_Diag(163, "AP|SAFEGUARD|tar_forcefield_mission|reverted");
+    DelayCommand(20.0, PurgeForcefieldMission());
 }
 
 void main()
@@ -151,14 +167,14 @@ void main()
         KSE_Diag(163, "AP|SAFEGUARD|tar_forcefield_mission|click2|missionSeated="
                       + IntToString(IsNPCPartyMember(NPC_MISSION)));
 
-        // CONFIRMED LIVE FIX: every layer of apo_startconv_orig's own
+        // CONFIRMED FIX: every layer of apo_startconv_orig's own
         // gating traced and confirmed passing at this point
         // (!GetIsOpen(forcefield) && IsNPCPartyMember(Mission)), yet the
         // dialogue never actually played when reached via
         // ExecuteScript("apo_startconv_orig", ...) -- something about
         // invoking the preserved original specifically via ExecuteScript
         // silently failed to queue the conversation. Calling the real
-        // conversation directly instead is confirmed live to work. The
+        // conversation directly instead is confirmed to work. The
         // dialogue's own action-node logic (SetLocked/ActionOpenDoor on
         // tar05_forcefield) is unaffected either way, since that lives
         // in the .dlg itself, not in this script.
@@ -181,7 +197,7 @@ void main()
     // already really available (normal recruit, or ap_gated after her
     // real item arrived), no staging needed -- but still replicate the
     // real gate directly rather than ExecuteScript("apo_startconv_orig",
-    // ...), which is CONFIRMED LIVE to silently fail to queue the
+    // ...), which is CONFIRMED to silently fail to queue the
     // conversation (see the click-2 path's own comment). This affects
     // EVERY player who reaches this console, including completely
     // vanilla companion_mode=normal ones -- not just the AP-gated case
@@ -218,7 +234,12 @@ void main()
     }
 
     AddAvailableNPCByTemplate(NPC_MISSION, "p_mission");
-    object oMission = CreateObject(OBJECT_TYPE_CREATURE, "p_mission", GetLocation(oPC));
+    // Reuse a Mission that is already standing (an earlier staging's) instead of creating another.
+    object oMission = GetObjectByTag("mission");
+    if (!GetIsObjectValid(oMission))
+    {
+        oMission = CreateObject(OBJECT_TYPE_CREATURE, "p_mission", GetLocation(oPC));
+    }
     AddPartyMember(NPC_MISSION, oMission);
 
     KSE_SetData("ff_mission_staged", "1");

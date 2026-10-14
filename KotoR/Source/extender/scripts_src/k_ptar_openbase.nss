@@ -21,8 +21,7 @@
 // or companion_mode=none (T3-M4 never recruited at all), this is a
 // permanent main-story soft-lock: there is no way to ever satisfy
 // "currently controlling T3-M4" if T3-M4 was never made available to
-// switch to in the first place. Live-reported, not hypothetical --
-// confirmed by the user directly.
+// switch to in the first place. Reported in play, not hypothetical.
 //
 // Fix: if T3-M4 isn't currently available at all, unlock the door
 // ourselves regardless of who's entering, then still delegate to the

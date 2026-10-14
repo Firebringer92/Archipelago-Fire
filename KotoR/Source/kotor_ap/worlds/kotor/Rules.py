@@ -3,177 +3,10 @@ from worlds.generic.Rules import set_rule, add_rule, add_item_rule
 
 from .Options import Goal
 from .Locations import COMPANION_SUBPLOT_LOCATIONS
+from .StoryGates import apply_story_gate_rules
 
-# Progression System's real access-rule layer. Every gate here
-# is confirmed via the game's OWN compiled scripts (raw byte search across
-# every .ncs in the game for each item's tag, cross-checked against the
-# real dialogue/area data), not guessed from memory. Two real
-# corrections were found along
-# the way (the Sith Base keycard turned out to be a redundant alternate
-# path already covered by the armor+papers gate, not a separate item; the
-# Davik's estate computer pass is used on an internal terminal, not the
-# estate's own entry, so it's not a real progression gate either -- both
-# were dropped from the original 12-item candidate list for exactly this
-# reason). Two further items were dropped after tracing each candidate's
-# REAL checkpoint script (not just its pickup script), not merely its
-# vanilla acquisition location -- Tatooine Desert Map because literally
-# nothing in the entire game (chitin + Override, every resource type)
-# ever checks whether the player possesses it, and Dantooine's Star Map
-# because it turned out not to be part of the same completion gate as the
-# other 4 (see below) and isn't a travel barrier either. Also added: an
-# ARTIFICIAL travel gate for the 4 remaining Star Map planets
-# (Tatooine/Kashyyyk/Manaan/Korriban), since the vanilla game turned out
-# to have NO such gate at all -- k_sup_galaxymap (the galaxy map script)
-# contains zero availability checks; every planet is selectable from the
-# start. Progression System creates this lock itself via a
-# k_sup_galaxymap wrapper (blocks travel) plus a k_pla_actmap wrapper
-# (blocks the underlying completion flag as a safety net) -- see
-# scripts/patch_item_suppression.py. AP's own placement logic needs to
-# know about this artificial lock too, so it doesn't strand a required
-# item behind a location that's genuinely unreachable until that planet's
-# Star Map check arrives.
-
-# Everywhere the Sith disguise checkpoint gates -- confirmed via
-# ptar_sitharmor/ptar_sithpapers being checked together across ~30
-# scripts in modules m02ad/m02ae (Taris' Sith Military Base and its own
-# checkpoint). Sith Armor ALONE clears the general Lower City checkpoint;
-# Sith Base itself additionally checks for the papers.
-TARIS_ARMOR_ONLY_LOCATIONS = [
-    "Visited: Taris - Lower City",
-    "Visited: Taris - Lower City Apartments (tar_m03ab)",
-    "Visited: Taris - Lower City Apartments (tar_m03ad)",
-    "Visited: Taris - Javyar's Cantina",
-    "Visited: Taris - Swoop Platform",
-    "Visited: Taris - Undercity",
-    "Visited: Taris - Lower Sewers",
-    "Visited: Taris - Upper Sewers",
-    "Visited: Taris - Davik's Estate",
-    "Visited: Taris - Black Vulkar Base (tar_m10aa)",
-    "Visited: Taris - Black Vulkar Base (tar_m10ab)",
-    "Visited: Taris - Black Vulkar Base (tar_m10ac)",
-    "Visited: Taris - Hidden Bek Base (tar_m11aa)",
-    "Visited: Taris - Hidden Bek Base (tar_m11ab)",
-]
-TARIS_ARMOR_AND_PAPERS_LOCATIONS = [
-    "Visited: Taris - Sith Base",
-]
-
-# Confirmed via tar09_acquire/k_ptar_candcode -- the codes needed to
-# launch off Taris without being shot down by the Sith's own orbital
-# cannons. Only "Escaping Taris" itself needs this; nothing else on
-# Taris depends on it.
-TARIS_SHIELD_CODES_LOCATIONS = [
-    "Taris: Escaping Taris",
-]
-
-# Confirmed via k_pman_airlock01/k_pman_suituse -- the Hrakert Station
-# airlock leading to the underwater trench walk to Manaan's own Star Map.
-# Includes the Star Map check ITSELF, not just what it leads to
-# afterward -- the physical Star Map sits past this airlock, so that
-# check is not really reachable without the suit either.
-MANAAN_ENVIRO_SUIT_LOCATIONS = [
-    "Visited: Manaan - Sea Floor",
-    "Visited: Manaan - Kolto Control",
-    "Visited: Manaan - Hrakert Rift",
-    "Manaan: Star Map: Manaan",
-]
-
-# The 4 Star Maps that actually gate the Leviathan-capture endgame --
-# confirmed directly from k_pla_actmap's own disassembly: it tracks
-# exactly K_STAR_MAP_MANAAN/KASHYYYK/KORRIBAN/TATOOINE and recomputes
-# K_CAPTURED_LEV from those 4 booleans alone. Dantooine's own Star Map
-# (DAN_STARMAP_DONE) is a completely separate global, read by neither
-# k_pla_actmap nor the Leviathan-capture check -- it was dropped from the
-# Progression System item list entirely since it's neither
-# a travel barrier nor part of this completion gate.
-ALL_STAR_MAPS = [
-    "Progression Item: Star Map (Tatooine)", "Progression Item: Star Map (Kashyyyk)",
-    "Progression Item: Star Map (Manaan)", "Progression Item: Star Map (Korriban)",
-]
-# FIXED (real bug): each planet's own "Star Map: X"
-# location has region=X (the planet name) like every other quest/
-# exploration check on that planet -- but the generic per-planet travel-
-# gate loop below adds a rule requiring state.has(that SAME planet's Star
-# Map item) to every location whose region matches, with no exception.
-# Applied to the Star Map location itself, that's a hard self-lock: you'd
-# need to already possess the exact item that location is meant to award
-# before you could ever check it. Confirmed -- a real generation
-# placed "Progression Item: Star Map (Manaan)" on a Manaan-region
-# location, unreachable as a direct result of this bug. Excluded here so
-# the loop's rule is skipped for these 4 specifically; every OTHER
-# location on that planet still correctly requires the Star Map item
-# (that part was never wrong -- AP's own reachability-based fill already
-# guarantees the item itself can't be placed at any of those other
-# locations either, since none of them are reachable without it).
-PLANET_OWN_STARMAP_LOCATION = {
-    "Kashyyyk: Star Map: Kashyyyk", "Korriban: Star Map: Korriban",
-    "Manaan: Star Map: Manaan", "Tatooine: Star Map: Tatooine",
-}
-
-STAR_FORGE_ENDGAME_LOCATIONS = [
-    "Leviathan: Captured by the Leviathan",
-    "Visited: Leviathan - Prison Block", "Visited: Leviathan - Command Deck",
-    "Visited: Leviathan - Hangar", "Visited: Leviathan - Bridge",
-    "Unknown World: Invisible Mandalorians", "Unknown World: Rakatan Research",
-    "Unknown World: Trapped on a Nameless World",
-    "Visited: Unknown World - Central Beach", "Visited: Unknown World - South Beach",
-    "Visited: Unknown World - North Beach", "Visited: Unknown World - Temple Exterior",
-    "Visited: Unknown World - Elder Settlement", "Visited: Unknown World - Rakatan Settlement",
-    "Visited: Unknown World - Temple Main Floor", "Visited: Unknown World - Temple Summit",
-    "Star Forge: A Quest for the Star Forge",
-    "Visited: Star Forge - Deck 1", "Visited: Star Forge - Command Center",
-    "Visited: Star Forge - Viewing Platform",
-    "Malak Defeated",
-]
-
-# --- Artificial travel-gate location set ---
-#
-# Every location whose `region` in Locations.py IS one of these 4 planet
-# names is trivially in-scope. That alone misses real checks physically
-# on these planets but categorized under a cross-planet region instead
-# (Locations.py's own "Exploration"/"Genoharadan"/"Companions" buckets),
-# so those are covered separately below, each confirmed via real game
-# data (not guessed): "Exploration" entries cross-referenced against
-# extender/area_trampolines/_mapping.json's module->area_idx table;
-# "Companions"/"Genoharadan" entries confirmed via direct GIT/journal-tag
-# tracing of where each one's real module placement/completion sits.
-PLANET_STARMAP_ITEM = {
-    "Tatooine": "Progression Item: Star Map (Tatooine)",
-    "Kashyyyk": "Progression Item: Star Map (Kashyyyk)",
-    "Manaan": "Progression Item: Star Map (Manaan)",
-    "Korriban": "Progression Item: Star Map (Korriban)",
-}
-
-# area_idx values (Locations.py's "Exploration" region) physically on each
-# gated planet, per extender/area_trampolines/_mapping.json's module
-# prefix (kas_/korr_/man/tat_). Baked as a static set here, same as
-# Locations.py's own table is generated once rather than re-derived live.
-PLANET_AREA_IDX = {
-    "Kashyyyk": {11, 12, 13, 14, 15},
-    "Korriban": {16, 17, 18, 19, 20, 21, 22, 23},
-    "Manaan": {29, 30, 31, 32, 33, 34, 35, 36, 37, 38},
-    "Tatooine": {62, 63, 64, 65, 66, 67, 68, 69},
-}
-
-# Companion recruits and Genoharadan bounty targets confirmed (via real
-# GIT Creature List / journal-tag tracing, not guessed) to
-# physically sit on one of the 4 gated planets despite their `region`
-# being "Companions"/"Genoharadan" rather than a planet name. Every OTHER
-# companion's real recruit point traced back to Endar Spire/Taris/
-# Dantooine (none of which are gated), so only these 2 needed adding.
-COMPANION_PLANET_OVERRIDE = {
-    "Companion Recruited: HK-47": "Tatooine",        # tat_m17ac (tat17_08hk47_01)
-    # Same physical recruit trigger as the entry above (new_companion only
-    # swaps the character, not the location) -- needed as its own entry
-    # because this dict is keyed by AP location NAME, and "Companion
-    # Recruited: New Companion" is a separate name/id from "...: HK-47"
-    # (see Locations.py). Without this, COMPANION_PLANET_OVERRIDE.get(name)
-    # silently returns None for her under new_companion=on, dropping the
-    # Tatooine gate for progression_system instead of crashing -- caught
-    # by the pre-change checklist, not a live symptom.
-    "Companion Recruited: New Companion": "Tatooine",
-    "Companion Recruited: Jolee Bindo": "Kashyyyk",  # kas_m24aa (p_jolee001)
-}
+# The Progression System's access rules live in StoryGates.py (story-beat gates, see
+# DEVELOPMENT_HISTORY.md section 17). This module keeps the rules that apply to every seed.
 
 # All 6 Genoharadan-region locations: the questline turned out to be
 # genuinely ambiguous/multi-planet -- real script tracing confirmed the
@@ -184,66 +17,21 @@ COMPANION_PLANET_OVERRIDE = {
 # exact per-stage planet gates for a quest this path-dependent, these 6
 # locations never hold a progression-classified item at all, full stop --
 # same add_item_rule mechanism as the alignment/level fix above, applied
-# unconditionally (not gated behind progression_system -- always). The
-# EXISTING GENOHARADAN_PLANET_OVERRIDE access
-# rules below are UNCHANGED and still apply when progression_system is
-# on -- this is purely an additional item-placement safety net, not a
+# unconditionally (not gated behind progression_system -- always). With
+# progression_system on, StoryGates.py's access rules still apply to them
+# -- this is purely an additional item-placement safety net, not a
 # replacement for the reachability gating.
 ALL_GENOHARADAN_LOCATIONS = [
     "Genoharadan: Ithorak", "Genoharadan: Lorgal", "Genoharadan: Rulan",
     "Genoharadan: Vorn", "Genoharadan: Zuulan", "Genoharadan",
 ]
 
-# Genoharadan bounty targets: each target's own journal-advancing script
-# was traced to its module directly (not the shared Manaan broker/Ebon
-# Hawk tracker scripts every target's tag is ALSO referenced from, which
-# don't indicate where the actual confrontation happens). Zuulan's real
-# module is Dantooine (not gated, no entry needed here). Lorgal's own
-# module couldn't be pinned this way -- only the shared broker script
-# references him -- so Korriban is an inference by elimination against
-# the other 4 confirmed targets, lower confidence than the rest; revisit
-# if this turns out wrong. The overall questline-completion location
-# ("Genoharadan", journal_target=102) references advancing scripts on 3
-# different gated planets at once (likely a branching final confrontation
-# depending on player path) and can't be pinned to one -- conservatively
-# gated behind ALL 4 Star Maps below instead of a single planet.
-GENOHARADAN_PLANET_OVERRIDE = {
-    "Genoharadan: Ithorak": "Manaan",     # manm26ad
-    "Genoharadan: Rulan": "Kashyyyk",     # kas_m24aa
-    "Genoharadan: Vorn": "Tatooine",      # tat_m18ab
-    "Genoharadan: Lorgal": "Korriban",    # inferred, not directly confirmed
-}
-GENOHARADAN_FINALE_LOCATION = "Genoharadan"
-
 
 def set_rules(multiworld: MultiWorld, player: int) -> None:
     world = multiworld.worlds[player]
 
-    # Zaalbar/Mission real-game dependency, applied regardless
-    # of progression_system -- this isn't a Progression System travel gate,
-    # it's a structural vanilla-game fact: confirmed via direct dialogue
-    # tree inspection of tar_m05aa's missdoor_dlg/tar05_ff_dlg/tar05_ff_dlg2
-    # (the 3 conversations covering every way to reach Zaalbar's cage) that
-    # EVERY branch actually freeing him is gated on a Mission-presence
-    # condition (k_ptar_mischk/k_con_missionnpm/k_ptar_miszalchk) -- the
-    # no-Mission branches are dead-end flavor dialogue with no scripts at
-    # all (Zaalbar only speaks Shyriiwook; Mission is his translator). Only
-    # matters when companion_mode=ap_gated: that's the one mode where
-    # "Companion: Mission Vao" is a real item that could otherwise be
-    # placed AT "Companion Recruited: Zaalbar" itself by the fill
-    # algorithm with no rule to prevent it -- an unrecoverable circular
-    # dependency (need Mission in the party to check Zaalbar's location,
-    # need to check Zaalbar's location to receive the item that gets you
-    # Mission). companion_mode=normal needs no rule here: Mission's own
-    # recruit is pure vanilla with no AP item gating it, so the same
-    # real-game dependency is self-enforcing through ordinary play.
-    if world.options.companion_mode == 0:  # ap_gated
-        add_rule(multiworld.get_location("Companion Recruited: Zaalbar", player),
-                  lambda state: state.has("Companion: Mission Vao", player))
-
     # Companion personal-subplot self-guard, found while
-    # auditing the game for other companion-dependent checks after the
-    # Zaalbar/Mission fix above. Confirmed via a game-wide NCS disassembly
+    # auditing the game for companion-dependent checks. Confirmed via a game-wide NCS disassembly
     # scan (every module's .rim, ~230 files) for scripts calling
     # IsNPCPartyMember/IsAvailableCreature with a real NPC_* constant:
     # each companion's own "Ebon Hawk: ..." personal-subplot journal entry
@@ -337,115 +125,7 @@ def set_rules(multiworld: MultiWorld, player: int) -> None:
         # start, same flat model as before this option existed.
         return
 
-    for name in TARIS_ARMOR_ONLY_LOCATIONS:
-        set_rule(multiworld.get_location(name, player),
-                  lambda state: state.has("Progression Item: Sith Armor", player))
-    for name in TARIS_ARMOR_AND_PAPERS_LOCATIONS:
-        set_rule(multiworld.get_location(name, player),
-                  lambda state: (state.has("Progression Item: Sith Armor", player)
-                                  and state.has("Progression Item: Sith Papers", player)))
-    for name in TARIS_SHIELD_CODES_LOCATIONS:
-        set_rule(multiworld.get_location(name, player),
-                  lambda state: state.has("Progression Item: Taris Shield Codes", player))
-
-    # FIXED (real bug, found via a real generation):
-    # "Progression Item: Sith Armor"/"Sith Papers"/"Taris Shield Codes"
-    # are needed to ever LEAVE Taris at all ("Taris: Escaping Taris" is
-    # gated on Shield Codes, which itself sits past the armor+papers
-    # checkpoints) -- but nothing previously restricted WHERE these 3
-    # items themselves could be placed. A real generation put "Sith
-    # Papers" on a Dantooine location, an unrecoverable circular lock:
-    # Dantooine is only reachable AFTER escaping Taris, so the item
-    # needed to escape was stranded somewhere only reachable by having
-    # already escaped. Fix: restrict these 3 items to ONLY ever
-    # be placed on Taris (including the separately-named "Sith Base"
-    # sub-region, physically part of Taris) or the Endar Spire (the
-    # prologue ship, chronologically before Taris and always reachable
-    # from the very start) -- same add_item_rule mechanism as the
-    # alignment/level and Genoharadan fixes, applied unconditionally
-    # within the progression_system branch (these 3 items only exist in
-    # the pool at all when progression_system is on).
-    TARIS_ESCAPE_ITEMS = {
-        "Progression Item: Sith Armor", "Progression Item: Sith Papers",
-        "Progression Item: Taris Shield Codes",
-    }
-    TARIS_ESCAPE_ITEM_SAFE_REGIONS = {"Taris", "Sith Base", "Endar Spire"}
-    for name, data in world._active_locations().items():
-        if data.region not in TARIS_ESCAPE_ITEM_SAFE_REGIONS:
-            add_item_rule(multiworld.get_location(name, player),
-                           lambda item: item.name not in TARIS_ESCAPE_ITEMS)
-    for name in MANAAN_ENVIRO_SUIT_LOCATIONS:
-        set_rule(multiworld.get_location(name, player),
-                  lambda state: state.has("Progression Item: Manaan Enviro Suit", player))
-    for name in STAR_FORGE_ENDGAME_LOCATIONS:
-        set_rule(multiworld.get_location(name, player),
-                  lambda state: state.has_all(set(ALL_STAR_MAPS), player))
-
-    # FIXED (real bug, found via a real generation):
-    # the state.has_all(ALL_STAR_MAPS) rule just above controls REACHABILITY
-    # only -- it says nothing about what item can be PLACED at these
-    # locations. Nothing previously stopped a Star Map item itself from
-    # landing in the endgame it requires all 4 Star Maps to reach at all --
-    # a real generation put "Progression Item: Star Map (Korriban)" inside
-    # the Star Forge/Leviathan/Unknown World endgame, an unrecoverable
-    # circular lock (need all 4 maps to get in, one of the 4 is inside).
-    # Same shape as the Taris escape-items fix above: exclude just the 4
-    # Star Map items specifically (other progression items, e.g. a
-    # companion, are fine to place at the literal endgame -- nothing
-    # needs them afterward since this IS the end).
-    for name in STAR_FORGE_ENDGAME_LOCATIONS:
-        add_item_rule(multiworld.get_location(name, player),
-                       lambda item: item.name not in ALL_STAR_MAPS)
-
-    # Each planet's own "Star Map: <planet>" location is exempt from the
-    # travel-gate rule below (see PLANET_OWN_STARMAP_LOCATION), so the
-    # generator treats it as reachable without that planet's Star Map item.
-    # Physically it sits ON the planet, which the galaxy-map lock keeps shut
-    # until that item arrives -- so a Star Map item placed on any of these 4
-    # locations is never reachable: the planet's own map would sit behind
-    # itself, and two maps could each wait on the other's planet. Keep every
-    # Star Map item off them (other items are fine there).
-    for name in PLANET_OWN_STARMAP_LOCATION:
-        add_item_rule(multiworld.get_location(name, player),
-                       lambda item: item.name not in ALL_STAR_MAPS)
-
-    # Artificial travel gate: layered on with add_rule (AND-combine), not
-    # set_rule, since some of these locations (e.g. Manaan's Sea Floor/
-    # Kolto Control/Hrakert Rift/Star Map, above) already got an
-    # item-specific rule and both need to hold at once.
-    #
-    # Must use world._active_locations(), NOT the raw location_table
-    # import -- a real bug, caught while testing companion_mode=none:
-    # location_table unconditionally includes all 9 "Companion Recruited:
-    # ..." entries, but companion_mode=none never creates Location objects
-    # for them at all (see _active_locations()'s own docstring). Iterating
-    # the raw table here crashed generation outright with progression_system
-    # ALSO on (COMPANION_PLANET_OVERRIDE's HK-47/Jolee entries hit
-    # multiworld.get_location() for a location that was never built) --
-    # every other loop in this function targets a fixed, companion-mode-
-    # agnostic location list, so this is the only one that needed it.
-    for name, data in world._active_locations().items():
-        if name in PLANET_OWN_STARMAP_LOCATION:
-            continue  # see PLANET_OWN_STARMAP_LOCATION's own comment -- self-lock otherwise
-        planet = None
-        if data.region in PLANET_STARMAP_ITEM:
-            planet = data.region
-        elif data.region == "Exploration":
-            for p, idxs in PLANET_AREA_IDX.items():
-                if data.area_idx in idxs:
-                    planet = p
-                    break
-        elif data.region == "Companions":
-            planet = COMPANION_PLANET_OVERRIDE.get(name)
-        elif data.region == "Genoharadan":
-            planet = GENOHARADAN_PLANET_OVERRIDE.get(name)
-        if planet is not None:
-            item_name = PLANET_STARMAP_ITEM[planet]
-            add_rule(multiworld.get_location(name, player),
-                      lambda state, item_name=item_name: state.has(item_name, player))
-
-    add_rule(multiworld.get_location(GENOHARADAN_FINALE_LOCATION, player),
-              lambda state: state.has_all(set(PLANET_STARMAP_ITEM.values()), player))
+    apply_story_gate_rules(world)
 
 
 def set_completion_rules(multiworld: MultiWorld, player: int) -> None:

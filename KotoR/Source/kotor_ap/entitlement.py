@@ -1,8 +1,7 @@
 """
 entitlement.py -- pure computation of "what should this character currently
 have," factored out of kotor_reconciliation.py so it's testable independent
-of how the result gets dispatched. See FutureDesign.md's "Entitlement/
-dispatch redesign" entry for the full incident writeup and confirmed scope.
+of how the result gets dispatched. See DEVELOPMENT_HISTORY.md section 13 for the full incident writeup and confirmed scope.
 
 No I/O, no sending, no mutation of the tracker it reads from -- everything
 here takes a ReconciliationTracker (for its already-tracked config/state)
@@ -50,6 +49,7 @@ PC_CLASS_CONST_TO_ARM: typing.Dict[int, str] = {
     0: "pc_class_soldier",
     1: "pc_class_scout",
     2: "pc_class_scoundrel",
+    9: "pc_droid",
     3: "class_guardian",
     4: "class_consular",
     5: "class_sentinel",
@@ -104,6 +104,8 @@ HEAVY_ARMS: typing.Set[str] = {
     # write on the PC, same heavy classification as companion_class's
     # write, same reasoning (see _queue_heavy).
     "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel",
+    # StartingClass=droid: race + class + appearance + gear on the PC in one step, same heavy classification.
+    "pc_droid",
 }
 
 
@@ -118,22 +120,14 @@ def is_heavy_arm(arm_name: str) -> bool:
     return arm_name.startswith("companion_") or arm_name in HEAVY_ARMS
 
 
-# The 8 ItemClassification.progression give_item: entries confirmed
-# softlock-capable if silently lost (all 4 Star Maps are required to reach
-# the Star Forge) -- see FutureDesign.md's "Entitlement/dispatch redesign"
-# entry. Duplicated here rather than imported from worlds/kotor/Items.py
-# (a world-generation-side module, not meant to be a runtime dependency of
-# the client process), same reasoning as CLASS_NAME_TO_CONST/HEAVY_ARMS --
-# keep in sync with that file's own PROGRESSION_ITEM_RESREFS by hand.
+# Items whose silent loss would strand the player, so the reconciler re-grants any that go missing: the
+# 24 story-gate progression items (8 families of 3; Items.py STORY_TOKEN_FAMILIES) and the Archipelago Vendor
+# passes. Duplicated here rather than imported from worlds/kotor/Items.py (a world-generation-side
+# module, not meant to be a runtime dependency of the client process), same reasoning as
+# CLASS_NAME_TO_CONST/HEAVY_ARMS -- keep in sync with that file's own PROGRESSION_ITEM_RESREFS by hand.
+STORY_TOKEN_FAMILY_KEYS = ("tar", "dan", "tat", "kas", "man", "kor", "unk", "fin")
 PROGRESSION_ITEM_RESREFS: typing.Dict[str, str] = {
-    "sith_armor": "ptar_sitharmor",
-    "sith_papers": "ptar_sithpapers",
-    "shield_codes": "ptar_shieldcodes",
-    "enviro_suit": "man28_envirosuit",
-    "starmap_tatooine": "tat_starpad",
-    "starmap_kashyyyk": "kas_starpad",
-    "starmap_manaan": "man_starpad",
-    "starmap_korriban": "kor_starpad",
+    **{f"tok_{_key}{_n}": f"ap_tk_{_key}{_n}" for _key in STORY_TOKEN_FAMILY_KEYS for _n in (1, 2, 3)},
     # Archipelago Vendor passes (Items.py's VENDOR_UNLOCK_ITEMS, generate_ap_vendor.py's VENDOR_TOKENS).
     # Only re-granted once the matching AP item has actually been received.
     "vendor_skill": "ap_vtok_skill",

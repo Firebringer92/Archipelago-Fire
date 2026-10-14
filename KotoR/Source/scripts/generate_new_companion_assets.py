@@ -71,7 +71,7 @@ MALAK_TRIGGER_NCS = os.path.join(SRC_DIR, "apo_hk47_malak.ncs")
 _TRIGGER_NCS_BY_MODE = {0: VANILLA_TRIGGER_NCS, 1: NEW_TRIGGER_NCS, 2: MALAK_TRIGGER_NCS}
 
 # Jedi Sentinel (class_id 5) cross-class + signature feats, confirmed via
-# feat.2da against GameMechanics.md's own class-feat table: Weapon Prof.
+# feat.2da's per-class feat columns: Weapon Prof.
 # Blaster/Lightsaber/Melee Weapons + Jedi Defense + Force Sensitive + Jedi
 # Sense are shared by all 3 Jedi classes; Force Immunity: Fear is Sentinel's
 # own signature (matches generate_trampoline_batch.py's _JEDI_FEATS=(55,43,
@@ -90,9 +90,8 @@ STARTING_FEATS = [
 
 # The 5 "base tier" starting Force powers real Jedi templates carry from
 # creation -- confirmed via Bastila's own real p_bastilla.utc (levels 1-5
-# have no normal spell-list access at all; GameMechanics.md's own level-gate
-# table starts at 6). These exact 5 are also confirmed in GameMechanics.md's
-# "13 base-tier powers not learnable via normal level-up" list, so they are
+# have no normal spell-list access at all; the game's Force power level
+# gates start at 6). These exact 5 are among the 13 base-tier powers not learnable via normal level-up, so they are
 # not something she'd otherwise gain at level 1 through ordinary means --
 # they have to be baked into the template directly, same as they are for
 # every other real Jedi companion.
@@ -105,7 +104,7 @@ STARTING_POWERS = [
 ]
 
 # Equipment restriction (Head/Body/Hands only -- weapons/belt/implant/
-# forearm-bands untouched), settled 2026-09-27 after race_id=5 (droid)
+# forearm-bands untouched), settled after race_id=5 (droid)
 # was tried and rejected live: it didn't just block armor, it collapsed
 # his ENTIRE weapon selection down to "Blaster Pistol, None" only.
 #
@@ -133,7 +132,7 @@ MALAK_RESTRICTED_GEAR_LABELS = [
 ]
 
 # Jedi Guardian (class_id 3) cross-class + signature feats, confirmed via
-# feat.2da against GameMechanics.md's own class-feat table: same 6 shared
+# feat.2da's per-class feat columns: same 6 shared
 # Jedi feats as Sentinel above, but Force Jump (101) is Guardian's own
 # signature feat instead of Sentinel's Force Immunity: Fear (98).
 MALAK_STARTING_FEATS = [
@@ -146,8 +145,8 @@ MALAK_STARTING_FEATS = [
     101,  # FORCE_JUMP (Guardian signature)
 ]
 
-# Force Powers are NOT class-gated at all in K1 (GameMechanics.md: "zero
-# Force Powers differ by Jedi class") -- same 5 base-tier powers as
+# Force Powers are NOT class-gated at all in K1 (no
+# Force Power differs by Jedi class) -- same 5 base-tier powers as
 # Meetra's STARTING_POWERS, no changes needed.
 MALAK_STARTING_POWERS = list(STARTING_POWERS)
 
@@ -198,7 +197,7 @@ def build_new_companion_utc() -> UTC:
     # concluded (no record of whether 11 rendering correctly meant the
     # bug was portrait-6-specific, or whether it was something tied to
     # her reusing HK-47's tag/slot instead). Reverted back to the correct
-    # pairing (2026-09-27) -- verify the party-select screen specifically
+    # pairing -- verify the party-select screen specifically
     # when next testing her live, since that's the one screen this was
     # ever reported broken on.
     utc.portrait_id = 6
@@ -211,7 +210,7 @@ def build_new_companion_utc() -> UTC:
     utc.soundset_id = 0
 
     # Ability scores -- STR/INT/CHA kept from Bastila's real template;
-    # DEX/CON/WIS deliberately adjusted (2026-09-27) to 14/14/18.
+    # DEX/CON/WIS deliberately adjusted to 14/14/18.
     utc.strength = 12
     utc.dexterity = 14
     utc.constitution = 14
@@ -235,7 +234,7 @@ def build_new_companion_utc() -> UTC:
     utc.security = 0
     utc.treat_injury = 4
 
-    # Level 1 HP/FP, re-derived for the adjusted CON/WIS above (2026-09-27)
+    # Level 1 HP/FP, re-derived for the adjusted CON/WIS above
     # -- classes.2da: JediSentinel hitdie=8, forcedie=6. KOTOR grants max
     # hit-die value at level 1 (not rolled), same for the force die:
     # HP = 8 + CON mod(+2 from CON 14) = 10; FP = 6 + WIS mod(+4 from
@@ -284,7 +283,7 @@ def build_new_companion_utc() -> UTC:
     # Juhani/Carth (confirmed directly) -- not character-specific, safe to
     # reuse verbatim. FIX: this build previously only set on_dialog/
     # on_spawn, missing on_attacked/on_blocked/on_damaged/on_end_round/
-    # on_heartbeat/on_notice entirely -- found live (2026-09-29) via
+    # on_heartbeat/on_notice entirely -- found via
     # Meetra not naturally following the party, which on_heartbeat
     # (k_hen_heartbt01) is what actually drives.
     utc.on_dialog = ResRef("k_hen_dialogue01")

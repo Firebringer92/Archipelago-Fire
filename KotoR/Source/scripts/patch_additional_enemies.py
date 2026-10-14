@@ -347,7 +347,7 @@ def apply_module(module: str, points: list, band: dict, mode: int, category_pool
     # once-per-seed gate of its own, that lives entirely in KotorClient.py
     # and doesn't cover a direct CLI invocation) silently APPENDS a second
     # full batch on top of the first, rather than either no-op'ing or
-    # replacing -- confirmed live across all 39 affected modules, each at
+    # replacing -- confirmed across all 39 affected modules, each at
     # EXACTLY 2x its real target_new_enemies, with duplicate creatures
     # stacked at IDENTICAL coordinates (the same fixed spawn_points list,
     # reused a second time). `apbnty{module_index:02d}` (the bounty-card

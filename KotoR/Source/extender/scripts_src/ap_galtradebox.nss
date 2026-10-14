@@ -22,7 +22,7 @@
 // that are themselves resrefs, just re-cased; CreateItemOnObject's
 // lookup is case-insensitive). Correct for every standard item; an item
 // with a custom mismatched Tag would come back out as whatever that Tag
-// resolves to, or nothing. Not fixed here -- flagged in FutureDesign.md.
+// resolves to, or nothing. Not fixed here.
 #include "kse"
 
 void main()

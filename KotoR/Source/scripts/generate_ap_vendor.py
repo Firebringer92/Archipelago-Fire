@@ -1,7 +1,7 @@
 """
 Archipelago Vendor -- permanent purchase NPC on the Ebon Hawk. See
-FutureDesign.md's "Archipelago Vendor" section for the full design and
-decision history.
+DEVELOPMENT_HISTORY.md's Archipelago Vendor section and section 16 for the
+full design and decision history.
 
 Phase 1: Train Skill (8-way picker) and Train Ability (6-way picker),
 both credit-gated and capped at 5 total uses each. Phase 2 (this
@@ -47,15 +47,17 @@ LocalBoolean exists elsewhere in this project.
 Alignment Change (added later): a real native AdjustAlignment(oSubject,
 nAlignment, nShift) call -- not KSE_SetCreatureField -- same as every
 other alignment shift this project ever does (see kotor_location_tracker.py's
-own alignment-threshold bonuses). Two options sharing one 5-use cap
-(ALIGNMENT_COUNT_IDX), same "N choices, one shared counter" shape as
-Train Skill/Train Ability: "Steal from the Republic" (+10 dark side,
+own alignment-threshold bonuses). Two options with no purchase cap:
+"Steal from the Republic" (+10 dark side,
 +1000 credits -- a pure gain, no credit gate needed) and "Donate to
 Taris Refugees" (+10 light side, -5000 credits -- gated the same
 yes/no-credit-check way every other paid option is). Not touched by
 Character Reset (ap_vs_reset.nss) -- that script never adjusts alignment
 at all, unlike ability/skill purchases which it explicitly wipes and
-refunds the counter for.
+refunds the counter for. Each option is refused (nothing charged, nothing
+gained) when the alignment is already at its limit: Steal at 10 or below, Donate at 90 or above
+(GetGoodEvilValue, 0 = fully dark, 100 = fully light), so the credits do not change hands for a shift
+that is small or nothing at the ends.
 """
 import json
 import os
@@ -110,7 +112,6 @@ def has_token_expr(category):
 SKILL_COUNT_IDX = 60
 ABILITY_COUNT_IDX = 61
 RESET_COUNT_IDX = 62
-ALIGNMENT_COUNT_IDX = 63
 PURCHASE_CAP = 5
 
 SKILL_PRICE = 1000
@@ -140,9 +141,8 @@ RESET_ABILITY_FLOOR = 10
 # strip a feat the PC's current class(es) would auto-grant -- everything
 # else (level-up choices, Vendor Train Feat purchases) still gets
 # stripped and correctly comes back naturally as they relevel. Source:
-# feat.2da's own per-class `<code>_granted` columns (see GameMechanics.md's
-# "Auto-granted feats" table and research/feats/class_feats.json for the
-# full dump).
+# feat.2da's own per-class `<code>_granted` columns (research/feats/class_feats.json
+# has the full dump).
 CLASS_AUTO_GRANTED_FEATS = {
     "CLASS_TYPE_SOLDIER": [4, 5, 6, 28, 29, 39, 40, 42, 44],
     "CLASS_TYPE_SCOUT": [5, 6, 11, 14, 30, 39, 40, 44],
@@ -186,14 +186,14 @@ POWER_PRICE = 3000
 # levels, same is_jedi reasoning _check_pending_additional_feats already
 # applies for companions.
 #
-# REAL BUG confirmed live, 2026-09-19: Power Attack, Power Blast, Flurry,
+# REAL BUG confirmed: Power Attack, Power Blast, Flurry,
 # Rapid Shot, Critical Strike, Sniper Shot, and Force Jump (feat, not the
 # power) are all ACTIVE/toggle combat feats -- granting Flurry via this
 # vendor confirmed the grant call runs (logged, credits deducted,
 # KSE_Diag confirms it) and GetHasFeat presumably returns true, but the
 # feat does NOT appear in the character sheet's trained/usable feats
 # list AND does not work against a real enemy in combat, even after a
-# real area transition. This is the first live-confirmed answer to the
+# real area transition. This is the first confirmed answer to the
 # previously-open question research arm 51 (test_grant_active_feat,
 # generate_trampoline_batch.py) was built to test -- KSE_GrantFeatArrayA
 # does not make an active/toggle feat genuinely usable, only sheet-
@@ -201,7 +201,7 @@ POWER_PRICE = 3000
 # unaffected and matches feats already confirmed working elsewhere in
 # the project via this exact native.
 #
-# RULED OUT, 2026-09-19: tried the client/server-split theory above --
+# RULED OUT: tried the client/server-split theory above --
 # temporarily restored these 7, bought Flurry, saved, fully closed and
 # relaunched the game, reloaded that save. Result: Flurry was STILL
 # purchasable in the vendor afterward (i.e. the game now thinks the PC
@@ -214,8 +214,7 @@ POWER_PRICE = 3000
 # in-memory-only "Array A" that GetHasFeat/GetHasSpell scan (why the
 # grant "looked" successful), but that array is NOT the same list the
 # game's save writer treats as authoritative. Removed again -- do not
-# re-add without a real extender-level fix (see FutureDesign.md's
-# research leads, especially the never-wired-up "container" feat
+# re-add without a real extender-level fix (the lead is the never-wired-up "container" feat
 # structure in offsets.h).
 FEATS = [
     (40, "Train Weapon Proficiency: Blaster Rifle", False),
@@ -244,7 +243,7 @@ FEATS = [
 #
 # IDs 21 (Force Jump) and 39 (Regeneration) were originally on this list
 # -- both matched the empty-prerequisites/no-min-level filter above, but
-# turned out to be real cut content: confirmed live (granting Regeneration
+# turned out to be real cut content: confirmed (granting Regeneration
 # via the vendor produced no effect and no in-game power at all), then
 # confirmed why directly in spells.2da -- both rows have an EMPTY "name"
 # TLK reference and forcepoints=0, unlike every real power (e.g. Force
@@ -254,7 +253,7 @@ FEATS = [
 # should have been cross-checked against the label text, not just the
 # prerequisite/level columns, before trusting a row as grantable.
 #
-# BIGGER BUG confirmed live, 2026-09-19: bought Resist Energy I (id 42,
+# BIGGER BUG confirmed: bought Resist Energy I (id 42,
 # a genuinely real, non-cut power) via the vendor -- KSE_Diag confirmed
 # the grant script ran and credits were deducted, but it never appeared
 # in the Force Powers menu at all. Same shape as the active-feat bug
@@ -264,7 +263,7 @@ FEATS = [
 # housekeeping entirely" for Force Powers granted to companions -- this
 # is now confirmed true for the PC too, live, not just companions).
 #
-# RULED OUT, 2026-09-19: same test as FEATS above -- bought a new power,
+# RULED OUT: same test as FEATS above -- bought a new power,
 # saved, fully closed and relaunched, reloaded. Confirmed via the actual
 # save file (Mod_PlayerList[0].ClassList[0].KnownList0 inside the saved
 # module IFO): Resist Energy I (id 42) is genuinely absent, exact same
@@ -329,6 +328,13 @@ POWER_PREREQUISITES = {
 
 VENDOR_LOCATION = (55.5, 36.5, 1.80)
 
+# A droid PC (race 5, set by the pc_droid arm) cannot use Stealth, Persuade or Treat Injury (skills.2da droidcanuse = 0), cannot
+# wear armor or use implants, and must not Character Reset (the reset would strip the Battle Droid class feats and level-1
+# kit). The menus are hidden by a runtime race check rather than a per-seed setting, so one set of dialog files serves every seed.
+NOT_DROID_EXPR = "GetRacialType(GetPCSpeaker()) != 5"  # 5 = RACIAL_TYPE_DROID
+DROID_BLOCKED_SKILLS = {"ste", "per", "ti"}  # SKILLS suffixes
+DROID_BLOCKED_FEATS = {4, 5, 6, 14}  # armor proficiencies (heavy / light / medium) and Implant Level 1
+
 
 def write_and_compile(resref, source):
     """Writes an .nss to SRC_DIR and compiles it to .ncs in place, using
@@ -390,6 +396,13 @@ int StartingConditional()
 int StartingConditional()
 {{
     return GetGold(GetPCSpeaker()) < {ABILITY_PRICE};
+}}
+''')
+    ok &= write_and_compile("ap_vnodroid", f'''#include "kse"
+
+int StartingConditional()
+{{
+    return {NOT_DROID_EXPR};
 }}
 ''')
     ok &= write_and_compile("ap_vsk_cap", f'''#include "kse"
@@ -458,6 +471,14 @@ int StartingConditional()
     return !GetHasFeat({feat_id}, oPC) && {is_jedi_expr};
 }}
 '''
+        elif feat_id in DROID_BLOCKED_FEATS:
+            body = f'''#include "kse"
+
+int StartingConditional()
+{{
+    return !GetHasFeat({feat_id}, GetPCSpeaker()) && {NOT_DROID_EXPR};
+}}
+'''
         else:
             body = f'''#include "kse"
 
@@ -510,20 +531,32 @@ int StartingConditional()
 
 int StartingConditional()
 {{
-    return GetLocalNumber(GetPCSpeaker(), {RESET_COUNT_IDX}) < {PURCHASE_CAP};
+    return GetLocalNumber(GetPCSpeaker(), {RESET_COUNT_IDX}) < {PURCHASE_CAP} && {NOT_DROID_EXPR};
 }}
 ''')
 
-    # Alignment Change -- shared cap gate (top-level menu entry only, same
-    # "checked once at the menu, not re-checked per sub-option" shape as
-    # Train Skill/Train Ability above) plus a credit gate for Donate's
-    # cost. Steal is a pure gain, so it needs no credit gate at all.
+    # Alignment Change -- menu gate (the vendor pass only; there is no purchase cap), the alignment-limit conditions that
+    # route a pick to a refusal, and a credit gate for Donate's cost. Steal is a pure gain, so it needs no credit gate at all.
     ok &= write_and_compile("ap_val_cap", f'''#include "kse"
 
 int StartingConditional()
 {{
-    return {has_token_expr("align")} && GetLocalNumber(GetPCSpeaker(), {ALIGNMENT_COUNT_IDX}) < {PURCHASE_CAP};
+    return {has_token_expr("align")};
 }}
+''')
+    ok &= write_and_compile("ap_val_dkmax", '''#include "kse"
+
+int StartingConditional()
+{
+    return GetGoodEvilValue(GetPCSpeaker()) <= 10;
+}
+''')
+    ok &= write_and_compile("ap_val_ltmax", '''#include "kse"
+
+int StartingConditional()
+{
+    return GetGoodEvilValue(GetPCSpeaker()) >= 90;
+}
 ''')
     ok &= write_and_compile("ap_vg5000y", f'''#include "kse"
 
@@ -716,9 +749,7 @@ void main()
     object oPC = GetPCSpeaker();
     int nAfter = KSE_SetCredits(oPC, GetGold(oPC) + {ALIGN_STEAL_GAIN});
     AdjustAlignment(oPC, ALIGNMENT_DARK_SIDE, {ALIGN_SHIFT_AMOUNT});
-    int nCount = GetLocalNumber(oPC, {ALIGNMENT_COUNT_IDX}) + 1;
-    SetLocalNumber(oPC, {ALIGNMENT_COUNT_IDX}, nCount);
-    KSE_Diag(200, "AP|APPLIED|vendor_align_steal|creditsAfter=" + IntToString(nAfter) + "|count=" + IntToString(nCount));
+    KSE_Diag(200, "AP|APPLIED|vendor_align_steal|creditsAfter=" + IntToString(nAfter));
 }}
 ''')
     ok &= write_and_compile("ap_val_donate", f'''#include "kse"
@@ -728,9 +759,7 @@ void main()
     object oPC = GetPCSpeaker();
     int nAfter = KSE_SetCredits(oPC, GetGold(oPC) - {ALIGN_DONATE_PRICE});
     AdjustAlignment(oPC, ALIGNMENT_LIGHT_SIDE, {ALIGN_SHIFT_AMOUNT});
-    int nCount = GetLocalNumber(oPC, {ALIGNMENT_COUNT_IDX}) + 1;
-    SetLocalNumber(oPC, {ALIGNMENT_COUNT_IDX}, nCount);
-    KSE_Diag(200, "AP|APPLIED|vendor_align_donate|creditsAfter=" + IntToString(nAfter) + "|count=" + IntToString(nCount));
+    KSE_Diag(200, "AP|APPLIED|vendor_align_donate|creditsAfter=" + IntToString(nAfter));
 }}
 ''')
 
@@ -823,7 +852,7 @@ def build_dlg():
     reply_feat_link = DLGLink(reply_feat)
     reply_feat_link.active1 = ResRef("ap_vft_gate")
 
-    # RE-ENABLED 2026-09-20 -- unlinked 2026-09-19 after confirming via the
+    # RE-ENABLED -- unlinked after confirming via the
     # actual save file that a granted power never reached the persisted,
     # authoritative known-spells list ("do not re-add without a real
     # extender-level fix"). That fix now exists: KseForcePowerOp's ADD path
@@ -861,7 +890,10 @@ def build_dlg():
         picker_reply.links.append(link_yes)
         picker_reply.links.append(link_no)
 
-        entry_skill_picker.links.append(DLGLink(picker_reply))
+        skill_link = DLGLink(picker_reply)
+        if suffix in DROID_BLOCKED_SKILLS:
+            skill_link.active1 = ResRef("ap_vnodroid")
+        entry_skill_picker.links.append(skill_link)
 
     for suffix, text, _const in ABILITIES:
         picker_reply = new_reply(text)
@@ -911,14 +943,12 @@ def build_dlg():
 
         entry_power_picker.links.append(picker_link)
 
-    # Alignment Change -- 2-way picker, one shared cap (checked once at
-    # the top-level menu entry, same shape as Train Skill/Train Ability
-    # above). Steal is a pure gain (no credit gate needed, links straight
-    # to its success entry); Donate costs credits, so it gets the same
-    # yes/no credit-check split every other paid option uses.
+    # Alignment Change -- 2-way picker, no purchase cap. Each option first checks the alignment limit (Steal at 10 or below, Donate at 90 or above)
+    # and routes to a refusal entry, nothing charged. Steal is a pure gain (no credit gate needed, links straight to its success
+    # entry); Donate costs credits, so it gets the same yes/no credit-check split every other paid option uses.
     entry_align_picker = new_entry("Which option?")
 
-    reply_align = new_reply(f"Alignment Change (up to {PURCHASE_CAP} total)")
+    reply_align = new_reply("Alignment Change")
     reply_align.links.append(DLGLink(entry_align_picker))
     reply_align_link = DLGLink(reply_align)
     reply_align_link.active1 = ResRef("ap_val_cap")
@@ -928,6 +958,12 @@ def build_dlg():
     )
     success_entry_steal = new_entry("Transaction completed. Your training is done.")
     success_entry_steal.script1 = ResRef("ap_val_steal")
+    entry_dark_limit = new_entry(
+        "You are already too far into the dark side for this to change anything. Nothing was stolen and nothing was charged."
+    )
+    link_dark_limit = DLGLink(entry_dark_limit)
+    link_dark_limit.active1 = ResRef("ap_val_dkmax")
+    picker_reply_steal.links.append(link_dark_limit)
     picker_reply_steal.links.append(DLGLink(success_entry_steal))
     entry_align_picker.links.append(DLGLink(picker_reply_steal))
 
@@ -936,10 +972,16 @@ def build_dlg():
     )
     success_entry_donate = new_entry("Transaction completed. Your training is done.")
     success_entry_donate.script1 = ResRef("ap_val_donate")
+    entry_light_limit = new_entry(
+        "You are already too far into the light side for this to change anything. Nothing was donated and nothing was charged."
+    )
+    link_light_limit = DLGLink(entry_light_limit)
+    link_light_limit.active1 = ResRef("ap_val_ltmax")
     link_yes = DLGLink(success_entry_donate)
     link_yes.active1 = ResRef("ap_vg5000y")
     link_no = DLGLink(entry_not_enough)
     link_no.active1 = ResRef("ap_vg5000n")
+    picker_reply_donate.links.append(link_light_limit)
     picker_reply_donate.links.append(link_yes)
     picker_reply_donate.links.append(link_no)
     entry_align_picker.links.append(DLGLink(picker_reply_donate))

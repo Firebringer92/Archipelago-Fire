@@ -1651,7 +1651,7 @@ static void KseField_Core(void* statBlock, int nFieldType, int nValue)
 // harmless anyway, but skipping keeps count/capacity honest). Remove
 // safely no-ops if the id isn't found, as explicitly required.
 //
-// CATEGORY IS A CLASS SLOT, NOT A FIXED CONSTANT (found 2026-09-20): this
+// CATEGORY IS A CLASS SLOT, NOT A FIXED CONSTANT: this
 // "category table" IS the real classes[] array (LaneDibello/Kotor-Patch-
 // Manager's AddressDatabases/kotor1_0_3.db confirms KSE_STATS_CATEGORY_
 // TABLE_OFF/STRIDE are byte-identical to CSWSCreatureStats.classes's own
@@ -1687,7 +1687,7 @@ static int KseResolveJediClassSlot(void* statBlock, const char** why)
     return -1;
 }
 
-// ADD side EXPERIMENTALLY REWIRED (2026-09-20) to call the engine's own real
+// ADD side EXPERIMENTALLY REWIRED to call the engine's own real
 // AddKnownSpell function instead of the raw array append below -- see
 // offsets.h's KSE_ADD_KNOWN_SPELL_RVA comment for the address source and
 // exactly what this is testing (whether the PC-specific persistence gap
@@ -1703,7 +1703,7 @@ static int KseResolveJediClassSlot(void* statBlock, const char** why)
 // from a known array isn't the mechanism under test here.
 typedef void (__fastcall *KseAddKnownSpellFn)(void* thisptr, void* edx, unsigned char classId, unsigned long spellId);
 
-// REAL FIX, 2026-09-20 -- mirrors a successful server-side ADD into the
+// REAL FIX -- mirrors a successful server-side ADD into the
 // CLIENT-side CSWCCreatureStats too, via the confirmed-live chain: obj ->
 // GetClientObject() -> clientObj+KSE_HOLDER_CONTAINER_OFF -> client
 // CSWCCreatureStats* -> its own real AddKnownSpell. See offsets.h's
@@ -2085,6 +2085,58 @@ static void KseReportAbilityBases(void* statBlock)
         KSE_DIAG_CODE_ABILITY_BASE_REPORT, str, dex, con, intl, wis, cha);
 }
 
+// Read-only report of race, subrace and gender -- see offsets.h's KSE_FIELD_REPORT_RACE comment. Shaped like
+// a KSE_Diag line so the kse.log tailer relays it unchanged. Dumps the four race bytes and a 24-byte window
+// around them so the layout can be checked by eye. Reads are guarded: a bad pointer reports nothing.
+static void KseReportRace(void* statBlock)
+{
+    unsigned int raw = 0;
+    int subrace = 0, gender = 0;
+    char window[24 * 2 + 1];
+    __try {
+        BYTE* p = reinterpret_cast<BYTE*>(statBlock);
+        raw = *reinterpret_cast<unsigned int*>(p + KSE_STATS_RACE_OFF);
+        subrace = (int)p[KSE_STATS_SUBRACE_OFF];
+        gender = (int)p[KSE_STATS_GENDER_OFF];
+        static const char hex[] = "0123456789abcdef";
+        for (int i = 0; i < 24; i++) {
+            BYTE b = p[KSE_STATS_RACE_OFF - 4 + i];
+            window[i * 2] = hex[b >> 4];
+            window[i * 2 + 1] = hex[b & 15];
+        }
+        window[24 * 2] = 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE ANOMALY field: REPORT_RACE faulted reading the stat block; no report");
+        return;
+    }
+    Log("K1SE DIAG: code=%d msg=\"AP|RACEREPORT|race=%u|raw=0x%08X|subrace=%d|gender=%d|bytes=%s\"",
+        KSE_DIAG_CODE_RACE_REPORT, raw & 0xFF, raw, subrace, gender, window);
+}
+
+// Guarded single-byte stat-block writer (used by SET_RACE): refuses any value other than allowA/allowB,
+// reads the old byte first, writes only that byte, and logs old -> new.
+static void KseSetStatsByte(void* statBlock, uintptr_t off, const char* name, int nValue, int allowA, int allowB)
+{
+    if (nValue != allowA && nValue != allowB) {
+        Log("K1SE ANOMALY field: SET_%s value %d is not %d or %d; no write", name, nValue, allowA, allowB);
+        return;
+    }
+    int oldValue = -1;
+    __try {
+        BYTE* slot = reinterpret_cast<BYTE*>(statBlock) + off;
+        oldValue = (int)*slot;
+        if (oldValue == nValue) {
+            Log("K1SE SetCreatureField SET_%s : already %d; no-op", name, nValue);
+            return;
+        }
+        *slot = (BYTE)nValue;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        Log("K1SE ANOMALY field: SET_%s faulted writing the stat block; no write", name);
+        return;
+    }
+    Log("K1SE SetCreatureField SET_%s : %d -> %d", name, oldValue, nValue);
+}
+
 // Returns a pointer to the true rank byte for nSkill, or null if any guard
 // fails. Same trust chain Kse11_Core uses for its own write: the skill count
 // comes from the engine's rules manager (null manager -> refuse, never an
@@ -2161,7 +2213,7 @@ static void KseHalveSkillRank(void* statBlock, int nSkill)
 // match found (there should be exactly one, at whatever offset the real
 // engine stores this pointer). Read-only -- never writes anything.
 //
-// REWIRED 2026-09-20: calls the engine's own real CSWSObject::
+// REWIRED: calls the engine's own real CSWSObject::
 // GetClientObject() (KSE_CREATURE_GETHOLDER_RVA -- old label, real
 // identity confirmed via Patch Manager's DB, see that constant's own
 // comment) instead of reading CSWSObject.client_object (offset 548)
@@ -2403,6 +2455,20 @@ extern "C" int __stdcall KseSetCreatureField(int argCount)
         void* block = KseField_StatBlock(objId, &why);
         if (!block) { Log("K1SE ANOMALY field: %s; no report performed", why); return 0; }
         KseReportAbilityBases(block);
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_REPORT_RACE) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no report performed", why); return 0; }
+        KseReportRace(block);
+        return 0;
+    }
+
+    if (nFieldType == KSE_FIELD_SET_RACE) {
+        void* block = KseField_StatBlock(objId, &why);
+        if (!block) { Log("K1SE ANOMALY field: %s; no write performed", why); return 0; }
+        KseSetStatsByte(block, KSE_STATS_RACE_OFF, "RACE", nValue, 5, 6);
         return 0;
     }
 

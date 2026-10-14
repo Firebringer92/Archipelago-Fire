@@ -490,7 +490,7 @@ static const char *AP_ARM_NAMES[] = {
     "_retired_test_con_boost_effect",
     "_retired_test_con_decrease_effect",
     /* Slots 47/48 RETIRED (were test_hp_fp_natives/
-     * test_alignment_shift) -- both LIVE-CONFIRMED working
+     * test_alignment_shift) -- both confirmed working
      * (KseGetCurrentHP/CURRENT_HP/ADD_FORCE_POWER/REMOVE_FORCE_POWER
      * all matched expected values exactly; AdjustAlignment shifted and
      * netted back correctly). Renamed, not removed, same convention as
@@ -540,13 +540,13 @@ static const char *AP_ARM_NAMES[] = {
     /* Slots 58/59: same research shape as the retired 55/56, now against
      * "ap_tracker" -- a real quest declared in global.jrl by
      * scripts/build_ap_tracker_quest.py (6 stages: 1/20/40/60/80/100 --
-     * NOT 0, confirmed live that stage 0 renders a blank/invisible
+     * NOT 0, confirmed that stage 0 renders a blank/invisible
      * Journal row, a reserved "not added" sentinel per nwscript.nss's own
      * GetJournalEntry doc and confirmed against every real vanilla quest,
      * none of which ever use it). 58 sets stage 1 (clearing any stuck
      * blank-name snapshot first via RemoveJournalQuestEntry) and reads
      * back same-tick; 59 is read-only (for checking after a save/
-     * reload -- confirmed live: persists correctly). See
+     * reload -- confirmed: persists correctly). See
      * generate_trampoline_batch.py's APPLIES table for the full
      * reasoning. */
     "diag_ap_tracker_write", "diag_ap_tracker_read",
@@ -559,18 +559,20 @@ static const char *AP_ARM_NAMES[] = {
      * default already makes repeated/out-of-order sends safe). */
     "journal_tracker_20", "journal_tracker_40", "journal_tracker_60",
     "journal_tracker_80", "journal_tracker_100",
-    /* Slot 65: stage 1 ("run has begun") -- real bug found live
-     * (2026-09-30): the reconciler's own percentage check never actually
+    /* Slot 65: stage 1 ("run has begun") -- real bug: the
+     * reconciler's own percentage check never actually
      * requested this stage, so the tracker only ever appeared once a
      * player crossed 20%. See generate_trampoline_batch.py's APPLIES
      * table for the full writeup. */
     "journal_tracker_1",
+    /* Slot 66: StartingClass=droid -- the PC becomes a Battle Droid at the first area transition (race 5, class 9, HK-47 variant
+     * model, droid hide). See generate_trampoline_batch.py's APPLIES[66]. */
+    "pc_droid",
 };
 /* IDs must match AP_ARM_NAMES position (1-indexed). scripts/generate_trampoline_batch.py's
  * APPLIES table is the single source of truth this array is kept in sync
  * with by hand (generate_arm_scripts.py, the pre-trampoline-batch
- * generator this comment used to reference, was retired and deleted --
- * see PHASE12.md). */
+ * generator this comment used to reference, was retired and deleted). */
 #define AP_ARM_NAME_COUNT (sizeof(AP_ARM_NAMES) / sizeof(AP_ARM_NAMES[0]))
 
 /* Older test-only scaffolding names that still use the original mechanism:
@@ -644,9 +646,9 @@ static int ap_get_orchestrator_path(char *out, size_t outsize) {
     return 1;
 }
 
-/* Found live: a bare "python" command line trusts CreateProcessA's own PATH
+/* A bare "python" command line trusts CreateProcessA's own PATH
  * search to resolve it from the GAME PROCESS's inherited environment -- on a
- * real tester's machine this silently resolved to the Microsoft Store's
+ * real machine this silently resolved to the Microsoft Store's
  * placeholder python.exe stub (exit code 9009, "not recognized"), failing
  * EVERY orchestrator call uninterrupted for 28+ minutes of real play, with
  * no crash and no visible error in-game (confirmed via a real tester's
@@ -1559,9 +1561,8 @@ static DWORD WINAPI ap_server_thread(LPVOID unused) {
      * Force Power rows (Revitalize/Force Scream/Force Barrier) actually
      * show up in the in-game Force Powers menu, despite this call adding
      * them to the PC's known-spells list without error. Root cause not
-     * investigated yet -- lowest priority, revisit as a future patch (see
-     * FutureDesign.md's "TSL-ported Force Powers don't appear in the
-     * Force Powers menu" entry). Disabled here rather than removed so
+     * investigated yet -- lowest priority, revisit as a future patch.
+     * Disabled here rather than removed so
      * re-enabling later is a one-line uncomment; ap_bootstrap_tsl_force_powers()
      * and AP_TSL_FORCE_POWER_ROWS above are left in place, unused.
      * ap_bootstrap_tsl_force_powers(); */

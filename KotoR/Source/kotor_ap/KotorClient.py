@@ -59,6 +59,9 @@ from worlds.kotor import NON_JEDI_COMPANION_KEYS
 
 # NPC_* index (nwscript.nss) -> the arm that re-grants that companion.
 # Order matches Locations.py's generator COMPANIONS list.
+# CompanionMode=ap_limited: how many of the player's own checks earn each companion (fixed, not an option)
+COMPANION_LIMITER_CHECKS = 25
+
 COMPANION_IDX_TO_ARM = [
     "companion_bastila", "companion_canderous", "companion_carth",
     "companion_hk47", "companion_jolee", "companion_juhani",
@@ -227,7 +230,7 @@ KNOWN_ARM_NAMES = [
     "ability_strength", "ability_dexterity", "ability_constitution",
     "ability_intelligence", "ability_wisdom",
     "force_death",
-    "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel",
+    "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel", "pc_droid",
     # One-shot research pair -- see generate_trampoline_batch.py's APPLIES
     # table (arms 58/59) for what these test and why. Supersedes the
     # retired diag_journal_persist_write/_read (arms 55/56) -- an
@@ -268,6 +271,9 @@ GOAL_MARKER_ARM = "goal_marker"
 # delivery there is worth actively detecting -- see the has_class() call
 # site in _deliver_item for why the log alone isn't enough for those.
 DELIVERY_LOG_PATH = os.path.join(_CLIENT_DIR, "kotor_delivery_log.jsonl")
+# Per-playthrough alignment history (the last alignment value seen), keyed "seed|slot". Small
+# JSON rewritten whenever it changes, next to the delivery log, so it survives client restarts.
+ALIGNMENT_STATE_PATH = os.path.join(_CLIENT_DIR, "kotor_alignment_state.json")
 
 # The standard Steam location, used only when nothing below names the game
 # folder. GAME_DIR itself is resolved right after _sys_argv_value is defined.
@@ -341,6 +347,7 @@ REPO_ROOT = _sys_argv_value("--repo-root", _detect_repo_root())
 GENERATE_POLL_SHARED = os.path.join(REPO_ROOT, "scripts", "generate_poll_shared.py")
 GENERATE_MAKEJEDI_SUPPRESSOR = os.path.join(REPO_ROOT, "scripts", "generate_makejedi_suppressor.py")
 PATCH_ITEM_SUPPRESSION = os.path.join(REPO_ROOT, "scripts", "patch_item_suppression.py")
+PATCH_STORY_GATES = os.path.join(REPO_ROOT, "scripts", "patch_story_gates.py")
 PATCH_LOOT_DISTURB = os.path.join(REPO_ROOT, "scripts", "patch_loot_disturb.py")
 PATCH_DOOR_RANDOMIZER = os.path.join(REPO_ROOT, "scripts", "patch_door_randomizer.py")
 PATCH_ADDITIONAL_ENEMIES = os.path.join(REPO_ROOT, "scripts", "patch_additional_enemies.py")
@@ -348,6 +355,7 @@ PATCH_GALACTIC_SHOP = os.path.join(REPO_ROOT, "scripts", "patch_galactic_shop.py
 PATCH_BOSS_DATAPADS = os.path.join(REPO_ROOT, "scripts", "patch_boss_datapads.py")
 PATCH_PLAYER_ID = os.path.join(REPO_ROOT, "scripts", "patch_player_id.py")
 PATCH_NEW_COMPANION_ASSETS = os.path.join(REPO_ROOT, "scripts", "generate_new_companion_assets.py")
+PATCH_DROID_ASSETS = os.path.join(REPO_ROOT, "scripts", "generate_droid_assets.py")
 PATCH_SHOP_ITEM_COSTS = os.path.join(REPO_ROOT, "scripts", "patch_shop_item_costs.py")
 PATCH_AREA_POLL_HOOKS = os.path.join(REPO_ROOT, "scripts", "patch_area_poll_hooks.py")
 BUILD_AP_TRACKER_QUEST = os.path.join(REPO_ROOT, "scripts", "build_ap_tracker_quest.py")
@@ -392,8 +400,8 @@ def _save_patched_seed(key: str, gate_key: str | None) -> None:
 
 
 def _slot_data_fingerprint(slot_data: dict) -> str:
-    """Hashes every field any of the 3 seed-gated patch scripts
-    (item_suppression/door_randomizer/additional_enemies) actually reads,
+    """Hashes every field any of the 5 seed-gated patch scripts
+    (loot_disturb/item_suppression/story_gates/door_randomizer/additional_enemies) actually reads,
     so _apply_seed_patch_if_new's once-per-seed gate can't be fooled by a
     reused seed_name with genuinely different options -- AP's seed_name
     isn't guaranteed to change just because the options did, and reusing a
@@ -428,7 +436,8 @@ def write_slot_data_for_patch_scripts(
         additional_enemies_mode: int = 0, seed_name: str | None = None,
         progression_system: bool = False, galactic_shop: bool = False,
         new_companion: int = 0, door_mapping_repairs: list | None = None,
-        archipelago_vendor: bool = False) -> None:
+        archipelago_vendor: bool = False,
+        companion_class_mode: int = 0, companion_droid_plan: dict | None = None) -> None:
     """Called on every successful Connect -- see SLOT_DATA_PATH above for
     why this exists. A plain JSON write (not restricted_loads/pickle --
     this project controls both ends, unlike the raw .archipelago format),
@@ -463,6 +472,10 @@ def write_slot_data_for_patch_scripts(
                 # Read by scripts/review_door_mapping.py to label a
                 # repaired entry separately from a cleanly-coupled one.
                 "door_mapping_repairs": door_mapping_repairs or [],
+                # Read by generate_droid_assets.py: companion_class=droid (mode 4) and the seed's
+                # {companion key: [appearance row, droid class]} deal.
+                "companion_class_mode": companion_class_mode,
+                "companion_droid_plan": companion_droid_plan or {},
             }, f)
     except Exception as e:
         logger.warning(f"Could not write {SLOT_DATA_PATH} for the patch scripts: {e}")
@@ -658,6 +671,16 @@ def _run_patch_script(script_path: str, extra_args: list[str] | None = None, tim
         return False, f"{script_path} raised: {e}"
 
 
+def apply_story_gates() -> tuple[bool, str]:
+    """Drives patch_story_gates.py: the Progression System's progression items and story-gate scripts (deployed when
+    progression_system is on for the connected seed, removed when it is off). Compiles a few small scripts, so
+    it needs nwnnsscomp like the Jedi suppressor does."""
+    ok, stdout = _run_patch_script(PATCH_STORY_GATES)
+    if not ok:
+        return False, f"patch_story_gates.py failed:\n{stdout}"
+    return True, stdout.strip().splitlines()[-1] if stdout.strip() else "done"
+
+
 def apply_loot_disturb() -> tuple[bool, str]:
     """Runs patch_loot_disturb.py against GAME_DIR for the connected
     seed's destroy/bonus/replace loot handling. Pure static template
@@ -731,7 +754,7 @@ def revert_all_game_files() -> tuple[bool, str]:
     ok_all = True
     # The boss datapad patch takes its own datapads back out of the live module files (it must not copy
     # a backup over them, which would also undo the other patchers' edits), so it goes last.
-    for script in (PATCH_ITEM_SUPPRESSION, PATCH_LOOT_DISTURB, PATCH_BOSS_DATAPADS):
+    for script in (PATCH_ITEM_SUPPRESSION, PATCH_STORY_GATES, PATCH_LOOT_DISTURB, PATCH_BOSS_DATAPADS, PATCH_DROID_ASSETS):
         try:
             result = subprocess.run(
                 [sys.executable, script, "--restore", f"--game-dir={GAME_DIR}"],
@@ -750,8 +773,8 @@ def revert_all_game_files() -> tuple[bool, str]:
 
 def apply_all_patches() -> tuple[bool, str]:
     """The straightforward counterpart to revert_all_game_files() --
-    re-applies every per-seed patch fresh, ignoring the once-per-seed
-    marker: the 4 heavier RIM-sweep patches plus Jedi Suppression
+    re-applies every per-seed patch fresh, ignoring the once-per-option-set
+    marker: the heavier RIM-sweep patches plus Jedi Suppression
     (regenerate_makejedi_suppressor(), which takes starting_class as a
     direct argument rather than reading slot_data itself, unlike the
     subprocess-based patch scripts, so it's read from SLOT_DATA_PATH
@@ -787,9 +810,11 @@ def apply_all_patches() -> tuple[bool, str]:
 
     for label, fn in [
         ("Progression Checkpoints", apply_item_suppression),
+        ("Story Gates", apply_story_gates),
         ("Randomize Areas", apply_door_randomizer),
         ("Additional Enemies", apply_additional_enemies),
         ("Boss Datapads", apply_boss_datapads),
+        ("Droid Assets", apply_droid_assets),
     ]:
         ok, _msg = fn()
         ok_all = ok_all and ok
@@ -826,6 +851,21 @@ def apply_new_companion_assets() -> tuple[bool, str]:
         return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
     except Exception as e:
         return False, f"apply_new_companion_assets raised: {e}"
+
+
+def apply_droid_assets(restore: bool = False) -> tuple[bool, str]:
+    """Same shape as apply_new_companion_assets(): generate_droid_assets.py reads starting_class, companion_class_mode and
+    companion_droid_plan from SLOT_DATA_PATH itself and, on every Connect, either installs the droid models, appearance
+    rows, melee-weapon opening, Battle Droid class tables and companion templates or takes all of them back out when this
+    seed has no droid option. Override-only, idempotent (a manifest records what it wrote)."""
+    try:
+        cmd = [sys.executable, PATCH_DROID_ASSETS, f"--game-dir={GAME_DIR}"] + (["--restore"] if restore else [])
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        if result.returncode != 0:
+            return False, f"generate_droid_assets.py failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"apply_droid_assets raised: {e}"
 
 
 def apply_galactic_shop() -> tuple[bool, str]:
@@ -1260,6 +1300,13 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         self.output(("OK: " if ok else "FAILED: ") + msg)
         return ok
 
+    def _cmd_ap_apply_droid_assets(self) -> bool:
+        """Re-runs generate_droid_assets.py by hand (normally done automatically on Connect)."""
+        self.output("Admin: re-applying the droid assets ...")
+        ok, msg = apply_droid_assets()
+        self.output(("OK: " if ok else "FAILED: ") + msg)
+        return ok
+
     def _cmd_ap_apply_new_companion(self) -> bool:
         """Same again, for generate_new_companion_assets.py (normally run
         on every Connect -- see on_package). Re-deploys the vanilla-or-new
@@ -1379,11 +1426,9 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         return True
 
     def _cmd_ap_roster_cleanup(self, mode: str = "") -> bool:
-        """/ap_roster_cleanup [on|log|off] -- the reconciler's cleanup of
-        companions on the roster the player is not entitled to (only active
-        once the Leviathan has been escaped, one-shot per connection). on
-        (default) purges them; log only reports who it WOULD purge; off
-        disables it. With no argument, shows the current mode."""
+        """/ap_roster_cleanup [on|log|off] -- the reconciler's Star Forge pass and its fix for entitled companions who are
+        listed but cannot be selected. on (default) acts; log only reports what it WOULD do; off disables them. The leak
+        purge has its own switch (/ap_leak_purge). With no argument, shows the current mode."""
         tracker = self.ctx.reconciler
         mode = mode.strip().lower()
         if mode in ("on", "log", "off"):
@@ -1393,10 +1438,29 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         if mode:
             self.output("Usage: /ap_roster_cleanup [on|log|off]")
             return False
-        self.output(f"Roster cleanup: {tracker.roster_cleanup_mode} "
-                    f"(leviathan done={tracker.roster_leviathan_done}, "
-                    f"cleanup finished={tracker._roster_cleanup_done}, "
-                    f"unentitled on roster={tracker._roster_extras()}).")
+        self.output(f"Roster cleanup: {tracker.roster_cleanup_mode} (in the Star Forge={tracker.roster_in_starforge}, "
+                    f"entitlement markers={tracker.current_crew}).")
+        return True
+
+    def _cmd_ap_leak_purge(self, mode: str = "") -> bool:
+        """/ap_leak_purge [auto|on|log|off] -- the reconciler's purge of a companion on the roster whose entitlement marker (the
+        journal quest ap_ent_<key>) is missing or says "trapped off", after it has been seen across 2 area entries. auto
+        (default) only reports who it WOULD purge until the Leviathan has been escaped and purges from then on; on always
+        purges them; log always only reports; off disables it. With no argument, shows the current mode and who is currently
+        a candidate."""
+        tracker = self.ctx.reconciler
+        mode = mode.strip().lower()
+        if mode in ("auto", "on", "log", "off"):
+            tracker.leak_purge_mode = mode
+            self.output(f"Leak purge: {mode}.")
+            return True
+        if mode:
+            self.output("Usage: /ap_leak_purge [auto|on|log|off]")
+            return False
+        self.output(f"Leak purge: {tracker.leak_purge_mode} (acting as {tracker.effective_leak_purge_mode()}, "
+                    f"Leviathan escaped={tracker.roster_leviathan_done}, candidates={tracker._roster_extras()}, "
+                    f"area entries seen={dict(tracker._leak_area_count)}, markers={tracker.current_crew}, "
+                    f"story stage={tracker.roster_story_stage}, busy mask={tracker.roster_busy_mask}).")
         return True
 
     def _cmd_ap_confirm_character(self) -> bool:
@@ -1527,6 +1591,37 @@ def _load_trapped_off_companions() -> set:
     except FileNotFoundError:
         pass
     return trapped
+
+
+def _alignment_state_key(seed_name, slot) -> str:
+    return f"{seed_name}|{slot}"
+
+
+def _load_alignment_state(seed_name, slot):
+    """This playthrough's saved alignment state, or None if there is none (or the file is unreadable)."""
+    try:
+        with open(ALIGNMENT_STATE_PATH, encoding="utf-8") as f:
+            return json.load(f).get(_alignment_state_key(seed_name, slot))
+    except Exception:
+        return None
+
+
+def _save_alignment_state(seed_name, slot, state: dict) -> None:
+    """Writes one playthrough's state, leaving every other playthrough's entry alone. Atomic (temp file + replace), so a crash
+    mid-write can't leave a half-written file that loses every playthrough's history."""
+    try:
+        try:
+            with open(ALIGNMENT_STATE_PATH, encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+        data[_alignment_state_key(seed_name, slot)] = state
+        tmp = ALIGNMENT_STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, ALIGNMENT_STATE_PATH)
+    except Exception as e:
+        logger.warning(f"Could not save {ALIGNMENT_STATE_PATH}: {e}")
 
 
 def _load_recruited_companions() -> set:
@@ -1693,7 +1788,7 @@ def _load_pc_class_settled() -> set:
                 except json.JSONDecodeError:
                     continue
                 if entry.get("outcome") in _SETTLED_OUTCOMES and entry.get("arm", "") in (
-                    "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel",
+                    "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel", "pc_droid",
                 ):
                     settled.add((entry.get("seed_name"), entry.get("slot")))
     except FileNotFoundError:
@@ -1865,7 +1960,6 @@ class KotorContext(CommonContext):
             send_unparty=self._guarded_send_unparty_companion,
             send_roster_remove=self._guarded_send_roster_remove_companion,
             send_select=self._guarded_send_select_companion,
-            entitled_companions=self._entitled_companion_keys,
         )
         self.location_tracker = LocationTracker()
         self._delivered_count = 0
@@ -1873,6 +1967,9 @@ class KotorContext(CommonContext):
         # 0=ap_gated, 1=normal, 2=none -- set from slot_data on Connect,
         # matching Options.py's CompanionMode default until then.
         self.companion_mode = 0
+        # CompanionMode=ap_limited: one companion per 25 of the player's own checks, in a seeded order
+        self.companion_unlock_order: typing.List[str] = []
+        self._limited_requested: typing.Set[str] = set()
         # CompanionClass=no_jedi/randomize_all companion->class assignments
         # (empty for off/jedi_companion) -- set from slot_data on Connect,
         # see __init__.py's fill_slot_data().
@@ -2119,7 +2216,7 @@ class KotorContext(CommonContext):
                     # a real grant or an admin /ap_apply puts a trapped-off companion back
                     # (a reconciler self-heal logs "reconciled" and does not).
                     self._trapped_off_companions.discard((seed_name, slot, arm_name[len("companion_"):]))
-            elif arm_name in ("pc_class_soldier", "pc_class_scout", "pc_class_scoundrel"):
+            elif arm_name in ("pc_class_soldier", "pc_class_scout", "pc_class_scoundrel", "pc_droid"):
                 self._pc_class_settled.add((seed_name, slot))
         entry = {
             "time": time.time(),
@@ -2179,7 +2276,18 @@ class KotorContext(CommonContext):
         rather than assumed."""
         if (self.seed_name, getattr(self, "username", None)) in self._pc_class_settled:
             return True
-        return self.starting_class != 3  # random_class
+        return self.starting_class not in (3, 4)  # random_class, droid
+
+    def _persist_alignment_state(self) -> None:
+        """Writes the tracker's alignment state when it changed since the last write (readings arrive every poll, changes are rare)."""
+        state = self.location_tracker.alignment_state()
+        if state == getattr(self, "_saved_alignment_state", None):
+            return
+        slot = getattr(self, "username", None)
+        if not self.seed_name or not slot:
+            return
+        self._saved_alignment_state = state
+        _save_alignment_state(self.seed_name, slot, state)
 
     def _check_pending_additional_feats(self) -> None:
         """Runs once per poll cycle (see _on_extender_event's SKILLREPORT
@@ -2213,8 +2321,8 @@ class KotorContext(CommonContext):
         if not self._pending_additional_feats:
             return
         _JEDI_ONLY_FEATS = {101, 88, 98}  # Force Jump / Force Focus / Force Immunity: Fear
-        # Confirmed live, 2026-09-19 (Archipelago Vendor research, see
-        # FutureDesign.md's "Archipelago Vendor" section): KSE_GrantFeatArrayA
+        # Confirmed (Archipelago Vendor research, see
+        # DEVELOPMENT_HISTORY.md's Archipelago Vendor section): KSE_GrantFeatArrayA
         # granting one of these 7 ACTIVE/toggle combat feats to the PC
         # specifically fails completely -- GetHasFeat reads false both
         # immediately before AND immediately after the grant call (a real
@@ -2244,6 +2352,8 @@ class KotorContext(CommonContext):
                     is_jedi = rolled_class in ("guardian", "consular", "sentinel")
                 else:
                     is_jedi = npc_key not in NON_JEDI_COMPANION_KEYS  # vanilla lore
+                if self.companion_class_mode == 4:  # droid: nobody has Force powers any more
+                    is_jedi = False
             if not ready:
                 continue
             pool = [f for f in ADDITIONAL_FEATS_POOL if f not in _JEDI_ONLY_FEATS or is_jedi]
@@ -2423,12 +2533,14 @@ class KotorContext(CommonContext):
             target = random.choice(candidates)
             # purge_companion, not remove_companion: the latter only calls RemoveAvailableNPC,
             # which ejects an ACTIVE party member from the roster but leaves the creature
-            # object standing in the area. A tester's game froze on the next transition after
+            # object standing in the area. A game froze on the next transition after
             # that trap landed (and again on every reload of the save made in that state).
             # purge_companion also takes them out of the party and destroys the standing
             # objects -- the form the roster cleanup has used live without trouble.
+            # trap_companion is that same removal plus the entitlement marker ap_ent_<key> written as 20
+            # ("trapped off for good"), which the grant arms refuse and the reconciler treats as a leak.
             # remove_companion stays as the roster-only trap the Star Forge pass needs.
-            sent = await self.extender.send_trap("purge_companion", target)
+            sent = await self.extender.send_trap("trap_companion", target)
             if sent:
                 # Untrack immediately, not just on confirmation -- the
                 # companion arms' own untrack-on-confirm equivalent
@@ -2925,6 +3037,8 @@ class KotorContext(CommonContext):
         # just added a moment earlier in this same method.
         already = self.checked_locations | self.locations_checked
         self.reconciler.checked_location_count = len(already)
+        if self.companion_mode == 3:  # ap_limited
+            self._grant_limited_companions(len(already))
         self.reconciler.handle_event(event)
 
         if "AP|SKILLREPORT|" in event:
@@ -2945,6 +3059,8 @@ class KotorContext(CommonContext):
             # Usually 0 or 1 id, but an alignment jump can cross several
             # 10-point thresholds in one poll -- see kotor_location_tracker.py.
             loc_ids = self.location_tracker.check_event(event, already)
+            if "AP|ALIGNMENT|" in event:
+                self._persist_alignment_state()
             if loc_ids:
                 self.locations_checked.update(loc_ids)
                 for loc_id in loc_ids:
@@ -3154,7 +3270,7 @@ class KotorContext(CommonContext):
         if cmd == "Connected":
             # _delivered_count must be reset here, not just in __init__:
             # switching to a DIFFERENT slot without restarting this Python
-            # process (e.g. WaterKnight after FireKnight) otherwise
+            # process (a second slot after the first) otherwise
             # silently skips delivering any item whose index in the NEW
             # slot's ReceivedItems list falls below whatever
             # _delivered_count already reached in the PREVIOUS slot's
@@ -3200,13 +3316,14 @@ class KotorContext(CommonContext):
                 bool(slot_data.get("galactic_shop", False)),
                 slot_data.get("new_companion", 0),
                 slot_data.get("door_mapping_repairs", []),
-                bool(slot_data.get("archipelago_vendor", False)))
+                bool(slot_data.get("archipelago_vendor", False)),
+                slot_data.get("companion_class_mode", 0), slot_data.get("companion_droid_plan", {}))
             self.archipelago_vendor = bool(slot_data.get("archipelago_vendor", False))
             self.companion_mode = slot_data.get("companion_mode", 0)
-            # Roster cleanup entitlement: under normal mode a story-recruited
-            # companion is entitled by their recruit marker (see
-            # ReconciliationTracker._roster_extras); gated/none never.
-            self.reconciler.trust_recruit_markers = (self.companion_mode == 1)
+            self.companion_unlock_order = list(slot_data.get("companion_unlock_order", []))
+            self._limited_requested = set()
+            # Entitlement for any roster decision comes from the journal markers in the save (ap_ent_<key>), not from this client's
+            # records; the trapped-off record below only stops the reconciler re-granting a companion the trap removed.
             self.reconciler.trapped_off_companions = self._trapped_off_keys()
             self.companion_class_rolls = slot_data.get("companion_class_rolls", {})
             self.companion_class_mode = slot_data.get("companion_class_mode", 0)
@@ -3242,6 +3359,10 @@ class KotorContext(CommonContext):
             # already use for the same "don't leak another player's state
             # in" reason.
             current_slot = (self.seed_name, getattr(self, "username", None))
+            # This playthrough's saved alignment history (the last value seen): restored here, once seed and slot are
+            # known, so it carries across client restarts.
+            self.location_tracker.restore_alignment_state(_load_alignment_state(*current_slot))
+            self._saved_alignment_state = self.location_tracker.alignment_state()
             self.reconciler.expected_feats = {
                 npc_key: set(feat_ids)
                 for (sn, sl, npc_key), feat_ids in self._granted_feats.items()
@@ -3381,7 +3502,7 @@ class KotorContext(CommonContext):
         if arm_name.startswith("companion_") and not arm_name.startswith("companion_class:"):
             self.reconciler.note_item_received(arm_name)
         elif arm_name in ("class_guardian", "class_consular", "class_sentinel",
-                          "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel"):
+                          "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel", "pc_droid"):
             self.reconciler.note_item_received(arm_name)
         elif arm_name.startswith("give_item:"):
             resref = arm_name.split(":")[1] if ":" in arm_name else ""
@@ -3517,7 +3638,7 @@ class KotorContext(CommonContext):
             # this same index (e.g. two overlapping ReceivedItems dispatches
             # around connect/reconnect) would queue a SECOND, fully
             # independent resolution before the first one ever reaches
-            # _log_delivery's "sent". Confirmed live: a fresh save, one
+            # _log_delivery's "sent". Confirmed: a fresh save, one
             # real item, three full reduce_dex apply cycles at the same
             # instant. Harmless no-op for additional_feats' own equivalent
             # grants (already-has-this-feat is itself guarded), but
@@ -3605,8 +3726,9 @@ class KotorContext(CommonContext):
             game_events_logger.warning(f"[makejedi] regeneration FAILED (starting_class={starting_class}): {msg}")
 
     def _apply_seed_patch_if_new(self, key: str, gate_key: str | None, apply_fn, force: bool = False) -> None:
-        """Shared gate for the 3 heavier per-seed patch scripts (item
-        suppression, door randomization, additional enemies) -- see
+        """Shared gate for the 5 heavier per-seed patch scripts (loot mode,
+        item suppression, story gates, door randomization, additional
+        enemies) -- see
         PATCHED_SEEDS_MARKER_PATH's docstring for why these are gated
         rather than always re-run like poll_shared/makejedi. `gate_key` is
         a `_slot_data_fingerprint()` hash, NOT the bare seed_name (see that
@@ -3630,12 +3752,14 @@ class KotorContext(CommonContext):
             game_events_logger.info(f"[{key}] applied: {msg}")
             _save_patched_seed(key, gate_key)
         else:
+            self._patch_failures = getattr(self, "_patch_failures", 0) + 1
             game_events_logger.warning(f"[{key}] APPLY FAILED: {msg}")
 
     def _apply_module_rim_patches_in_order(self, gate_key: str | None, force: bool = False) -> None:
-        """Runs all 4 module-RIM-editing patch scripts (item_suppression,
-        loot_disturb, door_randomizer, additional_enemies) SEQUENTIALLY in
-        one executor task, rather than as 4 independent run_in_executor
+        """Runs the module-RIM-editing patch scripts (item_suppression,
+        loot_disturb, story_gates, door_randomizer, additional_enemies) and
+        then the always-on patches SEQUENTIALLY in one executor task, rather
+        than as independent run_in_executor
         calls that would race each other as separate OS subprocesses with
         no ordering guarantee.
 
@@ -3684,19 +3808,36 @@ class KotorContext(CommonContext):
         datapad patch stays after them so its items are the last thing written."""
         # First, not last: it is a one-file write that takes no time, and a new game started while the slower
         # patches below are still running must already be given this seed's Player ID, not the previous seed's.
+        logger.info("[patching] Patching the game files for this seed. This can take a minute or two; start the game after the "
+                    "'finished' message below (if it is already running, fully quit and relaunch it afterwards).")
+        self._patch_failures = 0
+        # Door redirects and additional enemies from an earlier seed are not taken out by the patches themselves.
+        previous = [_load_patched_seed(k) for k in ("door_randomizer", "additional_enemies")]
+        if gate_key is not None and any(p is not None and p != gate_key for p in previous):
+            logger.warning("[patching] This install was last patched for a different seed or option set. Door changes and "
+                           "extra enemies from that seed are not removed automatically: if doors or enemies look wrong, run "
+                           "/ap_restore_all, then reconnect (or run /ap_patch_all) before playing.")
         self._apply_player_id_and_log()
         self._apply_loot_disturb_and_log(gate_key, force)
         self._apply_item_suppression_and_log(gate_key, force)
+        self._apply_story_gates_and_log(gate_key, force)
         self._apply_door_randomizer_and_log(gate_key, force)
         self._apply_additional_enemies_and_log(gate_key, force)
         self._apply_galactic_shop_and_log()
         self._apply_new_companion_assets_and_log()
+        self._apply_droid_assets_and_log()
         self._apply_area_poll_hooks_and_log()
         self._apply_boss_datapads_and_log()
         self._reset_trampolines_and_log()
         self._purge_queued_deathlinks_and_log()
         self._clear_staged_and_log()
         self._ensure_vendor_and_log()
+        if self._patch_failures:
+            logger.warning(f"[patching] Finished with {self._patch_failures} patch failure(s). See the Heartbeat tab for the "
+                           "'APPLY FAILED' lines before starting the game.")
+        else:
+            logger.info("[patching] Finished. The game files are ready: start the game now. If it was already running, "
+                        "fully quit and relaunch it so it loads the patched files.")
 
     def _ensure_vendor_and_log(self) -> None:
         """Regenerates the Hawk's trampoline so the Archipelago Vendor NPC is (or is no longer)
@@ -3735,6 +3876,10 @@ class KotorContext(CommonContext):
         Only drives Progression System's checkpoint wrappers now, see
         apply_item_suppression()'s own docstring."""
         self._apply_seed_patch_if_new("item_suppression", gate_key, apply_item_suppression, force)
+
+    def _apply_story_gates_and_log(self, gate_key: str | None, force: bool = False) -> None:
+        """Same shape as _apply_item_suppression_and_log, for apply_story_gates()."""
+        self._apply_seed_patch_if_new("story_gates", gate_key, apply_story_gates, force)
 
     def _apply_loot_disturb_and_log(self, gate_key: str | None, force: bool = False) -> None:
         """Same shape as _apply_item_suppression_and_log, for
@@ -3800,6 +3945,16 @@ class KotorContext(CommonContext):
         else:
             game_events_logger.warning(f"[new companion] PATCH FAILED -- {msg}\n"
                                        f"  (run /ap_apply_new_companion to retry once fixed)")
+
+    def _apply_droid_assets_and_log(self) -> None:
+        """apply_droid_assets() on every Connect (not seed-gated -- it must take the droid files back out the moment a
+        later seed has no droid option). Runs in an executor like the other patch scripts."""
+        ok, msg = apply_droid_assets()
+        if ok:
+            game_events_logger.info(f"[droid assets] {msg}")
+        else:
+            game_events_logger.warning(f"[droid assets] PATCH FAILED -- {msg}\n"
+                                       f"  (run /ap_apply_droid_assets to retry once fixed)")
 
     def _apply_galactic_shop_and_log(self) -> None:
         """apply_galactic_shop() on every Connect (not seed-gated -- one
@@ -3995,38 +4150,29 @@ class KotorContext(CommonContext):
         seed_slot = (self.seed_name, getattr(self, "username", None))
         return {npc for (sn, sl, npc) in self._trapped_off_companions if (sn, sl) == seed_slot}
 
-    def _server_entitled_companions(self) -> typing.Set[str]:
-        """Companion keys whose item the multiworld server has sent to THIS
-        slot. self.items_received is CommonContext's list for the current
-        connection only (the server resends the whole list from index 0 on
-        every connect and the context replaces it), so this is correct for
-        any seed, slot or player with no identity to match, and it is
-        rebuilt from scratch on every reconnect. That includes items
-        delivered in an earlier session, which _deliver_item skips (so
-        reconciler.expected_companions never sees them after a restart).
-        Item names map to arms through the same table the delivery path
-        uses; "Companion: New Companion" shares companion_hk47's slot."""
-        keys: typing.Set[str] = set()
-        for network_item in self.items_received:
-            item_name = self.item_names.lookup_in_game(network_item.item, self.game)
-            arm_name = ITEM_NAME_TO_ARM.get(item_name)
-            if not arm_name or not arm_name.startswith("companion_") or arm_name.startswith("companion_class:"):
-                continue
-            key = arm_name[len("companion_"):]
-            if key in _REAL_COMPANION_KEYS:
-                keys.add(key)
-        return keys - self._trapped_off_keys()
-
-    def _entitled_companion_keys(self) -> typing.Set[str]:
-        """Who the player is entitled to have on the roster, for the
-        reconciler's roster cleanup (ReconciliationTracker._roster_extras):
-        every companion item the server has sent this slot, plus every
-        companion granted for the CURRENT (seed_name, slot) per the delivery
-        log (covers an admin grant, and is a second record if the server
-        list is ever empty because the connection is still syncing)."""
+    def _grant_limited_companions(self, checked_count: int) -> None:
+        """CompanionMode=ap_limited: gives each newly earned companion, through the same heavy queue the other
+        self-grants use. Runs on every extender event, so the cheap case (nothing new earned) returns first. A companion
+        already in the delivery log for this seed and slot, or removed by the Remove a Companion trap, is not sent again;
+        the reconciler is told to expect every earned companion either way, so it heals one that goes missing."""
+        if self.reconciler.current_character_name is None or not self.companion_unlock_order:
+            return
+        earned = min(len(self.companion_unlock_order), checked_count // COMPANION_LIMITER_CHECKS)
+        if earned <= len(self._limited_requested):
+            return
         seed_slot = (self.seed_name, getattr(self, "username", None))
-        from_log = {npc for (sn, sl, npc) in self._recruited_companions if (sn, sl) == seed_slot}
-        return (self._server_entitled_companions() | from_log) - self._trapped_off_keys()
+        trapped = self._trapped_off_keys()
+        for key in self.companion_unlock_order[:earned]:
+            if key in self._limited_requested:
+                continue
+            self._limited_requested.add(key)
+            arm_name = f"companion_{key}"
+            self.reconciler.note_item_received(arm_name)
+            if key in trapped or (*seed_slot, key) in self._recruited_companions:
+                continue
+            name = key
+            logger.info(f"[companion limiter] {checked_count} checks -> granting {name}")
+            self._queue_heavy(arm_name, f"(companion limiter) {arm_name}")
 
     async def _guarded_send_purge_companion(self, npc_key: str) -> bool:
         """Wired to ReconciliationTracker as send_purge: removes a companion

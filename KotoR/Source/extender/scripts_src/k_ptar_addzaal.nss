@@ -31,6 +31,7 @@ void main()
     else
     {
         KSE_Diag(35, "AP|SUPPRESSED|companion_zaalbar|skipped_already_recruited");
+        SetAreaUnescapable(FALSE);
     }
     // The check-fire below is atomic with the guard above within this one
     // script call -- no other script (including the regular poll's

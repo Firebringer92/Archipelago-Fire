@@ -1,37 +1,12 @@
 # KOTOR Archipelago Randomizer — Design Doc
 
-**Status: Alpha.** Core pipeline (delivery, detection, options, item
-distribution, goal detection) is built, wired, and generation-tested
-end-to-end. Live in-game testing has proven most of it, including a
-2026-09-08 live-test pass that confirmed Traps (all 12), Additional
-Feats (PC and companion), and the Tatooine shop-catalog fix — see
-`DEVELOPMENT_HISTORY.md`'s "Live-test pass" subsection for the real bugs
-that pass found and fixed. **One feature remains code-complete but NOT
-yet live-tested at all**: the redesigned Progression System's artificial
-travel-gate (§4.1's `Rules.py` entry) — by the user's own 2026-09-08
-call, gate verification is left to natural playthrough/testers rather
-than forced via console warp, since warping bypasses the unlock sequence
-the feature is built around. Additional Enemies is feature-complete and
-*partially* live-tested (both extreme modes confirmed across 3 modules;
-`random_sane` specifically not yet exercised, and per the user's own
-2026-09-08 call, 3/3 correct modules is treated as working-as-intended
-rather than grounds for exhaustive per-module testing). See
-[DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md) for the consolidated
-technical history (feature decisions, confirmed capabilities, and every
-engine limitation found) that this doc summarizes, or the individual
-phase-by-phase logs archived at
-[docs/history/](docs/history/PHASE02.md) (`PHASE02.md`-`PHASE15.md`) for
-the full blow-by-blow. [docs/history/SESSION_STATUS.md](docs/history/SESSION_STATUS.md)
-predates that consolidation and may be stale — prefer
-`DEVELOPMENT_HISTORY.md`/`PHASE15.md`, and the open-item checklist in
-`docs/MODE_DEPENDENCIES.md`, for current status.
+**Status: Alpha.** The core pipeline (delivery, detection, options, item distribution, goal detection) is built, wired, and generation-tested
+end-to-end, and most of it has been played. As of 0.1.9 every story gate of the Progression System (Taris, Dantooine, Tatooine, Kashyyyk,
+Manaan, Korriban) has been played closed and then open; the Unknown World and Star Forge gates and the droid options are built but not yet
+played. Additional Enemies is feature-complete and partially live-tested (both extreme modes confirmed across 3 modules).
 
-This document explains how the whole system fits together and what each
-Python file is for. It does not re-derive the engine-constraint discoveries
-that shaped this design — see
-[DEVELOPMENT_HISTORY.md](DEVELOPMENT_HISTORY.md)'s engine-limitations
-section, or [docs/history/PHASE09.md](docs/history/PHASE09.md)-
-[PHASE11.md](docs/history/PHASE11.md) for the original research.
+This document explains how the whole system fits together and what each file is for. It does not re-derive the engine-constraint
+discoveries that shaped the design; the ones that matter for reading the code are summarised in section 3 and in each file's entry.
 
 ## 1. What this is
 
@@ -103,8 +78,8 @@ using the same hijacked-opcode mechanism K1SE itself pioneered.
   bidirectional clamp (it has to suppress vanilla combat/quest XP, not
   just top up).
 - **Only a short list of items is ever unconditionally guaranteed** in the
-  pool (the 9 companions when `companion_mode` is `ap_gated`, the 8
-  Progression System items, the 5 Vendor Passes, the 12 fixed-amount traps,
+  pool (the 9 companions when `companion_mode` is `ap_gated`, the 24
+  Progression items (`progression_system` on), the 5 Vendor Passes, the 12 fixed-amount traps,
   and the Jedi class / Jedi Training / Additional Feats items when those
   options are on) — everything else (gear, Skills, Abilities, EXP, Credits,
   filler traps) is drawn through a weighted 8-category distribution
@@ -151,13 +126,18 @@ gradually, not all at once):
   reads it.
 - If a decision needs real justification (an engine limitation, a design
   tradeoff, a rejected alternative), that justification belongs in this
-  document or `DEVELOPMENT_HISTORY.md` — the comment should be a short
-  pointer to it (e.g. "see DESIGN.md §5.2, `OnOpen` never fires in this
-  engine build"), not a restatement of the investigation inline.
+  document — the comment should be a short pointer to it (e.g. "see
+  DESIGN.md §5.2, `OnOpen` never fires in this engine build"), not a
+  restatement of the investigation inline.
 - Don't reference internal-only files a GitHub reader won't have
-  (`FutureDesign.md`, the memory-file notes, a specific past chat) —
-  point at `DESIGN.md`/`DEVELOPMENT_HISTORY.md`/`docs/history/PHASE*.md`
-  instead, since those actually ship with the repo.
+  (working notes, a specific past chat, a date) — point at `DESIGN.md`
+  or state the fact in the comment itself.
+- **Engine findings that shape the scripts.** `ActionStartConversation` reached through `ExecuteScript` silently does not start, so a gate whose original
+  starts a conversation is written out natively or moved into the dialog. An Override file replaces every module's file of the same name (a dialog,
+  trigger or template that exists in more than one module with different content must be renamed, not overridden). On-screen messages do not show, so
+  the player speaks a one-line dialog (`ap_gate_msg`) instead. The Override folder is read once at game startup. Triggers can fire while a module is
+  still loading, before the player exists. Item variables do not survive an area change but an item's presence does, and a journal quest only moves
+  forward, which is why the mod's records in the save are marker items and journal entries.
 
 ## 4. File-by-file breakdown
 
@@ -170,23 +150,23 @@ gradually, not all at once):
   client to read on connect, and wires in `EntranceRando`/`Rules` when
   their options are on. This is where the weighted item-distribution
   system actually lives. Guaranteed-placement pool: the 9 companions
-  (`companion_mode=ap_gated`), the 8 Progression System quest items
+  (`companion_mode=ap_gated`), the 24 Progression items
   (`progression_system` on), the 5 Vendor Passes (`archipelago_vendor` on),
   the 12 fixed-amount Traps items, and the Jedi class / Jedi Training /
   Additional Feats items when those options are on are the only items ever
   unconditionally placed — the same `mandatory_names` pattern for all of
   them, everything else drawn through the weighted distribution. `PLANET_MODULE_PREFIXES` maps each of the 6
   planets to its module-name prefix for `_shop_stock()`'s per-planet
-  catalogs — Tatooine (`"tat_m"`) was missing entirely until 2026-09-08
-  (see `DEVELOPMENT_HISTORY.md`); a dev-tooling duplicate of this same
+  catalogs — Tatooine (`"tat_m"`) was once missing entirely
+  (since fixed); a dev-tooling duplicate of this same
   dict, `_PLANET_PREFIXES` in `scripts/generate_trampoline_batch.py`, has
   to be kept in sync by hand (the two live in separate processes — see
   4.3's note — so they can't just share one Python object).
 - **`Options.py`** — every player-facing setting (`KotorOptions`
   dataclass) with full docstrings. `STARTING_ABILITY_ARMS`/
   `STARTING_SKILL_ARMS` map arm names to their matching starting-boost
-  option, shared with `__init__.py`. `ProgressionSystem` (redesigned
-  2026-09-08 after real per-item disassembly, see `Rules.py` below),
+  option, shared with `__init__.py`. `ProgressionSystem` (the story gates,
+  see `StoryGates.py` below),
   `Traps` (field name `enable_traps`: a Choice of off / item_filler /
   fixed_amount covering 12 one-time punishment items, see
   `Items.py`/`KotorClient.py` below; with `trap_weight` and `trap_link`),
@@ -203,10 +183,11 @@ gradually, not all at once):
   static edit to `COMPANION_CLASS_KEYS` — `new_companion` (either
   non-off value) only makes that slot eligible for `companion_class`/
   `additional_feats` when it's actually on, so a vanilla-HK47 seed never
-  picks up class-randomization/feat items meant for a droid.
+  picks up class-randomization/feat items meant for a droid. 0.1.9 added `companion_mode: ap_limited`, the `droid` values of
+  `starting_class` and `companion_class` (see 4.3's `generate_droid_assets.py`) and new EXP defaults (EXP Item 8000, EXP Limiter 1000, both with a minimum of 500).
 - **`Items.py`** — `item_table`: every AP item (skills, companions,
-  abilities, class switches, XP/credits filler, the progression-system
-  items, the five Archipelago Vendor passes `VENDOR_UNLOCK_ITEMS`) plus gear items loaded at
+  abilities, class switches, XP/credits filler, the 24 story-gate Progression
+  items (`ap_tk_<family><n>`, ids from `base_id + 200000`), the five Archipelago Vendor passes `VENDOR_UNLOCK_ITEMS`) plus gear items loaded at
   runtime from `gear_items.json` (only rows flagged `included_as_item`
   get a real AP code). Exports `arm_name_to_item`, `item_name_to_id`,
   `lookup_id_to_name` as the single source of truth other files import
@@ -214,8 +195,8 @@ gradually, not all at once):
   `trap:cut_max_hp`) all route through one consolidated `trap:<type>:
   <params>` wire action rather than each getting its own native/plumbing
   — see `KotorClient.py` and 4.3's `generate_trampoline_batch.py` entry.
-- **`Locations.py`** — `location_table`: all 264 locations (100 journal,
-  10 companion (incl. the New Companion row), 78 area, 10 alignment + 3
+- **`Locations.py`** — `location_table`: all 267 locations (100 journal,
+  10 companion (incl. the New Companion row), 78 area, 14 alignment + 2
   alignment-bonus, 19 level, 1 Malak defeated, 40 bounty card, 3 boss datapad
   (`Boss: Calo Nord / Darth Bandon / Saul Karath`, ids +261..263)). Mostly
   generated by `scripts/generate_kotor_locations.py`, but not completely:
@@ -229,34 +210,18 @@ gradually, not all at once):
   still client-driven via `KotorClient.py`'s `_check_goal`/`finished_game`.
   **`Goal`'s `reach_leviathan` option**: a shorter alternative to
   `defeat_malak`, detected from the first Leviathan area visit
-  (`Visited: Leviathan - Prison Block`). `progression_system` now REQUIRES
-  `goal` to be `defeat_malak` or `reach_leviathan` (enforced as an
-  `OptionError` at generation time, same mechanism as its existing
-  `area_randomizer` incompatibility) — confirmed live that a seed combining
-  `progression_system` with `goal=max_level` left 2 of the 4 Star Maps
-  permanently unfound, since neither `true_balance` nor `max_level` ever
-  requires reaching the Leviathan or later. `set_rules` was largely
-  flat/ungated until the Progression System redesign (2026-09-08): real
-  per-item disassembly found the 4 star-map quest items are gated by a
-  *global flag* (`k_pla_actmap`), not inventory possession, so
-  suppressing the item alone wouldn't stop a player from completing the
-  vanilla flag first. The fix is an **artificial travel-gate**: `Rules.py`
-  now maps every location on each of the 4 star-map planets (via
-  `PLANET_AREA_IDX`, cross-referenced against
-  `extender/area_trampolines/_mapping.json`) plus companion-recruitment
-  and Genoharadan-bounty locations known to occur on those planets
-  (`COMPANION_PLANET_OVERRIDE`, `GENOHARADAN_PLANET_OVERRIDE` — the
-  latter's Lorgal→Korriban entry is an inference by elimination, lower
-  confidence than the other three) back to that planet's own AP star-map
-  item, and `add_rule`-gates (AND-combines) every one of those locations
-  behind actually holding it. Dantooine and its Desert Map were dropped
-  from the item list entirely once disassembly showed neither is a real
-  mechanical gate (see `DEVELOPMENT_HISTORY.md`). The other 4 Progression
-  items (Sith Armor/Papers, Shield Codes, Enviro Suit) genuinely are
-  inventory-gated, so those stay suppressed at the source instead (see
-  `gear_items.json`'s `progression_suppression` flag and 4.3's
-  `apply_progression_checkpoint_wrappers`) — `Rules.py`'s new gating
-  logic only covers the 4 star maps.
+  (`Visited: Leviathan - Prison Block`). `progression_system` works with every goal and with both area randomizer modes. `set_rules` stays flat
+  and calls `StoryGates.py` when that option is on (next entry).
+- **`StoryGates.py`** — access rules and placement restrictions for the story-gate Progression System (called from `Rules.py` when `progression_system` is on).
+  The pool holds 24 plot items in eight families (Taris, Dantooine, Tatooine, Kashyyyk, Manaan, Korriban, Unknown World, Star Forge; three each,
+  named "<Planet> Progression 1" to "3"). A gate in the game waits until the player holds enough items of one family, so the rules are plain
+  item-count requirements: a planet baseline that accumulates down the story (leaving Taris needs 3 Taris items; the open-world planets also need
+  Dantooine 3; the Leviathan and the Unknown World also need the four open-world planets' items; the Star Forge also needs the Unknown World; the
+  Malak fight needs the Star Forge items), per-check extras for named checks, and placement restrictions (no progression item on the Leviathan,
+  Unknown World, Star Forge or epilogue checks, which cannot be returned to; only Taris items on Taris or the Endar Spire; an open-world family's
+  items stay off its own planet). A check whose exact beat is uncertain is listed at the higher step: over-requiring only makes a seed more
+  conservative, under-requiring could strand an item behind itself. `scripts/check_story_gate_spoilers.py` rebuilds reachability from a spoiler's own
+  location list to confirm no item sits where it could not be reached without itself.
 - **`launch_kotor_client()` + its `Component(...)` registration**
   (2026-09-08, top of `__init__.py`) — registers a "KOTOR Client" button
   in the Archipelago Launcher (the `x2wotc`/`tits_the_3rd`-style pattern).
@@ -291,14 +256,9 @@ gradually, not all at once):
   repointing a well-connected edge, the same technique the old
   uncoupled-mode `_ensure_full_reachability` used, just scoped to the
   handful of leftover entries rather than the whole graph; the same repair
-  pass runs for decoupled mode too, unchanged. See its own module
-  docstring for the full reverse-door analysis and reachability findings,
-  [docs/history/PHASE12.md](docs/history/PHASE12.md) for the exclusion-zone
-  design and the module/dest_module mixup bug, and
-  [docs/history/PHASE13.md](docs/history/PHASE13.md) for the earlier,
-  now-superseded uncoupled-mode reciprocal-pairing feature this design
-  replaced (that file predates AP's own `coupled=True` engine being
-  adopted at all, and is outdated as a design reference).
+  pass runs for decoupled mode too, unchanged. In coupled mode AP's engine cannot place the last two doors on its own; `_repair_keeping_pairs` pairs those leftovers with each other and, if an area would still be
+  cut off, swaps partners between two pairs, so every door leads back the way you came (30 test seeds had no one-way door and no unreachable area);
+  `_repair_orphaned_modules` stays only as a last resort. See the module's own docstring for the full reverse-door analysis and reachability findings.
 
 ### 4.2 The Python AP client (`Archipelago/` root)
 
@@ -386,8 +346,7 @@ gradually, not all at once):
   cover New Companion's asset deploy (`apply_new_companion_assets()`) --
   it has no `--restore` counterpart, so adding it to `/ap_patch_all` alone
   would let that command deploy something `/ap_restore_all` can't clean
-  back up; tracked as a known, low-risk gap in `MODE_DEPENDENCIES.md`
-  rather than fixed, since New Companion already re-syncs correctly on
+  back up; a known, low-risk gap left unfixed, since New Companion already re-syncs correctly on
   every real Connect regardless of either admin command.
   `apply_new_companion_assets()`/`_apply_new_companion_assets_and_log()`
   (2026-09-14) run `generate_new_companion_assets.py` the same
@@ -426,7 +385,7 @@ gradually, not all at once):
 - **`entitlement.py`** — pure data and small helpers shared by the client and
   the reconciler, so neither has to import the other: `HEAVY_ARMS` (the arms
   that are serialized through the client's heavy queue), `PROGRESSION_ITEM_RESREFS`
-  (the 13 tracked items), and `compute_entitlement`.
+  (the 29 tracked items), and `compute_entitlement`.
 - **Staged-queue handling** (`KotorClient.py` with `arm_orchestrator.py`): on every
   extender (re)connect and every Connect the client runs `--clear-derived`, which
   drops the staged entries the reconciler recomputes anyway (set_xp, set_credits,
@@ -449,9 +408,8 @@ gradually, not all at once):
   (idempotent -- Zaalbar/HK-47 were previously excluded over an
   unverified concern, re-added once their trampoline arms were confirmed
   identical to every already-reconciled companion's own), PC+companion
-  class and feats, the 13 tracked progression items (the 8 Progression System
-  items -- Star Maps/Sith Armor/Sith Papers/Shield Codes/Enviro Suit -- plus
-  the 5 Vendor Pass tokens; a lost one is re-granted -- a narrow possession
+  class and feats, the 29 tracked progression items (the 24 story-gate Progression
+  items plus the 5 Vendor Pass tokens; a lost one is re-granted -- a narrow possession
   check, not full reconciliation), the "Archipelago Tracker" journal
   quest's check-percentage stage, and ability scores (str/dex/con/int/
   wis -- a bootstrap-then-track-deltas design, deliberately different
@@ -488,6 +446,14 @@ gradually, not all at once):
   `/ap_roster_cleanup off|log|on` controls it. The client also reports goal
   completion to the server and sends `!release` (`/ap_autorelease`), and drops
   queued DeathLink arms on every connect (`arm_orchestrator.py --purge-arm=32`).
+- **Companion entitlement markers and the leak purge** (`kotor_reconciliation.py`, with `build_ap_tracker_quest.py` and `generate_poll_shared.py`). Who may be
+  on the roster is decided by a journal marker in the save, not by the client's records: nine quests `ap_ent_<key>`, 10 = entitled (written by the companion
+  grant arm in the same script that adds the companion, so an AP item, the normal-mode auto-grant, the `ap_limited` counter and an admin grant all write it) and
+  20 = trapped off for good (the Remove a Companion trap; a quest only moves forward, so it cannot be undone). The poll reports them as `AP|CREWREPORT|...`. A
+  companion on the roster whose marker is not 10 is purged after settled reports across two area entries, never while a scene is busy (the roster report's `bz=`
+  mask) or in the Star Forge (its own pass). `/ap_leak_purge auto|on|log|off` (default `auto`: log only until the Leviathan has been escaped). A received
+  companion on the roster without a marker is repaired by re-sending her grant, not purged. A feat correction that never lands is given up after three sends
+  of the same missing set.
 - **`kotor_location_tracker.py`** — `LocationTracker`: turns raw
   `CHECK|JOURNAL`/`CHECK|COMPANION`/`CHECK|AREA`/`ALIGNMENT` events into
   real AP location IDs, reading `ctx.checked_locations` as the single
@@ -537,9 +503,8 @@ Override; re-run after changing their inputs):
   seated without ever having received their real item. Handles a genuine
   cross-module resref collision (`k_pdan_cut01`-`cut06` are different
   real compiled scripts in `danm13` vs `danm14ab`, resolved at runtime via
-  `GetModuleFileName()`). See `docs/MODE_DEPENDENCIES.md` for the full
-  investigation, including the separate, unrelated "CutStart" engine bug
-  this family was initially (incorrectly) suspected of causing.
+  `GetModuleFileName()`). The "CutStart" engine bug this family was first suspected of causing is a
+  separate, unrelated problem, fixed by replacement dialog files.
 - `generate_makejedi_suppressor.py` (2026-09-02) — same preserve-and-chain
   pattern, for Dantooine's real "become a Jedi" trial-completion script
   (`k_pdan_makejedi`). Confirmed via `read_ncs()` that the vanilla script
@@ -571,8 +536,7 @@ Override; re-run after changing their inputs):
   defeated) via fixed constants at the top of the file -- these used to
   live in `Locations.py` some other way outside this generator's
   knowledge, and a re-run silently wiped all 33 once, breaking every
-  seed's generation project-wide until caught and fixed same session (see
-  `FutureDesign.md`). Covers the full table now except the hand-added New Companion row (see the
+  seed's generation project-wide until caught and fixed same session (since fixed). Covers the full table now except the hand-added New Companion row (see the
   `Locations.py` entry above).
 
 **Live pipeline — runtime orchestration:**
@@ -633,14 +597,6 @@ generated seed, gated on that seed's options):
   consistent with never removing existing loot. Narrow in practice — only
   one creature in the entire base game (`n_calonord`, Calo Nord) has a
   genuinely droppable equipped item at all.
-  Also carries forward Progression System's Sith Armor/Shield Codes
-  always-suppress-at-source check (the 2 of its 8 items whose real
-  vanilla acquisition is a genuine container/corpse pickup) as the same
-  unconditional static removal, independent of `loot_mode`, gated only on
-  `progression_system`. `granted_exempt_` bookkeeping (needed by both
-  earlier runtime designs to protect an AP-granted item from immediate
-  re-suppression) is gone — this file never touches anything delivered
-  through the AP item pipeline any more, so there's no overlap to guard.
   Idempotent by construction: every run re-derives each template's final
   state from the PRISTINE source, never from a previously-deployed
   Override copy of its own (`discover_chitin_templates()` reads via the
@@ -661,36 +617,22 @@ generated seed, gated on that seed's options):
   vanilla contents when `loot_mode` is off. Replaces the retired "Loot
   Safety Net" AP-item precollection with a permanent, seed-independent
   world-content fix instead.
-  `patch_item_suppression.py` itself is NOT fully retired: its
-  `apply_progression_checkpoint_wrappers()` mechanism, below, is a
-  completely separate thing that never went through `Mod_OnAcquirItem` at
-  all, and still lives there.
-  `apply_progression_checkpoint_wrappers()` (2026-09-08) is a separate
-  mechanism for the Progression System's other 6 suppress-at-source items
-  (Sith Papers, Enviro Suit, the 4 Star Maps): extracts each
-  real checkpoint script's TRUE original directly from chitin via
-  `Installation(game_dir).resource(name, ResourceType.NCS)`, writes it as
-  `apo_<name>_orig.ncs`, and deploys a small gate-and-delegate wrapper
-  (`k_sup_galaxymap_progression.nss` etc. in `extender/scripts_src/`) that
-  checks a `KSE_HasData("granted_exempt_<tag>")` exemption flag before
-  calling through via `ExecuteScript`. One of the 4
-  (`k_ptar_sithpaper`, a `StartingConditional`) needed full
-  reimplementation instead of gate-and-delegate, since `ExecuteScript`
-  can't relay a called script's return value back to its caller.
+  `patch_item_suppression.py` now only takes back out a leftover deployment of the first-design Progression System wrappers; the story gates replaced them
+  (`patch_story_gates.py`, below).
 - `patch_door_randomizer.py` — rewrites each shuffled transition's
   `LinkedToModule`/`LinkedTo` GFF fields to match the seed's computed
   mapping. No compiler dependency at all (pure GFF field edits).
 - `patch_additional_enemies.py` (2026-09-08) — the fourth per-seed
   patcher, same pattern as the two above. Reads `additional_enemies_mode`
   from slot_data and, for each of 195 precomputed safe spawn points
-  across 40 modules (Tables A/B/C — see `DEVELOPMENT_HISTORY.md`), places
+  across 40 modules (Tables A/B/C), places
   a creature chosen by mode (`area_appropriate`: CR-filtered, drawn from
   that module's own dominant category; `random_sane`: CR-filtered, full
   safe pool; `fully_random`: unfiltered). Seeded by the real AP
   `seed_name` so a reconnect reproduces identical placements.
   Live-tested at both extremes; `random_sane` itself not yet separately
   exercised (mechanically identical minus the category filter).
-- `patch_boss_datapads.py` (2026-10-04, built, not yet live-tested) — always
+- `patch_boss_datapads.py` — always
   on, run on every connect after the other module-file writers. Writes the three
   boss datapad item templates (`ap_dp_calo/bandon/karath`) and appends the datapad
   to 10 fighting templates in 5 modules (Calo Nord, Darth Bandon and Saul Karath; the
@@ -698,7 +640,7 @@ generated seed, gated on that seed's options):
   patch runs cannot be looted retroactively. Picking one up completes the matching
   `Boss: ...` check (poll `CheckBossDatapads`,
   tracker `datapad` location type, never able to hold a progression item).
-- `generate_location_items.py` (2026-10-05, built, not yet live-tested) — the 78
+- `generate_location_items.py` — the 78
   visited-area marker items `ap_loc_<idx>` ("Location: <area>", plot items), static
   and seed-independent, listed in `extender/scripts_src/_location_manifest.json`
   for `package_dist.py`. Every area's entry script (the shared `area_entry_diag_lines`
@@ -708,7 +650,7 @@ generated seed, gated on that seed's options):
   area entered while the client was closed is still credited. Presence is the whole
   record (item variables do not survive an area change); a strip (Endar Spire,
   Leviathan) only costs a backfill and the marker is recreated on re-entry.
-- `patch_player_id.py` (2026-10-05, built, PASSIVE, not yet live-tested) — writes
+- `patch_player_id.py` (passive: nothing is enforced on it) — writes
   `Override/ap_pid.uti`, the Player ID item, on every Connect (a placeholder ships in the
   bundle). Its name is "Player ID: <slot> <hash>", the hash being `save_id_for(seed_name, slot)`
   (first 9 hex of sha1 of `seed|slot`, in `KotorClient.py`). The `end_m01aa` entry script
@@ -717,6 +659,24 @@ generated seed, gated on that seed's options):
   `AP|PLAYERID|<name>` (or `NONE`) on change plus about once a minute; the client records the
   hash as `save_id` on each new delivery-log line and logs a warning on a mismatch or when the
   save has none. Nothing is paused on it: the character-name safeguard is still the only guard.
+- `patch_story_gates.py` — deploys the in-game side of the Progression System on every Connect when the option is on (and removes it when it is off): the 24 item
+  templates `ap_tk_<family><n>` (plot items, so they cannot be sold or dropped), 48 gate scripts (`extender/scripts_src/sg_*.nss`) and 9 edited dialogs. A gate is
+  `ApGateOpen(family, step)` in `extender/scripts_src/ap_gate.nss`, which counts the family's items in the player's inventory (so it needs no variable and
+  survives saves) and also requires the family before it to be complete (the story chain). Script kinds: wrap (the vanilla script is kept under an `apo_sg_*`
+  alias and run only when the gate is open), reimpl (a replacement for a vanilla condition or node script), dispatch (one name used by two modules, which
+  picks that module's original at runtime) and new (no vanilla counterpart). Gates that guard a dialog starter insert a first "not yet" starter through
+  `story_gate_dialogs_unknown.py` and `story_gate_dialogs_korriban.py`. A closed gate makes the player say a one-line dialog (`ap_gate_msg`), because on-screen
+  messages do not show; a gate decided in the middle of a conversation uses `ApGateSayLater`, which speaks it once the conversation has ended. Gates hold story
+  beats only, never doors or travel. In area randomizer seeds the Taris elevator guard needs no Sith armor. The star-map counter is handled by
+  `k_pdan_starmap02` (the Dantooine ruins map adds 10 instead of setting 10, so planet maps found earlier are kept), and `k_pebn_galaxy` on the Hawk's galaxy map
+  console raises the Unknown World flag when all five star maps are counted and the Leviathan is done.
+- `generate_droid_assets.py` — installs (or removes, when neither option is on; it runs on every Connect) everything the droid options need in Override: the Battle
+  Droid class (a tenth `classes.2da` row, class 9, with its own feat, skill and level-gain columns), the melee weapon types opened to droids (`baseitems.2da`), the
+  human-rig droid models (war droid, assassin droid and an HK-47 PC variant) so melee weapons swing, the Mark Two droid's ranged animations, wrappers that let a droid
+  PC past the Taris elevator guard and roll Persuade on Charisma, and, for `companion_class: droid`, droid-race templates for the seven organic companions. The plan
+  (a look and a class per companion) is rolled at generation time by `roll_droid_companions` in `__init__.py`: seven looks from twelve (at most two companions
+  share a model type, with different paint jobs) and a 3/2/2 hand of Combat, Expert and Battle Droid classes; the human-rig looks are swapped onto Battle Droids
+  when one is available. A manifest records everything written so it can be taken out again.
 - `generate_ap_vendor.py` — the Archipelago Vendor's dialogue, gating scripts,
   NPC and the five Vendor Pass items, written once on the dev machine and shipped
   from `extender/scripts_src/_vendor_manifest.json` plus the raw files. The
@@ -805,7 +765,7 @@ the full dev toolchain — see `README.md`):
   scripts' own data so it can't silently drift. **`EXTRA_RAW_FILES`**
   ships the non-`.ncs` files verbatim (never compiled) from
   `extender/raw_override_files/`: the replacement `.dlg` files that fix the
-  "CutStart" engine bug (see `docs/MODE_DEPENDENCIES.md`), the Player ID
+  "CutStart" engine bug (see TESTING.md's troubleshooting notes), the Player ID
   placeholder `ap_pid.uti`, the 78 `ap_loc_*.uti` location markers, the vendor
   token templates and dialogs, the Leviathan console and dialogs, and the extra
   lightsaber crystal icons, sourced from the repo itself rather than a dev
@@ -864,7 +824,7 @@ no separate K1SE mod to chain under any more). Runs a local TCP server
 them as `EVENT:` lines, and handles incoming `APPLY:`/`APPLYVALUE:`
 commands by shelling out to `arm_orchestrator.py`. `AP_ARM_NAMES[]` is the
 authoritative arm-ID table, kept in sync by hand with
-`generate_trampoline_batch.py`'s `APPLIES`.
+`generate_trampoline_batch.py`'s `APPLIES`. The native `KSE_SetCreatureField` also writes a character's race (field 33, droid or human only) for the droid options.
 
 4.3's `install_playerbundle.py` captures the game folder's real
 `binkw32.dll` as `binkw32_real.dll` (once) and swaps in this compiled

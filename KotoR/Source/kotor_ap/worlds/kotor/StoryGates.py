@@ -116,6 +116,7 @@ GATE_EXTRAS: typing.Dict[str, typing.Tuple[typing.Tuple[str, int], ...]] = {
     "Manaan: Mission for the Republic": (("man", 3),),
     "Manaan: Star Map: Manaan": (("man", 3),),
     # Korriban: the academy, the Valley and the tombs are reached only through Yuthura's acceptance (gate 1) in the base layout
+    "General: The Code of the Sith": (("kor", 1),),
     "Korriban: Enter the Sith Academy": (("kor", 1),),
     "Korriban: A Doubting Sith": (("kor", 1),),
     "Korriban: Aiding Lashowe": (("kor", 1),),
@@ -168,8 +169,20 @@ GATE_EXTRAS: typing.Dict[str, typing.Tuple[typing.Tuple[str, int], ...]] = {
 }
 
 
+# The open-world star map checks close each planet's chain and depend on a single placeable or trigger in a late area, so no
+# progression item (Progression or companion) may sit on them. Dantooine's ruins check is not listed: it fires on the star pad pickup,
+# which needs only two Dantooine items, and the council scene that needs the third comes after it.
+STAR_MAP_LOCATIONS = frozenset({
+    "Tatooine: Star Map: Tatooine", "Kashyyyk: Star Map: Kashyyyk", "Manaan: Star Map: Manaan", "Korriban: Star Map: Korriban",
+})
+
 # Checks whose own region is a catch-all but which belong to a story phase.
-_NAME_PLANET = {"Malak Defeated": "Final"}
+_NAME_PLANET = {
+    "Malak Defeated": "Final",
+    # The Sith code lessons are taught by Uthar and Yuthura inside the academy, and the Premium Merchant's store is the Dreshdae bartender's.
+    "General: The Code of the Sith": "Korriban",
+    "General: Premium Merchant": "Korriban",
+}
 
 
 def location_planet(name: str, data) -> typing.Optional[str]:
@@ -254,6 +267,8 @@ def apply_story_gate_rules(world) -> None:
         reqs = location_requirements(name, data)
         if reqs:
             add_rule(location, lambda state, reqs=reqs: all(_family_rule(state, player, f, n) for f, n in reqs))
+        if name in STAR_MAP_LOCATIONS:
+            add_item_rule(location, lambda item: not item.advancement)
         banned = token_forbidden_families(name, data)
         if banned:
             add_item_rule(location, lambda item, banned=banned: token_to_family.get(item.name) not in banned)

@@ -11,7 +11,8 @@ For every spoiler it rebuilds, from the spoiler's own location -> item list, wha
   3. Placement invariants, written independently of StoryGates.py:
        - no progression item on the Leviathan, the Unknown World, the Star Forge, the epilogue or the Malak fight;
        - no non-Taris progression item on Taris or the Endar Spire (the player cannot come back to either);
-       - no Tatooine / Kashyyyk / Manaan / Korriban progression item on its own planet.
+       - no Tatooine / Kashyyyk / Manaan / Korriban progression item on its own planet;
+       - no progression or companion item on an open-world star map check.
   4. Sphere of each progression item (the round in which it first becomes collectable), to show the shape of the chain.
 
 The access requirements come from worlds/kotor/StoryGates.py (location_requirements) plus the companion rule in Rules.py
@@ -38,6 +39,8 @@ FAMILIES = {"Taris": "tar", "Dantooine": "dan", "Tatooine": "tat", "Kashyyyk": "
 TOKEN_RE = re.compile(r"^(Taris|Dantooine|Tatooine|Kashyyyk|Manaan|Korriban|Unknown World|Star Forge) Progression ([123])$")
 OWN_PLANET = {"tat": "Tatooine", "kas": "Kashyyyk", "man": "Manaan", "kor": "Korriban"}
 FAMILY_SIZE = 3
+STAR_MAP_CHECKS = {"Tatooine: Star Map: Tatooine", "Kashyyyk: Star Map: Kashyyyk", "Manaan: Star Map: Manaan",
+                   "Korriban: Star Map: Korriban"}
 
 
 def parse(path):
@@ -106,6 +109,8 @@ def reach(placements, ap_gated, removed_loc=None):
 def planet_of_check(loc):
     """Planet or phase of a check from its name and region only (independent of StoryGates.location_planet)."""
     data = location_table[loc]
+    if loc in ("General: The Code of the Sith", "General: Premium Merchant"):
+        return "Korriban"  # taught in the academy / sold by the Dreshdae bartender
     name = loc[len("Visited: "):] if loc.startswith("Visited: ") else loc
     for planet in ("Endar Spire", "Taris", "Dantooine", "Tatooine", "Kashyyyk", "Manaan", "Korriban", "Unknown World",
                    "Star Forge", "Leviathan"):
@@ -152,6 +157,9 @@ def check_one(path):
             problems.append(f"PLACEMENT: '{item}' at '{loc}' ({planet}, one-way, not a Taris item)")
         if fam in OWN_PLANET and planet == OWN_PLANET[fam]:
             problems.append(f"PLACEMENT: '{item}' at '{loc}' (its own planet)")
+    for loc, item in placements.items():
+        if loc in STAR_MAP_CHECKS and item and (TOKEN_RE.match(item) or item.startswith("Companion: ")):
+            problems.append(f"PLACEMENT: '{item}' at '{loc}' (a star map check holds no progression item)")
     chain = sorted((sphere_of.get(i, -1), i, planet_of_check(l)) for i, l in token_at.items())
     return problems, chain, reached
 

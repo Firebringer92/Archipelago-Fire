@@ -95,6 +95,34 @@ AREA_PERMANENT_SPAWNS = {
 # joined (IsAvailableCreature), or his recruit marker exists; it stages Carth at his own waypoint if his placed
 # object is missing, and flags the area (local boolean 60) so it can only ever happen once.
 HIDEOUT_REUNION_FUNC = """
+void HideoutCarthProbe(string sWhen)
+{
+    object oPC = GetFirstPC();
+    KSE_Diag(183, "AP|HIDEOUT|probe|" + sWhen + "|carth=" + IntToString(GetIsObjectValid(GetObjectByTag("Carth")))
+        + "|pc=" + IntToString(GetIsObjectValid(oPC)) + "|conv=" + IntToString(GetIsInConversation(oPC))
+        + "|wp=" + IntToString(GetIsObjectValid(GetObjectByTag("pebn_carth"))));
+}
+
+void HideoutCarthStartConv(int nTry)
+{
+    object oPC = GetFirstPC();
+    object oCarth = GetObjectByTag("Carth");
+    if (!GetIsObjectValid(oCarth))
+    {
+        KSE_Diag(183, "AP|HIDEOUT|forced_reunion_carth_missing|try=" + IntToString(nTry));
+        if (nTry < 5) DelayCommand(1.5, HideoutCarthStartConv(nTry + 1));
+        return;
+    }
+    if (GetIsInConversation(oPC))
+    {
+        KSE_Diag(183, "AP|HIDEOUT|forced_reunion_skipped|conversation_running_late");
+        return;
+    }
+    KSE_Diag(183, "AP|HIDEOUT|forced_reunion_starting|try=" + IntToString(nTry));
+    AssignCommand(oCarth, ClearAllActions());
+    AssignCommand(oCarth, ActionStartConversation(oPC, "tar02_carth022", FALSE, CONVERSATION_TYPE_CINEMATIC, TRUE));
+}
+
 void HideoutCarthReunion()
 {
     object oPC = GetFirstPC();
@@ -114,20 +142,19 @@ void HideoutCarthReunion()
     if (!GetIsObjectValid(oCarth))
     {
         object oWp = GetObjectByTag("pebn_carth");
-        if (!GetIsObjectValid(oWp))
-        {
-            KSE_Diag(183, "AP|HIDEOUT|forced_reunion_failed|no_carth_and_no_waypoint");
-            return;
-        }
-        oCarth = CreateObject(OBJECT_TYPE_CREATURE, "p_carth", GetLocation(oWp), TRUE);
-        KSE_Diag(183, "AP|HIDEOUT|forced_reunion_staged_carth");
+        location lSpot;
+        if (GetIsObjectValid(oWp)) lSpot = GetLocation(oWp);
+        else lSpot = GetLocation(oPC);
+        oCarth = CreateObject(OBJECT_TYPE_CREATURE, "p_carth", lSpot, TRUE);
+        KSE_Diag(183, "AP|HIDEOUT|forced_reunion_staged_carth|valid=" + IntToString(GetIsObjectValid(oCarth))
+            + "|waypoint=" + IntToString(GetIsObjectValid(oWp)));
     }
-    KSE_Diag(183, "AP|HIDEOUT|forced_reunion_starting");
-    AssignCommand(oCarth, ActionStartConversation(oPC, "tar02_carth022", FALSE, CONVERSATION_TYPE_CINEMATIC, TRUE));
+    // A creature made by a script appears a moment later and cannot speak before then: start the conversation after a pause.
+    DelayCommand(2.0, HideoutCarthStartConv(0));
 }
 """
 AREA_ENTRY_FUNCS = {"tar_m02af": HIDEOUT_REUNION_FUNC}
-AREA_ENTRY_CALLS = {"tar_m02af": ["if (nVisitMark == 0) DelayCommand(7.0, HideoutCarthReunion());"]}
+AREA_ENTRY_CALLS = {"tar_m02af": ["DelayCommand(0.2, HideoutCarthProbe(\"enter\"));", "DelayCommand(3.0, HideoutCarthProbe(\"t3\"));", "if (nVisitMark == 0) DelayCommand(7.0, HideoutCarthReunion());"]}
 
 
 def permanent_spawn_lines_for(base, indent):

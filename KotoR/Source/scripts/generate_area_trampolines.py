@@ -64,7 +64,7 @@ installation = Installation(GAME_DIR)
 # never hand-edited into a generated .nss). base -> list of NWScript
 # statement strings, no leading indentation (added by the caller).
 #
-# Deliberately EMPTY here -- this generator runs once at packaging time,
+# Holds only seed-independent additions -- this generator runs once at packaging time,
 # with no connected seed to read Options.py's GalacticShop from, so it
 # can't know whether any given player wants the AP Vendor spawned at all.
 # Defaults to matching GalacticShop's own `default = False` (no vendor)
@@ -73,7 +73,10 @@ installation = Installation(GAME_DIR)
 # player actually connects (gated on _connected_archipelago_vendor()) -- this
 # packaging-time baseline only matters until the first real regeneration
 # for ebo_m12aa happens for that player's own seed.
-AREA_PERMANENT_SPAWNS = {}
+AREA_PERMANENT_SPAWNS = {
+    # The Malak fight: ap_goal_watch reports his death within a quarter second (the ending leaves the module before the poll can).
+    "sta_m45ad": ['ExecuteScript("ap_goal_watch", OBJECT_SELF);'],
+}
 
 
 def permanent_spawn_lines_for(base, indent):

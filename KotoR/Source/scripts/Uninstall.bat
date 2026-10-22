@@ -39,10 +39,25 @@ if not defined PYCMD (
 echo Using: %PYCMD%
 
 %PYCMD% scripts\install_playerbundle.py --uninstall
-
+set "UNINSTALL_RESULT=%ERRORLEVEL%"
 echo.
+if not "%UNINSTALL_RESULT%"=="0" goto UNINSTALL_FAILED
 echo ============================================
-echo Uninstall finished. Review the output above.
+echo Uninstall finished.
+echo If the text above lists anything under "need your attention", do those steps.
 echo ============================================
 pause
 endlocal
+exit /b 0
+
+:UNINSTALL_FAILED
+echo ============================================
+echo Uninstall did NOT finish.
+echo Scroll up to the message headed "UNINSTALL FAILED". It says what went wrong and
+echo what to do. After you fix it, run Uninstall.bat again: that is safe.
+echo If there is no such message, take a screenshot of this whole window and post
+echo it where you downloaded the randomizer.
+echo ============================================
+pause
+endlocal
+exit /b 1

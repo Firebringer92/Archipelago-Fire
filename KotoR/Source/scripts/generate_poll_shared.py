@@ -770,6 +770,18 @@ for key, resref in _PROGRESSION_ITEM_RESREFS:
     lines.append(f'    sReport = sReport + "|{key}=" + IntToString(b{key.title().replace("_", "")});')
 lines.append("    KSE_Diag(140, sReport);")
 lines.append("}")
+
+# Taris: Invited to a Party starts (tar_party 1) from Sarna's or Yun Genda's invitation. Taking the Sith armor some other way first
+# leaves that quest unstartable, so its check could never fire. Reported only while the quest has not started and the armor is held;
+# the client then completes the check (kotor_location_tracker.py, _SITH_ARMOR_RE).
+lines.append("void CheckSithArmor()")
+lines.append("{")
+lines.append("    object oPC = GetFirstPC();")
+lines.append('    if (GetJournalEntry("tar_party") < 1 && GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_sitharmor")))')
+lines.append("    {")
+lines.append('        KSE_Diag(193, "AP|SITHARMOR|1");')
+lines.append("    }")
+lines.append("}")
 lines.append("")
 
 # Boss datapads (scripts/patch_boss_datapads.py): reports each datapad the player is carrying so
@@ -1282,6 +1294,7 @@ lines.append("    CheckCompanionClasses();")
 lines.append("    CheckCompanionFeats();")
 lines.append("    CheckRoster();")
 lines.append("    CheckProgressionItems();")
+lines.append("    CheckSithArmor();")
 lines.append("    CheckBossDatapads();")
 lines.append("    CheckVisitedMarkers();")
 lines.append("    CheckPlayerId();")

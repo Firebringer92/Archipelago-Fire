@@ -92,6 +92,10 @@ EXTRA_RAW_FILES = [
     # gate wrapper's ExecuteScript. See extender/scripts_src/ap_companion_gate.nss for why a scene that starts a conversation cannot go
     # through it.
     "and_mandtrig01.utt", "apo_dan14ab_c06.ncs",
+    # Taris, Davik's estate: the Calo standing in the corner of the hangar scene (created by k_ptar_davik03 from this template) has his
+    # blowup dialog as his own conversation, so clicking him plays it out of order and breaks Davik's scene. The copy here has no conversation;
+    # the scripted start (k_ptar_calo_ud) names the dialog itself and is unaffected.
+    "tar08_calo082.utc",
     # Progression System: the one-line dialog (the player speaking) a closed story gate starts; its text is set with a custom token.
     "ap_gate_msg.dlg",
     "m12aa_c06.dlg", "tar02_carth022.dlg",
@@ -172,7 +176,9 @@ HAND_WRITTEN_EXTRA = [
     "k_ren_taris03", "apo_taris03_orig",
     "k_ren_levescape", "apo_levescape_orig",
     "k_ren_unkturret", "apo_unkturret_orig",
-    "k_pdan_addbast", "apo_addbast_orig",
+    # The council wrap-up's party-screen exit script: apo_addbast_orig is the vanilla k_pdan_addbast with its exit-script name patched in place
+    # (k_pdan_alhan02 -> ap_alhan_start, same length), and ap_alhan_start sends Ahlan his "start the conversation" event two seconds later.
+    "k_pdan_addbast", "apo_addbast_orig", "ap_alhan_start",
     "k_pkas_talkwall", "apo_talkwall_orig",
     "ap_lev_trigger", "ap_lev_use", "ap_lev_rand",
     "k_punk_temple02", "apo_temple02_orig",
@@ -194,6 +200,12 @@ HAND_WRITTEN_EXTRA = [
     # The Ebon Hawk's galaxy map console (ebo_m12aa, a core script): raises K_KOTOR_MASTER to 30 when all five star maps are counted and
     # the Leviathan is done, then runs the preserved original.
     "k_pebn_galaxy", "apo_galaxy_orig",
+    # The Star Forge fight room's goal watcher (started by the room's area-entry hook): reports Malak's death within a quarter second,
+    # before the ending leaves the module. A new script, no original kept.
+    "ap_goal_watch",
+    # Malak's ending dialog node (sta_m45ad only): sets the goal flag and, for some final choices, starts the ending cutscene module in the same call, so it
+    # also reports the goal. A full replacement, no original kept.
+    "k_psta_mlkend",
     # The Ebon Hawk exit-ramp trigger (two vanilla versions, ebo_m12aa and ebo_m41aa, reproduced by module name): raises a current planet below 10
     # to Taris so a Hawk reached with the value unset still has an exit. A full replacement, no original kept.
     "k_pebn_leavhawk",

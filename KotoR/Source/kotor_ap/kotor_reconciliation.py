@@ -598,6 +598,14 @@ class ReconciliationTracker:
         self._credit_baseline: typing.Optional[int] = None
         self._last_observed_credits: typing.Optional[int] = None
         self._last_committed_cap = 0
+        # Credit items (and the location count) are replayed on every client start, so expected_scalar["credits"] and the cap
+        # are rebuilt from zero while the save's credits already include everything granted before. Without a starting
+        # point for _last_committed_cap, the first poll adds the whole cumulative cap on top of the credits the save holds,
+        # once per client start. Set by KotorClient at Connect: resume_credit_cap = the credit-item total settled in earlier
+        # sessions (ap_gated); resume_credit_cap_from_current = this seed/slot has history (ap_limited: the location-count
+        # cap at the first poll is taken as already granted).
+        self.resume_credit_cap = 0
+        self.resume_credit_cap_from_current = False
         # Set on every _AREA_CHECK_RE arrival -- see that regex's own
         # comment for why this is the right signal to gate staged-arm
         # retry decisions on, instead of wall-clock time alone.
@@ -1622,6 +1630,11 @@ class ReconciliationTracker:
             # Bootstrap: trust whatever the game currently reports rather
             # than judging pre-connection/pre-reset history.
             self._credit_baseline = current_credits
+            if self._last_committed_cap == 0:
+                if self.resume_credit_cap:
+                    self._last_committed_cap = self.resume_credit_cap
+                elif self.resume_credit_cap_from_current and self.credit_mode == 1:  # ap_limited
+                    self._last_committed_cap = self.checked_location_count * self.credit_limiter
         if self._last_observed_credits is not None:
             delta = current_credits - self._last_observed_credits
             if delta < 0:

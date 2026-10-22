@@ -30,12 +30,11 @@ import zipfile
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 
-# Keep this in sync with package_apworld.py's WORLD_VERSION -- every
-# release ships both zips together, version-pinned as a set (see README.md
-# Step 1). No shared constant between the two scripts on purpose: bumping
-# one without the other would be a silent mistake either way, so each
-# script's own default should be updated by hand at release time.
-BUNDLE_VERSION = "0.1.9"
+# Versioning rule: package_apworld.py's WORLD_VERSION changes only with a feature change that needs a new Archipelago world. A fix that lives
+# on the client or game side (this bundle) is a hotfix: only this version moves (0.1.9 -> 0.1.9.1) and the world zip keeps its version. The
+# bundle works with any world of the same x.y.z, so a hotfix is published as a bundle alone. No shared constant between the two scripts on
+# purpose; each script's default is updated by hand when its own version changes.
+BUNDLE_VERSION = "0.1.9.1"
 
 # REMINDER: this list does not update itself. Every time a NEW file (not
 # just an edit to an existing one) becomes something a tester needs to run
@@ -150,6 +149,7 @@ FILES = [
     # runs by hand), but install_playerbundle.py --uninstall still needs
     # the actual file present to call its --restore.
     (("scripts", "patch_loot_disturb.py"), "scripts/patch_loot_disturb.py"),
+    (("scripts", "gear_quest_tags.py"), "scripts/gear_quest_tags.py"),
     # Same gap: Additional
     # Enemies' tester-run patch script and its 4 persisted reference tables
     # (Tables A/B/C + the safe pool) were both missing here entirely.

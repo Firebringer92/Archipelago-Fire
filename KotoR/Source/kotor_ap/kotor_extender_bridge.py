@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 import typing
 import urllib.parse
@@ -80,6 +81,10 @@ class DeliveryRecord(typing.NamedTuple):
     applied_at: typing.Optional[float]  # Settled: AP|APPLIED|... confirmation, the
                                          # trampoline actually fired in-game
     detail: str  # the raw "before=X|after=Y" tail from an APPLIED line, once known
+    # Rejected: the extender answered ERROR instead of STAGED (for example "unknown item"), so this send will never
+    # be staged or applied. Kept as its own state so it is not shown as a delivery that is merely waiting.
+    rejected_at: typing.Optional[float] = None
+    reject_detail: str = ""
 
 
 
@@ -166,9 +171,36 @@ class ExtenderBridge:
             self._track_staged_from_line(line[len("STAGED:"):])
             logger.info(f"[extender] {line}")
         elif line.startswith("ERROR:"):
+            self._track_error_from_line(line[len("ERROR:"):])
             logger.info(f"[extender] {line}")
         # ACK:/SCANNED:/etc from diagnostic commands -- not used by the
         # normal item-delivery path, nothing to do with them here.
+
+    _UNKNOWN_ITEM_RE = re.compile(r"unknown item '([^']*)'")
+
+    def _track_error_from_line(self, rest: str) -> None:
+        """Marks a delivery Rejected when the extender answers 'ERROR:unknown item '<name>'': it does not know the
+        command it was sent, so no STAGED or APPLIED will ever follow for it. Other ERROR replies name no delivery
+        and are left to the log. Same per-type key derivation as _track_staged_from_line."""
+        m = self._UNKNOWN_ITEM_RE.search(rest)
+        if m is None:
+            return
+        parts = m.group(1).split(":")
+        head = parts[0]
+        if head in ("give_item", "companion_class", "additional_feats", "trap", "force_power") and len(parts) > 1:
+            key = f"{head}:{parts[1]}"
+        else:
+            key = head
+        record = self.deliveries.get(key)
+        if record is not None and record.staged_at is None and record.applied_at is None:
+            self.deliveries[key] = record._replace(rejected_at=time.time(), reject_detail=rest.strip())
+
+    def rejection(self, key: str) -> typing.Optional[str]:
+        """The extender's ERROR text if this delivery was rejected, else None."""
+        record = self.deliveries.get(key)
+        if record is not None and record.rejected_at is not None and record.staged_at is None:
+            return record.reject_detail or "rejected"
+        return None
 
     def _track_staged_from_line(self, rest: str) -> None:
         """Watches for 'STAGED:<...>' -- the extender's own confirmation
@@ -221,6 +253,8 @@ class ExtenderBridge:
             record = self.deliveries.get(key)
             if record is not None and record.staged_at is not None:
                 return True
+            if record is not None and record.rejected_at is not None:
+                return False  # the extender refused it; waiting out the timeout would change nothing
             await asyncio.sleep(0.1)
         return False
 
@@ -494,4 +528,6 @@ def delivery_state(record: DeliveryRecord) -> str:
         return "Settled"
     if record.staged_at is not None:
         return "Staged"
+    if record.rejected_at is not None:
+        return "Rejected"
     return "Queued"

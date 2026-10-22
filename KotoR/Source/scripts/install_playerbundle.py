@@ -49,6 +49,7 @@ import os
 import shutil
 import subprocess
 import sys
+import textwrap
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -67,6 +68,72 @@ PYTHON_PATH_MARKER = os.path.join(KOTORAP_STATE_DIR, "python_path.txt")
 INSTALL_MANIFEST = os.path.join(KOTORAP_STATE_DIR, "install_manifest.json")
 
 
+MODE = "INSTALL"      # "UNINSTALL" when run with --uninstall; only used for the failure banner
+WARNINGS: list[str] = []   # non-fatal problems, repeated in one summary at the very end
+
+HELP_LINE = ("If you are stuck, post a screenshot of this whole window where you downloaded the "
+             "randomizer. Running this again after a fix is safe.")
+
+
+def _wrap(text: str, first: str = "", rest: str = "") -> str:
+    """Wraps to fit a normal Command Prompt window, so a sentence is never cut mid-word."""
+    return textwrap.fill(text, width=76, initial_indent=first, subsequent_indent=rest)
+
+
+def _wrap_note(text: str, first: str, rest: str) -> str:
+    """Wraps the first paragraph of a warning; anything after the first newline (a command to copy,
+    technical output) is kept exactly as written."""
+    head, _, tail = text.partition("\n")
+    return _wrap(head, first, rest) + ("\n" + tail if tail else "")
+
+
+def _fail(what: str, steps: list[str], detail: str = "") -> None:
+    """Prints a banner naming what went wrong in plain words, then numbered steps to fix it, then
+    exits with a failure code (the .bat files turn that into their own 'did NOT finish' message)."""
+    bar = "=" * 60
+    print(f"\n{bar}\n{_wrap(f'{MODE} FAILED: {what}')}\n{bar}")
+    if detail:
+        print(detail.rstrip() + "\n")
+    print("What to do:")
+    for i, step in enumerate(steps, 1):
+        print(_wrap(step, f"  {i}. ", "     "))
+    print("\n" + _wrap(HELP_LINE))
+    sys.exit(1)
+
+
+def _warn(text: str) -> None:
+    """Records a problem that does not stop the install, and prints it where it happened."""
+    WARNINGS.append(text)
+    print(_wrap_note(text, "WARNING: ", "         "))
+
+
+def _permission_fail(path: str, err: Exception) -> None:
+    _fail("Windows would not let the installer change a file in your game folder.",
+          ["Close KOTOR completely (check the Task Manager for swkotor.exe), and close the Steam "
+           "overlay or any mod tool that has the game folder open.",
+           "Run Install.bat again. It is safe to run it again: it picks up where it stopped.",
+           "If it still fails: right-click Install.bat and choose \"Run as administrator\". Games "
+           "inside C:\\Program Files (x86) can need this.",
+           "If that fails too, check that the KOTOR folder (and the file listed above) is not set to "
+           "read-only: right-click it, Properties, untick Read-only."],
+          f"The file Windows refused to change:\n  {path}")
+
+
+PATCHED_SEEDS_MARKER = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_patched_seeds.json")
+
+
+def _clear_patched_seeds_marker() -> None:
+    """The client remembers which seeds it already patched the game for and skips them. An install or an uninstall
+    changes the game files that record describes, so the record is dropped and the next connect patches again."""
+    if os.path.isfile(PATCHED_SEEDS_MARKER):
+        try:
+            os.remove(PATCHED_SEEDS_MARKER)
+            print("Cleared the client's record of already-patched seeds, so the next connect patches the game again.")
+        except OSError as e:
+            _warn(f"Could not clear {PATCHED_SEEDS_MARKER} ({e}). Delete that file by hand so the client patches the "
+                  f"game again on its next connect.")
+
+
 def _file_hash(path: str) -> str:
     with open(path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
@@ -81,9 +148,19 @@ def _install_binkw32(game_dir: str) -> dict:
     real_backup = os.path.join(game_dir, "binkw32_real.dll")
 
     if not os.path.isfile(real_dll):
-        sys.exit(f"No binkw32.dll found at {real_dll} -- wrong game dir, or already broken.")
+        _fail("KOTOR's own binkw32.dll file is missing from the game folder.",
+              ["In Steam, right-click Star Wars: Knights of the Old Republic, choose Properties, "
+               "Installed Files, then \"Verify integrity of game files\". Steam puts the file back.",
+               "Run Install.bat again."],
+              f"Looked for:\n  {real_dll}")
     if not os.path.isfile(PROXY_DLL):
-        sys.exit(f"Merged proxy DLL not found at {PROXY_DLL} -- incomplete PlayerBundle.")
+        _fail("A file this installer needs is missing from the download.",
+              ["Your antivirus may have removed it: binkw32.dll is a game-patching file that "
+               "antivirus programs sometimes quarantine. Check its quarantine/protection history "
+               "and restore it, or add this folder as an exception.",
+               "Otherwise download the PlayerBundle zip again and extract ALL of it (right-click the zip, "
+               "Extract All) before running Install.bat. Do not run it from inside the zip."],
+              f"Missing file:\n  {PROXY_DLL}")
 
     os.makedirs(INSTALL_PS1_BACKUP_DIR, exist_ok=True)
 
@@ -101,7 +178,10 @@ def _install_binkw32(game_dir: str) -> dict:
         print(f"Captured original binkw32.dll -> {real_backup}")
         captured = True
 
-    shutil.copy2(PROXY_DLL, real_dll)
+    try:
+        shutil.copy2(PROXY_DLL, real_dll)
+    except PermissionError as e:
+        _permission_fail(real_dll, e)
     print(f"Installed merged proxy -> {real_dll}")
 
     repo_root_file = os.path.join(game_dir, "ap_repo_root.txt")
@@ -124,8 +204,9 @@ def _uninstall_binkw32(game_dir: str) -> None:
         shutil.copy2(real_backup, real_dll)
         print(f"Restored original binkw32.dll from {real_backup}")
     else:
-        print("WARNING: no backup found anywhere -- cannot restore binkw32.dll automatically. "
-              "Verify the game's files through Steam instead.")
+        _warn("The original binkw32.dll backup could not be found, so it was not restored. In Steam, "
+              "right-click Star Wars: Knights of the Old Republic, choose Properties, Installed "
+              "Files, then \"Verify integrity of game files\" to put the original back.")
         return
 
     if os.path.isfile(real_backup):
@@ -148,7 +229,12 @@ def _run_setup_game(game_dir: str) -> list[str]:
     the destination -- needed for the uninstall manifest, since
     setup_game.py itself doesn't report this."""
     if not os.path.isdir(DIST_OVERRIDE):
-        sys.exit(f"{DIST_OVERRIDE} doesn't exist -- this looks like an incomplete PlayerBundle.")
+        _fail("The download is incomplete (its dist\\Override folder is missing).",
+              ["Download the PlayerBundle zip again and extract ALL of it (right-click the zip, "
+               "Extract All) before running Install.bat. Do not run it from inside the zip.",
+               "If it happens again, your antivirus may be deleting files while you extract: check "
+               "its quarantine/protection history."],
+              f"Missing folder:\n  {DIST_OVERRIDE}")
     dest_override = os.path.join(game_dir, "Override")
     os.makedirs(dest_override, exist_ok=True)
     pre_existing = {
@@ -162,7 +248,11 @@ def _run_setup_game(game_dir: str) -> list[str]:
     )
     print(result.stdout.strip())
     if result.returncode != 0:
-        sys.exit(f"setup_game.py failed:\n{result.stderr}")
+        _fail("Copying the mod files into your game's Override folder failed.",
+              ["Close KOTOR if it is running, then run Install.bat again.",
+               "If it fails again, right-click Install.bat and choose \"Run as administrator\".",
+               "If it still fails, post a screenshot of this window (it includes the technical message above)."],
+              f"Technical message:\n{result.stderr.strip()}")
 
     return pre_existing
 
@@ -173,8 +263,9 @@ def _copy_nwnnsscomp(game_dir: str) -> bool:
     separately installed the standalone KotOR Scripting Tool into their
     game folder by hand -- don't remove THEIRS on uninstall)."""
     if not os.path.isfile(BUNDLED_NWNNSSCOMP):
-        print(f"WARNING: {BUNDLED_NWNNSSCOMP} not found in this PlayerBundle -- skipping "
-              f"(the 6 scripts that need it will fall back to a standalone KotOR Scripting Tool install).")
+        _warn(f"nwnnsscomp.exe is missing from the download ({BUNDLED_NWNNSSCOMP}), so it was skipped. "
+              f"Some features that compile scripts may not work. Extract the whole zip again if you "
+              f"see problems later.")
         return False
     dest = os.path.join(game_dir, "nwnnsscomp.exe")
     pre_existing = os.path.isfile(dest)
@@ -194,8 +285,12 @@ def _pip_install_pykotor() -> None:
         capture_output=True, text=True,
     )
     if result.returncode != 0:
-        print(f"WARNING: pip install failed -- you may need to run this by hand:\n"
-              f"  {sys.executable} -m pip install \"setuptools<81\" pykotor\n{result.stderr}")
+        _warn("The 'pykotor' helper library could not be installed (usually no internet connection "
+              "or a blocked download). Door randomization, item suppression and extra enemies need "
+              "it and will not work until it is installed. To fix: connect to the internet, open a "
+              "Command Prompt and run this line, then run Install.bat again:\n"
+              f"  \"{sys.executable}\" -m pip install \"setuptools<81\" pykotor\n"
+              f"Technical message:\n{result.stderr.strip()}")
     else:
         print("pykotor installed.")
 
@@ -229,9 +324,50 @@ def _load_manifest() -> dict | None:
         return None
 
 
-def install(game_dir: str) -> None:
+def _find_folder_steps() -> list[str]:
+    return ["Find your KOTOR folder: in Steam, right-click Star Wars: Knights of the Old Republic, "
+            "choose Manage, then \"Browse local files\". A Windows Explorer window opens on the "
+            "right folder (the one containing swkotor.exe).",
+            "Click the address bar at the top of that window and copy the path.",
+            "Run Install.bat again and paste that path when it asks for your KOTOR folder."]
+
+
+def _preflight(game_dir: str) -> None:
+    """Everything that can be checked BEFORE touching the game folder, so a wrong folder or a broken
+    download fails cleanly instead of leaving a half-finished install."""
+    shown = f"The folder the installer tried:\n  {game_dir}"
+    if game_dir.rstrip("\\/").lower() == DEFAULT_GAME_DIR.lower():
+        shown += ("\n(That is the standard Steam location, used because you pressed Enter. "
+                  "Your game is installed somewhere else, for example on another drive.)")
     if not os.path.isdir(game_dir):
-        sys.exit(f"No such game folder: {game_dir}")
+        _fail("That KOTOR folder does not exist.", _find_folder_steps(), shown)
+    if not os.path.isfile(os.path.join(game_dir, "swkotor.exe")):
+        if os.path.isfile(os.path.join(game_dir, "swkotor2.exe")):
+            _fail("That is the KOTOR 2 folder. This randomizer is for the first game.",
+                  ["Use the folder for Star Wars: Knights of the Old Republic (the first game), "
+                   "the one containing swkotor.exe."] + _find_folder_steps(), shown)
+        _fail("That folder does not look like a KOTOR install (swkotor.exe is not in it).",
+              ["Make sure you chose the folder that directly contains swkotor.exe, not a folder "
+               "above or below it (for example not the Override or Modules folder)."]
+              + _find_folder_steps(), shown)
+    missing = [p for p in (DIST_OVERRIDE, SETUP_GAME, PROXY_DLL) if not os.path.exists(p)]
+    if missing:
+        _fail("The download is incomplete: some of its files are missing.",
+              ["Download the PlayerBundle zip again and extract ALL of it (right-click the zip, "
+               "Extract All) before running Install.bat. Do not run it from inside the zip.",
+               "If files go missing again, your antivirus may be removing them (binkw32.dll in "
+               "particular): check its quarantine/protection history and restore them."],
+              "Missing:\n" + "\n".join(f"  {p}" for p in missing))
+    if not os.path.isfile(os.path.join(game_dir, "binkw32.dll")):
+        _fail("KOTOR's own binkw32.dll file is missing from the game folder.",
+              ["In Steam, right-click Star Wars: Knights of the Old Republic, choose Properties, "
+               "Installed Files, then \"Verify integrity of game files\". Steam puts the file back.",
+               "Run Install.bat again."],
+              f"Looked for:\n  {os.path.join(game_dir, 'binkw32.dll')}")
+
+
+def install(game_dir: str) -> None:
+    _preflight(game_dir)
 
     print(f"Installing into {game_dir} ...\n")
     override_pre_existing = _run_setup_game(game_dir)
@@ -250,23 +386,50 @@ def install(game_dir: str) -> None:
         "nwnnsscomp_installed_by_us": nwnnsscomp_installed_by_us,
         "binkw32": binkw32_result,
     }
-    _write_state(manifest)
+    try:
+        _write_state(manifest)
+    except OSError as e:
+        _fail("The installer could not save its record of what it changed.",
+              ["Make sure your Windows user folder is writable and the disk is not full.",
+               "Run Install.bat again (safe to repeat)."],
+              f"Tried to write to:\n  {KOTORAP_STATE_DIR}\n({e})")
+    _clear_patched_seeds_marker()
     print(f"Install complete. Recorded state at {INSTALL_MANIFEST}")
-    print("\nNext: connect once with KotorClient.py to your AP server -- item suppression, "
-          "door randomization, and additional enemies now apply themselves automatically on "
-          "that first connect (see TESTING.md).")
+    if WARNINGS:
+        print("\n" + "-" * 60)
+        print(f"The install finished, but {len(WARNINGS)} thing(s) need your attention:")
+        for i, w in enumerate(WARNINGS, 1):
+            print("\n" + _wrap_note(w, f"  {i}. ", "     "))
+        print("-" * 60)
+    print("\nNext steps:")
+    print(_wrap("Copy kotor.apworld into the custom_worlds folder of your Archipelago install "
+                "(skip this if you already did).", "  1. ", "     "))
+    print(_wrap("Open the Archipelago Launcher and click \"KOTOR Client\", then connect to your "
+                "server. The first connect finishes setting up the game files by itself.", "  2. ", "     "))
 
 
 def uninstall() -> None:
     manifest = _load_manifest()
     if manifest is None:
-        sys.exit(f"No install manifest found at {INSTALL_MANIFEST} -- nothing recorded to undo. "
-                  f"If binkw32.dll still needs restoring manually, binkw32_real.dll (or "
-                  f"extender/backup/binkw32_real_captured.dll) sits next to it with the original -- "
-                  f"copy it back over binkw32.dll. Each patch_*.py script's own --restore flag "
-                  f"reverts its own per-seed edits independently.")
+        _fail("There is no record of an install to undo.",
+              ["If you never finished running Install.bat, there is nothing to uninstall.",
+               "If you did install it, to get the game back to normal by hand: in Steam, right-click "
+               "Star Wars: Knights of the Old Republic, choose Properties, Installed Files, "
+               "\"Verify integrity of game files\". That restores the original binkw32.dll.",
+               "Then open your KOTOR folder and delete binkw32_real.dll, ap_repo_root.txt and "
+               "nwnnsscomp.exe if they are there. The randomizer's files in the Override folder are "
+               "harmless; delete them only if you know which ones they are."],
+              f"The installer's record should be here, but is not:\n  {INSTALL_MANIFEST}")
 
     game_dir = manifest["game_dir"]
+    if not os.path.isdir(game_dir):
+        _fail("The game folder from the install no longer exists.",
+              ["If you moved or reinstalled KOTOR, there is nothing left to undo in the old place, "
+               "and you can ignore this.",
+               "If you moved it by mistake, move it back to the path above and run Uninstall.bat again.",
+               "To clear this leftover record so the message stops appearing, delete the folder "
+               "%LOCALAPPDATA%\\KotorAP (paste that into the Windows Explorer address bar to open it)."],
+              f"Recorded game folder:\n  {game_dir}")
     print(f"Uninstalling from {game_dir} (recorded at install time) ...\n")
 
     # patch_loot_disturb.py (Loot Mode's static-template-edit mechanism,
@@ -288,7 +451,10 @@ def uninstall() -> None:
         )
         print(result.stdout.strip() or f"{name} --restore: done")
         if result.returncode != 0:
-            print(f"  (non-fatal) {name} --restore reported an error:\n{result.stderr}")
+            _warn(f"Could not fully undo one of the game-file edits ({name}). Usually this means KOTOR "
+                  f"was running or the pykotor library is missing. Close KOTOR and run Uninstall.bat "
+                  f"again; if it repeats, use Steam's \"Verify integrity of game files\" to restore "
+                  f"the original files.\nTechnical message:\n{result.stderr.strip()}")
     print()
 
     _uninstall_binkw32(game_dir)
@@ -317,8 +483,15 @@ def uninstall() -> None:
     for path in (INSTALL_PATH_MARKER, PYTHON_PATH_MARKER, INSTALL_MANIFEST):
         if os.path.isfile(path):
             os.remove(path)
-    print(f"\nUninstall complete. {game_dir} should now be back to a vanilla-plus-Steam state, "
-          f"modulo any RIM edits a patch script's own --restore couldn't reverse (see its output above).")
+    _clear_patched_seeds_marker()
+    if WARNINGS:
+        print("\n" + "-" * 60)
+        print(f"The uninstall finished, but {len(WARNINGS)} thing(s) need your attention:")
+        for i, w in enumerate(WARNINGS, 1):
+            print("\n" + _wrap_note(w, f"  {i}. ", "     "))
+        print("-" * 60)
+    else:
+        print(f"\nUninstall complete. {game_dir} is back to the way it was before the randomizer.")
 
 
 def main():
@@ -328,10 +501,28 @@ def main():
     parser.add_argument("--uninstall", action="store_true", help="Reverse a previous install.")
     args = parser.parse_args()
 
-    if args.uninstall:
-        uninstall()
-    else:
-        install(args.game_dir)
+    global MODE
+    game_dir = args.game_dir.strip().strip('"').rstrip("\\/ ") or args.game_dir
+    try:
+        if args.uninstall:
+            MODE = "UNINSTALL"
+            uninstall()
+        else:
+            install(game_dir)
+    except PermissionError as e:
+        _fail("Windows would not let the installer change a file.",
+              ["Close KOTOR completely (check the Task Manager for swkotor.exe).",
+               "Run this again. It is safe to repeat.",
+               "If it still fails, right-click the .bat file and choose \"Run as administrator\"."],
+              f"The file Windows refused to change:\n  {e.filename}")
+    except SystemExit:
+        raise
+    except Exception:
+        import traceback
+        _fail("Something unexpected went wrong.",
+              ["Close KOTOR if it is running and try again.",
+               "If it fails the same way twice, post a screenshot of this window (it includes the technical message above)."],
+              "Technical message:\n" + traceback.format_exc())
 
 
 if __name__ == "__main__":

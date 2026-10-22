@@ -23,11 +23,32 @@ from __future__ import annotations
 import re
 import typing
 
-from worlds.kotor.Locations import location_table
+from worlds.kotor.Locations import COMPANION_SUBPLOT_LOCATIONS, location_table
 
 _JOURNAL_RE = re.compile(r"AP\|CHECK\|JOURNAL\|([^|]+)\|value=(-?\d+)")
 _COMPANION_RE = re.compile(r"AP\|CHECK\|COMPANION\|(\d+)")
+# Reported by the poll (generate_poll_shared.py's CheckSithArmor) while the Sith armor is held and the quest tar_party has not started.
+_SITH_ARMOR_RE = re.compile(r"AP\|SITHARMOR\|1")
+# The poll's plot report (ap_poll_shared.nss CheckPlot, printed when the value changes). DAN_JUHANI_PLOT is 3 when Juhani is redeemed and
+# 2 when she died in the Dantooine confrontation; Vandar's recruit line (the only thing that reports her recruit check) never plays then.
+JUHANI_KILLED_RE = re.compile(r"AP\|CHECK\|PLOT\|DAN_JUHANI_PLOT\|value=2(?!\d)")
+
+# Companion key -> the item name COMPANION_SUBPLOT_LOCATIONS lists their personal Ebon Hawk checks under.
+_COMPANION_SUBPLOT_ITEM = {
+    "bastila": "Companion: Bastila Shan", "canderous": "Companion: Canderous Ordo", "carth": "Companion: Carth Onasi",
+    "hk47": "Companion: HK-47", "jolee": "Companion: Jolee Bindo", "juhani": "Companion: Juhani", "mission": "Companion: Mission Vao",
+}
 _AREA_RE = re.compile(r"AP\|CHECK\|AREA\|(\d+)")
+
+# Visited-area checks for a module the game never lets a player walk into. The second Black Vulkar Base module has no way in
+# (no door or trigger leads to it), so its check is completed once the other two modules of that base have been visited.
+# Keyed by the unreachable check -> the checks that must all be done first.
+_IMPLIED_AREA_CHECKS = {
+    "Visited: Taris - Black Vulkar Base (tar_m10ab)": (
+        "Visited: Taris - Black Vulkar Base (tar_m10aa)",
+        "Visited: Taris - Black Vulkar Base (tar_m10ac)",
+    ),
+}
 _ALIGNMENT_RE = re.compile(r"AP\|ALIGNMENT\|(\d+)")
 _LEVEL_RE = re.compile(r"AP\|LEVELREPORT\|(\d+)")
 _MALAK_RE = re.compile(r"AP\|CHECK\|GOAL\|MALAK_DEAD")
@@ -200,12 +221,62 @@ class LocationTracker:
 # Visited-area checks do not depend on the client being connected: the game creates a marker item per area on first entry, the poll reports
 # them (AP|AREASVISITED|...), and the tracker credits every reported area on connect, so areas entered while the client was closed are caught up.
 
+    def checks_for_removed_companion(self, npc_key: str, already_checked_ids: typing.Set[int]) -> typing.List[int]:
+        """The personal-subplot checks of a companion who has been trapped off for good (Remove a Companion): they can never be
+        reached again, so they are completed instead of holding their items forever. Only checks that exist in this seed and are
+        not already done."""
+        item = _COMPANION_SUBPLOT_ITEM.get(npc_key)
+        if item is None:
+            return []
+        out = []
+        for name, needs in COMPANION_SUBPLOT_LOCATIONS.items():
+            if needs != item:
+                continue
+            data = location_table.get(name)
+            if data is None or self._journal_index.get(data.journal_tag, (None, None))[1] != name:
+                continue  # not an active check in this seed
+            if data.id not in already_checked_ids:
+                out.append(data.id)
+        return out
+
+    def _with_implied_area_checks(self, new_ids: typing.List[int], already_checked_ids: typing.Set[int]) -> typing.List[int]:
+        """Adds each unreachable-area check (see _IMPLIED_AREA_CHECKS) whose required checks are all done, counting the
+        ones this same event just reached."""
+        done = set(already_checked_ids) | set(new_ids)
+        out = list(new_ids)
+        for name, required in _IMPLIED_AREA_CHECKS.items():
+            data = location_table.get(name)
+            if data is None or data.id in done:
+                continue
+            if all(r in location_table and location_table[r].id in done for r in required):
+                out.append(data.id)
+                done.add(data.id)
+        return out
+
     def check_event(self, event: str, already_checked_ids: typing.Set[int]) -> typing.List[int]:
         """Returns AP ids for every location this event just newly reached
         (usually 0 or 1, but an alignment jump can cross several 10-point
         lines in one poll). already_checked_ids should be
         ctx.checked_locations (or ctx.locations_checked, for locally-
         queued-but-unconfirmed too)."""
+        if JUHANI_KILLED_RE.search(event):
+            # She can never be recruited, so her recruit check and her personal Ebon Hawk checks are completed instead of holding their items.
+            out = []
+            recruit = location_table["Companion Recruited: Juhani"].id
+            if recruit not in already_checked_ids:
+                out.append(recruit)
+            out.extend(i for i in self.checks_for_removed_companion("juhani", already_checked_ids) if i not in out)
+            return out
+
+        if _SITH_ARMOR_RE.search(event):
+            # Armor taken before the party invitation: that quest can no longer start, so its check is completed here.
+            entry = self._journal_index.get("tar_party")
+            if entry is not None:
+                loc_id = location_table[entry[1]].id
+                if loc_id not in already_checked_ids:
+                    return [loc_id]
+            return []
+
         m = _JOURNAL_RE.search(event)
         if m:
             tag, value = m.group(1), int(m.group(2))
@@ -240,17 +311,18 @@ class LocationTracker:
                 loc_id = location_table[name].id
                 if loc_id not in already_checked_ids and loc_id not in loc_ids:
                     loc_ids.append(loc_id)
-            return loc_ids
+            return self._with_implied_area_checks(loc_ids, already_checked_ids)
 
         m = _AREA_RE.search(event)
         if m:
             idx = int(m.group(1))
             name = self._area_index.get(idx)
+            new = []
             if name is not None:
                 loc_id = location_table[name].id
                 if loc_id not in already_checked_ids:
-                    return [loc_id]
-            return []
+                    new.append(loc_id)
+            return self._with_implied_area_checks(new, already_checked_ids)
 
         m = _ALIGNMENT_RE.search(event)
         if m:

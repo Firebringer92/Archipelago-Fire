@@ -52,7 +52,7 @@ from CommonClient import (
 from kotor_extender_bridge import ExtenderBridge, delivery_state
 from kotor_reconciliation import ReconciliationTracker, CLASS_ARM_TO_KEY
 from entitlement import HEAVY_ARMS, PROGRESSION_ITEM_RESREFS, is_heavy_arm
-from kotor_location_tracker import LocationTracker
+from kotor_location_tracker import JUHANI_KILLED_RE, LocationTracker
 from worlds.kotor.Items import item_table, TRAP_ITEMS
 from worlds.kotor.Locations import location_table
 from worlds.kotor import NON_JEDI_COMPANION_KEYS
@@ -134,6 +134,13 @@ _VOIDTRADE_CLAIM_RE = re.compile(r"AP\|VOIDTRADE\|CLAIM\b")
 # guard as the real "don't double-grant" safety net (see
 # KotorContext._is_pc_class_finalized's docstring for why the class-delta
 # fix already guarantees a finalized character's baseline is correct).
+# Additional Feats waits this many area entries after its target first reads as ready before the grant is sent, so a companion grant,
+# trap, purge or class change landing around the same time has settled (a grant aimed at a companion that is removed in the same
+# moment would run its delayed write on a destroyed object).
+ADDITIONAL_FEATS_SETTLE_AREAS = 2
+# A Remove a Companion trap waits for a target that the live reports show present, and gives up (settles as a no-op) after this many area entries.
+TRAP_COMPANION_WAIT_AREAS = 6
+
 ADDITIONAL_FEATS_POOL = [
     40, 42, 43,        # Weapon Prof: Blaster Rifle / Heavy Weapons / Lightsaber
     4, 5, 6,           # Armor Prof: Heavy / Light / Medium
@@ -384,6 +391,38 @@ def _load_patched_seed(key: str) -> str | None:
         return None
 
 
+def _patched_marker_is_current(key: str, verify=None) -> bool:
+    """True only when the "already patched" record can be trusted: it was written for THIS game folder (a marker
+    from before the folder was recorded, or from another install, is not trusted) and the files the patch writes are
+    still there (an uninstall, a reinstall or a manual cleanup removes them but leaves the record)."""
+    try:
+        with open(PATCHED_SEEDS_MARKER_PATH, encoding="utf-8") as f:
+            recorded_dir = json.load(f).get("__game_dir__")
+    except Exception:
+        return False
+    if recorded_dir != GAME_DIR:
+        game_events_logger.info(f"[{key}] the record of what was patched is for a different game folder -- applying again.")
+        return False
+    if verify is not None and not verify():
+        game_events_logger.warning(f"[{key}] recorded as applied, but its files are missing from {GAME_DIR} -- applying again.")
+        return False
+    return True
+
+
+def _story_gate_files_present() -> bool:
+    """With the Progression System on, the story gate patch writes one item template per progression item into
+    Override. Without it on there is nothing to check."""
+    try:
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            if not json.load(f).get("progression_system"):
+                return True
+    except Exception:
+        return True
+    override = os.path.join(GAME_DIR, "Override")
+    return all(os.path.isfile(os.path.join(override, f"{resref}.uti"))
+               for resref in PROGRESSION_ITEM_RESREFS.values() if resref.startswith("ap_tk_"))
+
+
 def _save_patched_seed(key: str, gate_key: str | None) -> None:
     try:
         os.makedirs(os.path.dirname(PATCHED_SEEDS_MARKER_PATH), exist_ok=True)
@@ -393,6 +432,7 @@ def _save_patched_seed(key: str, gate_key: str | None) -> None:
         except Exception:
             data = {}
         data[key] = gate_key
+        data["__game_dir__"] = GAME_DIR
         with open(PATCHED_SEEDS_MARKER_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f)
     except Exception as e:
@@ -1395,6 +1435,9 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         pending = ext.pending_deliveries()
         queued = [d for d in pending if delivery_state(d) == "Queued"]
         staged = [d for d in pending if delivery_state(d) == "Staged"]
+        rejected = [d for d in pending if delivery_state(d) == "Rejected"]
+        if rejected:
+            self.output(f"Rejected by the game (not delivered, retried automatically): {[d.arm_name for d in rejected]}")
         if queued:
             self.output(f"Queued (sent, not yet confirmed received): {[d.arm_name for d in queued]}")
         else:
@@ -1523,6 +1566,34 @@ def _load_delivered_keys() -> set:
     except OSError as e:
         game_events_logger.warning(f"[delivery log] failed to read ({e}), starting with an empty delivery history")
     return keys
+
+
+def _load_prior_credit_history() -> typing.Tuple[typing.Dict[tuple, set], set]:
+    """Reads DELIVERY_LOG_PATH once, at process start, for the credit accounting: ({(seed_name, slot): indices of the
+    credits items already settled in earlier sessions}, {(seed_name, slot) that have any settled entry at all}).
+    The reconciler needs it because credit items are replayed on every client start and rebuild its expected total from
+    zero, while the credits already in the save include them. Missing/unreadable log = empty, same as _load_delivered_keys."""
+    credit_indices: typing.Dict[tuple, set] = {}
+    seed_slots: set = set()
+    try:
+        with open(DELIVERY_LOG_PATH, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("outcome") not in _SETTLED_OUTCOMES or "index" not in entry:
+                    continue
+                pair = (entry.get("seed_name"), entry.get("slot"))
+                seed_slots.add(pair)
+                if entry.get("arm") == "credits":
+                    credit_indices.setdefault(pair, set()).add(entry["index"])
+    except (FileNotFoundError, OSError):
+        pass
+    return credit_indices, seed_slots
 
 
 def _load_known_characters() -> set:
@@ -1844,7 +1915,7 @@ def _load_failed_offline_deliveries(seed_name, slot) -> dict:
     return {
         index: latest_pair[index]
         for index, outcome in latest_outcome.items()
-        if outcome == "failed_extender_offline"
+        if outcome in ("failed_extender_offline", "failed_extender_rejected")
     }
 
 
@@ -2067,6 +2138,7 @@ class KotorContext(CommonContext):
         # slot), not character -- see _load_delivered_keys' docstring for
         # why. See DELIVERY_LOG_PATH.
         self._delivered_keys = _load_delivered_keys()
+        self._prior_credit_indices, self._seed_slots_with_history = _load_prior_credit_history()
         # Additional Feats feature: client-side tracking of which
         # companions are actually recruited and which (seed_name, slot)
         # players' classes have settled -- see _load_recruited_companions/
@@ -2100,6 +2172,17 @@ class KotorContext(CommonContext):
         # _load_pending_additional_feats and _check_pending_additional_feats.
         self._pending_additional_feats: typing.Dict[typing.Tuple[str, str, int], typing.Tuple[str, str]] = \
             _load_pending_additional_feats()
+        # Area entries seen this session, and the count at which each pending additional_feats item first read as ready
+        # (see ADDITIONAL_FEATS_SETTLE_AREAS and _check_pending_additional_feats).
+        self._area_entries = 0
+        self._feats_ready_at: typing.Dict[typing.Tuple[str, str, int], int] = {}
+        # npc_key -> area-entry count until which a companion that just received feats is left alone by the Remove a Companion trap
+        # (the grant is applied at the next area change and its write runs a second later), and when each pending trap started waiting.
+        self._companion_busy_until: typing.Dict[str, int] = {}
+        self._trap_wait_since: typing.Dict[typing.Tuple[str, str, int], int] = {}
+        # The companion a Remove a Companion trap item already picked, so a retry after a missing acknowledgement repeats the same target
+        # instead of picking (and removing) another one.
+        self._trap_target: typing.Dict[typing.Tuple[str, str, int], str] = {}
         # {(seed_name, slot, index): (item_name, arm_name)} for every
         # received trap: item not yet resolved -- see _load_pending_traps
         # and _check_pending_traps. Same shape as _pending_additional_feats
@@ -2114,7 +2197,12 @@ class KotorContext(CommonContext):
         # retries again if still stuck; this set only prevents the same
         # index being resent twice within one run (e.g. two reconnects in
         # quick succession).
-        self._resent_offline_indices: typing.Set[int] = set()
+        self._resent_offline_indices: typing.Dict[int, float] = {}
+        # Items the extender rejected: how many timed retries each has had, the keys already explained in the log, and
+        # the indices whose automatic retries are paused until the next extender reconnect.
+        self._rejected_attempts: typing.Dict[int, int] = {}
+        self._rejection_announced: typing.Set[str] = set()
+        self._rejected_gave_up: typing.Set[int] = set()
         # In-flight guard for HEAVY_ARMS/companion_class: sends:
         # _delivered_keys only gains an entry once _log_delivery sees a
         # SETTLED outcome, which for a class switch can be minutes away
@@ -2268,6 +2356,18 @@ class KotorContext(CommonContext):
         # (shouldn't happen under these modes, but trivially finalized if so).
         return npc_key not in self.companion_class_rolls
 
+    def _companion_present_now(self, npc_key: str) -> bool:
+        """Additional Feats feature: is this companion in the party right now, by the game's own live reports -- on the roster, carrying
+        the entitlement marker (10, not trapped off) and with no scene or transition busy? The recruited record
+        (_is_companion_recruited) only says a join was once sent. False while either report is still missing."""
+        recon = self.reconciler
+        if recon.current_roster is None or recon.current_crew is None or recon.roster_busy:
+            return False
+        if npc_key in recon._trapped_keys():
+            return False
+        entitled = recon._entitled_keys()
+        return bool(recon.current_roster.get(npc_key)) and entitled is not None and npc_key in entitled
+
     def _is_pc_class_finalized(self) -> bool:
         """Additional Feats feature: PC equivalent of
         _is_companion_class_finalized. StartingClass=random_class applies
@@ -2346,7 +2446,8 @@ class KotorContext(CommonContext):
                 jedi_levels = ("guardian", "consular", "sentinel")
                 is_jedi = any(self.reconciler.current_classes.get(k, 0) for k in jedi_levels)
             else:
-                ready = self._is_companion_recruited(npc_key) and self._is_companion_class_finalized(npc_key)
+                ready = (self._is_companion_recruited(npc_key) and self._is_companion_class_finalized(npc_key)
+                         and self._companion_present_now(npc_key))
                 rolled_class = self.companion_class_rolls.get(npc_key)
                 if rolled_class is not None:
                     is_jedi = rolled_class in ("guardian", "consular", "sentinel")
@@ -2354,8 +2455,15 @@ class KotorContext(CommonContext):
                     is_jedi = npc_key not in NON_JEDI_COMPANION_KEYS  # vanilla lore
                 if self.companion_class_mode == 4:  # droid: nobody has Force powers any more
                     is_jedi = False
+            if ready and not item_name.startswith("(admin)") and any(a.endswith(":remove_companion") for _n, a in self._pending_traps.values()):
+                ready = False  # a companion removal is about to resolve; let it land first
             if not ready:
+                self._feats_ready_at.pop(key, None)
                 continue
+            if not item_name.startswith("(admin)"):
+                ready_at = self._feats_ready_at.setdefault(key, self._area_entries)
+                if self._area_entries - ready_at < ADDITIONAL_FEATS_SETTLE_AREAS:
+                    continue
             pool = [f for f in ADDITIONAL_FEATS_POOL if f not in _JEDI_ONLY_FEATS or is_jedi]
             if npc_key == "pc":
                 pool = [f for f in pool if f not in self.reconciler.current_feats]
@@ -2365,6 +2473,7 @@ class KotorContext(CommonContext):
                 self._trap_noop(key, item_name, arm_name, f"{npc_key} has no eligible feats left in the pool")
                 continue
             del self._pending_additional_feats[key]
+            self._feats_ready_at.pop(key, None)
             feat_ids = random.sample(pool, min(3, len(pool)))
             task = asyncio.create_task(self._resolve_additional_feats(key, item_name, arm_name, npc_key, feat_ids))
             self._background_tasks.add(task)
@@ -2402,6 +2511,7 @@ class KotorContext(CommonContext):
             # check elsewhere still matches this longer string.
             feats_csv = ",".join(str(f) for f in feat_ids)
             self._log_delivery(character, index, item_name, f"additional_feats:{npc_key}:{feats_csv}", "sent")
+            self._companion_busy_until[npc_key] = self._area_entries + ADDITIONAL_FEATS_SETTLE_AREAS
         else:
             game_events_logger.warning(f"[NOT SENT -- extender offline] {item_name} -> additional_feats:{npc_key}. "
                             f"Will retry next poll cycle.")
@@ -2421,10 +2531,48 @@ class KotorContext(CommonContext):
         for key in list(self._pending_traps.keys()):
             item_name, arm_name = self._pending_traps[key]
             trap_type = arm_name.split(":", 1)[1]
+            if trap_type == "remove_companion" and not item_name.startswith("(admin)"):
+                recorded = self._removable_companions(live_only=False)
+                if recorded and not self._removable_companions(live_only=True):
+                    # Recruited by the delivery record but not present by the live reports (or just given feats): wait, up to a limit.
+                    since = self._trap_wait_since.setdefault(key, self._area_entries)
+                    if self._area_entries - since < TRAP_COMPANION_WAIT_AREAS:
+                        continue
+            self._trap_wait_since.pop(key, None)
             del self._pending_traps[key]
             task = asyncio.create_task(self._resolve_trap(key, item_name, arm_name, trap_type))
             self._background_tasks.add(task)
             task.add_done_callback(self._track_background_task)
+
+    def _complete_removed_companion_checks(self, npc_key: str) -> None:
+        """A companion trapped off for good can never reach their personal Ebon Hawk checks again, and those checks may hold items
+        (including a companion's own). Sends the ones that are still open, using the same record as every other check: the
+        server's checked locations plus what this session has already sent."""
+        if not self.server:
+            return
+        already = self.checked_locations | self.locations_checked
+        loc_ids = [i for i in self.location_tracker.checks_for_removed_companion(npc_key, already)
+                   if i in self.missing_locations]
+        if not loc_ids:
+            return
+        self.locations_checked.update(loc_ids)
+        for loc_id in loc_ids:
+            logger.info(f"[check] {self.location_names[self.game].get(loc_id, str(loc_id))} "
+                        f"(completed: {npc_key} was removed by the trap and can no longer reach it)")
+        asyncio.create_task(self.send_msgs([{"cmd": "LocationChecks", "locations": loc_ids}]))
+
+    def _removable_companions(self, live_only: bool) -> typing.List[str]:
+        """Companions the Remove a Companion trap may pick, from the current seed's recruited record. With live_only, also
+        required: present by the game's own reports (on the roster, entitlement marker 10, nothing busy) and not just given
+        Additional Feats."""
+        current_seed_slot = (self.seed_name, getattr(self, "username", None))
+        already_trapped = self._trapped_off_keys()
+        out = sorted(npc for (sn, sl, npc) in self._recruited_companions
+                     if (sn, sl) == current_seed_slot and npc not in already_trapped)
+        if live_only:
+            out = [npc for npc in out
+                   if self._companion_present_now(npc) and self._companion_busy_until.get(npc, 0) <= self._area_entries]
+        return out
 
     def _trap_noop(self, key: typing.Tuple[str, str, int], item_name: str, arm_name: str, reason: str) -> None:
         """Marks a trap settled with no effect -- the "0 or 1 of
@@ -2524,13 +2672,14 @@ class KotorContext(CommonContext):
             # player who never actually had that companion. See
             # _load_recruited_companions' docstring.
             current_seed_slot = (self.seed_name, getattr(self, "username", None))
-            already_trapped = self._trapped_off_keys()
-            candidates = sorted(npc for (sn, sl, npc) in self._recruited_companions
-                                if (sn, sl) == current_seed_slot and npc not in already_trapped)
-            if not candidates:
-                self._trap_noop(key, item_name, arm_name, "no companions recruited yet")
-                return
-            target = random.choice(candidates)
+            target = self._trap_target.get(key)
+            if target is None:
+                candidates = self._removable_companions(live_only=not item_name.startswith("(admin)"))
+                if not candidates:
+                    self._trap_noop(key, item_name, arm_name, "no companion is recruited and present right now")
+                    return
+                target = random.choice(candidates)
+                self._trap_target[key] = target
             # purge_companion, not remove_companion: the latter only calls RemoveAvailableNPC,
             # which ejects an ACTIVE party member from the roster but leaves the creature
             # object standing in the area. A game froze on the next transition after
@@ -2540,8 +2689,9 @@ class KotorContext(CommonContext):
             # trap_companion is that same removal plus the entitlement marker ap_ent_<key> written as 20
             # ("trapped off for good"), which the grant arms refuse and the reconciler treats as a leak.
             # remove_companion stays as the roster-only trap the Star Forge pass needs.
+            first_send = (*current_seed_slot, target) not in self._trapped_off_companions
             sent = await self.extender.send_trap("trap_companion", target)
-            if sent:
+            if sent and first_send:
                 # Untrack immediately, not just on confirmation -- the
                 # companion arms' own untrack-on-confirm equivalent
                 # doesn't exist (recruit tracking only ever ADDS, see
@@ -2558,6 +2708,7 @@ class KotorContext(CommonContext):
                 self._log_delivery(character, self._reconciler_light_counter,
                                    f"(trap) permanently removed {target}", f"trap_removed:{target}", "sent")
                 self.reconciler.trapped_off_companions = self._trapped_off_keys()
+                self._complete_removed_companion_checks(target)
 
         elif trap_type == "remove_half_inventory":
             # Does not read reconciler.current_inventory (removed along
@@ -2612,13 +2763,14 @@ class KotorContext(CommonContext):
             # never reaching a live extender).
             staged_key = "set_credits" if trap_type == "remove_credits" else f"trap:{trap_type}"
             if trap_type == "remove_companion":
-                # The wire action is purge_companion (see that branch), so that is the key the extender acks under.
-                # Waiting on the trap's own name never matched: the send was treated as failed and retried, and each
-                # retry removed another companion.
-                staged_key = "trap:purge_companion"
+                # The wire action is trap_companion (see that branch), so that is the key the extender acks under.
+                # Waiting on the trap's own name, or on an older wire name, never matched: the send was treated as
+                # failed and retried, and each retry removed another companion.
+                staged_key = "trap:trap_companion"
             sent = await self.extender.wait_staged(staged_key)
         if sent:
             logger.info(f"[queued for game] {item_name} -> trap:{trap_type}")
+            self._trap_target.pop(key, None)
             self._log_delivery(character, index, item_name, arm_name, "sent")
             self._send_trap_link_if_real(index, item_name)
         else:
@@ -2903,15 +3055,19 @@ class KotorContext(CommonContext):
         if seed_name is None:
             return
         stuck = _load_failed_offline_deliveries(seed_name, slot)
-        stuck = {index: pair for index, pair in stuck.items() if index not in self._resent_offline_indices}
+        # A delivery is tried again on every extender reconnect, but not twice within 30 s (two reconnects in a row).
+        now = time.time()
+        stuck = {index: pair for index, pair in stuck.items() if now - self._resent_offline_indices.get(index, 0.0) > 30.0}
         if not stuck:
             return
         game_events_logger.info(
-            f"[extender] retrying {len(stuck)} item(s) that failed to deliver during a previous disconnect...")
+            f"[extender] retrying {len(stuck)} item(s) that did not reach the game earlier...")
         for index, (item_name, arm_name) in stuck.items():
             if not arm_name or arm_name == GOAL_MARKER_ARM:
                 continue
-            self._resent_offline_indices.add(index)
+            self._resent_offline_indices[index] = now
+            self._rejected_attempts.pop(index, None)
+            self._rejected_gave_up.discard(index)
             asyncio.create_task(self._deliver_item(item_name, arm_name, index))
 
     # Routine per-poll lines (the report lines, the journal/quest/plot/companion checks, alignment and
@@ -3040,6 +3196,8 @@ class KotorContext(CommonContext):
         if self.companion_mode == 3:  # ap_limited
             self._grant_limited_companions(len(already))
         self.reconciler.handle_event(event)
+        if "AP|CHECK|AREA|" in event:
+            self._area_entries += 1
 
         if "AP|SKILLREPORT|" in event:
             # Same "poll cycle complete" marker ReconciliationTracker uses
@@ -3072,7 +3230,9 @@ class KotorContext(CommonContext):
                 # tracking), but the companion is self-granted immediately
                 # instead of waiting on a received AP item -- see
                 # Options.py's CompanionMode docstring.
-                if self.companion_mode == 1:
+                # Not for a Juhani who died: her recruit check is completed because she can no longer be recruited, so
+                # granting her here would bring back a companion the story killed.
+                if self.companion_mode == 1 and not JUHANI_KILLED_RE.search(event):
                     for loc_id in loc_ids:
                         loc_data = _ID_TO_LOCATION_DATA.get(loc_id)
                         if loc_data is not None and loc_data.location_type == "companion":
@@ -3110,6 +3270,13 @@ class KotorContext(CommonContext):
             idle = time.time() - self._last_game_event_time
             if idle > 30 and not self._staleness_warned:
                 self._staleness_warned = True
+                if not self.extender.is_connected:
+                    game_events_logger.warning(
+                        f"[STALE] No message from the game in {int(idle)}s, and this client is not connected to it. "
+                        f"Most likely KOTOR is not running yet: start the game (items and checks only flow while it "
+                        f"is open). If the game IS running and this stays, the mod is not loaded: close KOTOR, run "
+                        f"Install.bat again, then start the game and keep this client open.")
+                    continue
                 game_events_logger.warning(
                     f"[STALE] No message from the game in {int(idle)}s. If KOTOR isn't the "
                     f"focused window, click into it -- this game pauses all script/polling "
@@ -3345,6 +3512,10 @@ class KotorContext(CommonContext):
             self.reconciler.credit_mode = slot_data.get("credit_mode", 0)
             self.reconciler.credit_limiter = slot_data.get("credit_limiter", 100)
             self.reconciler.credit_item = slot_data.get("credit_item", 5000)
+            # What earlier client sessions already put into the save's credits (see _load_prior_credit_history).
+            seed_slot = (self.seed_name, getattr(self, "username", None))
+            self.reconciler.resume_credit_cap = len(self._prior_credit_indices.get(seed_slot, ())) * self.reconciler.credit_item
+            self.reconciler.resume_credit_cap_from_current = seed_slot in self._seed_slots_with_history
             # Own copy on the tracker, same seed-config data as
             # self.companion_class_rolls above -- entitlement.py's
             # compute_entitlement() reads it off the tracker it's passed,
@@ -3725,7 +3896,8 @@ class KotorContext(CommonContext):
         else:
             game_events_logger.warning(f"[makejedi] regeneration FAILED (starting_class={starting_class}): {msg}")
 
-    def _apply_seed_patch_if_new(self, key: str, gate_key: str | None, apply_fn, force: bool = False) -> None:
+    def _apply_seed_patch_if_new(self, key: str, gate_key: str | None, apply_fn, force: bool = False,
+                                 verify=None) -> None:
         """Shared gate for the 5 heavier per-seed patch scripts (loot mode,
         item suppression, story gates, door randomization, additional
         enemies) -- see
@@ -3744,7 +3916,8 @@ class KotorContext(CommonContext):
         task" style for anything running via run_in_executor) still
         applies once and records whatever was given, rather than silently
         skipping forever."""
-        if not force and gate_key is not None and _load_patched_seed(key) == gate_key:
+        if not force and gate_key is not None and _load_patched_seed(key) == gate_key \
+                and _patched_marker_is_current(key, verify):
             game_events_logger.info(f"[{key}] already applied for this option set -- skipping re-run.")
             return
         ok, msg = apply_fn()
@@ -3811,6 +3984,14 @@ class KotorContext(CommonContext):
         logger.info("[patching] Patching the game files for this seed. This can take a minute or two; start the game after the "
                     "'finished' message below (if it is already running, fully quit and relaunch it afterwards).")
         self._patch_failures = 0
+        if not os.path.isfile(os.path.join(GAME_DIR, "swkotor.exe")):
+            logger.error(
+                f"[patching] Cannot find your KOTOR game folder, so nothing was patched. Looked in: {GAME_DIR} "
+                "(swkotor.exe is not there). To fix it: (1) close this client; (2) run Install.bat again from "
+                "the PlayerBundle folder and, when it asks, enter the folder that contains swkotor.exe (in Steam: "
+                "right-click the game, Manage, Browse local files); (3) open the KOTOR Client from the Launcher "
+                "and connect again.")
+            return
         # Door redirects and additional enemies from an earlier seed are not taken out by the patches themselves.
         previous = [_load_patched_seed(k) for k in ("door_randomizer", "additional_enemies")]
         if gate_key is not None and any(p is not None and p != gate_key for p in previous):
@@ -3833,8 +4014,11 @@ class KotorContext(CommonContext):
         self._clear_staged_and_log()
         self._ensure_vendor_and_log()
         if self._patch_failures:
-            logger.warning(f"[patching] Finished with {self._patch_failures} patch failure(s). See the Heartbeat tab for the "
-                           "'APPLY FAILED' lines before starting the game.")
+            logger.warning(f"[patching] Finished with {self._patch_failures} patch failure(s), so the game is NOT fully "
+                           "set up for this seed. The 'APPLY FAILED' lines (Heartbeat tab) say which step failed and why. "
+                           "To fix it: (1) close KOTOR if it is running; (2) type /ap_patch_all here to try again; (3) if "
+                           "a line mentions a missing file or folder, run Install.bat again; (4) if it keeps failing, post "
+                           "those 'APPLY FAILED' lines in your report.")
         else:
             logger.info("[patching] Finished. The game files are ready: start the game now. If it was already running, "
                         "fully quit and relaunch it so it loads the patched files.")
@@ -3879,7 +4063,7 @@ class KotorContext(CommonContext):
 
     def _apply_story_gates_and_log(self, gate_key: str | None, force: bool = False) -> None:
         """Same shape as _apply_item_suppression_and_log, for apply_story_gates()."""
-        self._apply_seed_patch_if_new("story_gates", gate_key, apply_story_gates, force)
+        self._apply_seed_patch_if_new("story_gates", gate_key, apply_story_gates, force, verify=_story_gate_files_present)
 
     def _apply_loot_disturb_and_log(self, gate_key: str | None, force: bool = False) -> None:
         """Same shape as _apply_item_suppression_and_log, for
@@ -4100,7 +4284,13 @@ class KotorContext(CommonContext):
             game_events_logger.warning(f"[SAFEGUARD] Skipping reconciliation send ({arm_name!r}) -- "
                             f"unrecognized character, run /ap_confirm_character first if this is intentional.")
             return False
-        ok = await self.extender.send_apply(arm_name)
+        if arm_name.startswith("give_item:"):
+            # A parameterized give_item goes through the give-item sender: sent as APPLY:<name> the extender only
+            # knows fixed arm names and answers "unknown item", so the self-heal for lost progression items never worked.
+            parts = arm_name.split(":")
+            ok = await self.extender.send_apply_item(parts[1], int(parts[2]) if len(parts) > 2 else 1)
+        else:
+            ok = await self.extender.send_apply(arm_name)
         if ok:
             self._reconciler_light_counter -= 1
             self._log_delivery(self.reconciler.current_character_name, self._reconciler_light_counter,
@@ -4307,13 +4497,14 @@ class KotorContext(CommonContext):
         self._character_confirmed = False
         known = ", ".join(sorted(self._known_characters)) if self._known_characters else "(none logged yet)"
         game_events_logger.warning("=" * 70)
-        game_events_logger.warning(f"[SAFEGUARD] Connected character {character!r} (level {self.current_level}) "
-                        f"is not a character we recognize, and isn't a fresh level-1 start.")
-        game_events_logger.warning("All item deliveries and corrections are PAUSED until this is resolved.")
-        game_events_logger.warning(f"Previously known character(s) on this log: {known}")
-        game_events_logger.warning("If this is genuinely a new/different playthrough on this seed, run "
-                        "/ap_confirm_character to proceed. Otherwise, load the correct "
-                        "character/save and reconnect.")
+        game_events_logger.warning(f"[SAFEGUARD] The game is on character {character!r} (level {self.current_level}), "
+                        f"which this client has not seen on this seed, and it is not a fresh level-1 start.")
+        game_events_logger.warning("To protect your progress, ALL item deliveries are PAUSED until you choose below.")
+        game_events_logger.warning(f"Characters already used on this seed: {known}")
+        game_events_logger.warning("If you loaded the wrong save: load the correct save in the game, then reconnect "
+                        "this client. Nothing is lost.")
+        game_events_logger.warning("If this really is your character for this seed (for example you started over): "
+                        "type /ap_confirm_character here and deliveries resume.")
         game_events_logger.warning("=" * 70)
 
     def _maybe_queue_companion_class(self, arm_name: str) -> None:
@@ -4380,10 +4571,7 @@ class KotorContext(CommonContext):
                     # no-op here, same scope as PROGRESSION_ITEM_RESREFS.
                     self.reconciler.note_item_received(arm_name)
             else:
-                game_events_logger.warning(f"[NOT SENT -- extender offline] {item_name} -> give_item:{resref}. "
-                                f"Will need /ap_apply manually once the game is up, "
-                                f"or a resend mechanism (not yet built).")
-                self._log_delivery(character, index, item_name, arm_name, "failed_extender_offline")
+                self._on_unstaged_send(item_name, arm_name, index, character, f"give_item:{resref}", is_correction)
             return
         if arm_name.startswith("companion_class:"):
             # CompanionClass=jedi_companion's real AP item -- a fixed
@@ -4404,10 +4592,7 @@ class KotorContext(CommonContext):
                 logger.info(f"[queued for game] {item_name} -> companion_class:{npc_key}:{class_name}")
                 self._log_delivery(character, index, item_name, arm_name, "sent")
             else:
-                game_events_logger.warning(f"[NOT SENT -- extender offline] {item_name} -> companion_class:{npc_key}:{class_name}. "
-                                f"Will need /ap_apply manually once the game is up, "
-                                f"or a resend mechanism (not yet built).")
-                self._log_delivery(character, index, item_name, arm_name, "failed_extender_offline")
+                self._on_unstaged_send(item_name, arm_name, index, character, f"companion_class:{npc_key}", is_correction)
             return
         if arm_name in CLASS_ARM_TO_KEY:
             # Class switches are one-shot (AddMultiClass + ShowLevelUpGUI)
@@ -4451,10 +4636,61 @@ class KotorContext(CommonContext):
             logger.info(f"[queued for game] {item_name} -> {arm_name}")
             self._log_delivery(character, index, item_name, arm_name, "reconciled" if is_correction else "sent")
         else:
+            self._on_unstaged_send(item_name, arm_name, index, character, arm_name, is_correction)
+
+    # Seconds to wait before each automatic retry of an item the extender rejected; after the last one it waits for the
+    # next extender reconnect (a relaunched game or an updated extender is the usual fix).
+    _REJECTED_RETRY_DELAYS = (60, 180, 300, 600, 900)
+
+    def _on_unstaged_send(self, item_name: str, arm_name: str, index: int, character: str, key: str,
+                          is_correction: bool) -> None:
+        """A send never reached STAGED. Two different causes, told apart by what the extender said: it answered ERROR
+        (rejected: it does not know the command) or it said nothing because it is not connected (offline). Neither is
+        logged as sent; both are retried later."""
+        detail = self.extender.rejection(key)
+        if detail is None:
             game_events_logger.warning(f"[NOT SENT -- extender offline] {item_name} -> {arm_name}. "
-                            f"Will need /ap_apply {arm_name} manually once the game is up, "
-                            f"or a resend mechanism (not yet built).")
+                            f"The game is not connected. It is saved and will be sent automatically once "
+                            f"KOTOR is running and connected.")
             self._log_delivery(character, index, item_name, arm_name, "failed_extender_offline")
+            return
+        if key not in self._rejection_announced:
+            self._rejection_announced.add(key)
+            game_events_logger.warning(
+                f"[NOT DELIVERED -- the game rejected it] {item_name} ({arm_name}). The extender in your KOTOR folder "
+                f"answered: {detail}. It did not recognize this command, which usually means the extender (the "
+                f"binkw32.dll the installer put in your KOTOR folder) is older than this client. To fix it: close "
+                f"KOTOR, run Install.bat again from this client folder, then start the game. The item stays pending "
+                f"and is retried automatically; if it keeps happening, post this line.")
+        else:
+            game_events_logger.info(f"[still rejected] {item_name} ({arm_name}); will retry.")
+        self._log_delivery(character, index, item_name, arm_name, "failed_extender_rejected")
+        if arm_name.startswith("give_item:") and not is_correction:
+            # Recorded as received so the progression-item self-heal covers it too, whatever happens to this send.
+            self.reconciler.note_item_received(arm_name)
+        if not is_correction:
+            self._schedule_rejected_retry(item_name, arm_name, index)
+
+    def _schedule_rejected_retry(self, item_name: str, arm_name: str, index: int) -> None:
+        attempt = self._rejected_attempts.get(index, 0)
+        if attempt >= len(self._REJECTED_RETRY_DELAYS):
+            if index not in self._rejected_gave_up:
+                self._rejected_gave_up.add(index)
+                game_events_logger.warning(
+                    f"[retry paused] {item_name} ({arm_name}) was rejected {attempt + 1} times. It is retried again "
+                    f"the next time the game connects; fix the cause above first.")
+            return
+        self._rejected_attempts[index] = attempt + 1
+        task = asyncio.create_task(
+            self._retry_rejected_after(self._REJECTED_RETRY_DELAYS[attempt], item_name, arm_name, index))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._track_background_task)
+
+    async def _retry_rejected_after(self, delay: float, item_name: str, arm_name: str, index: int) -> None:
+        await asyncio.sleep(delay)
+        if self.server is None:
+            return
+        await self._deliver_item(item_name, arm_name, index)
 
     async def _process_heavy_queue(self) -> None:
         """Consumes HEAVY_ARMS (and companion_class:) deliveries one at a
@@ -4493,6 +4729,8 @@ class KotorContext(CommonContext):
                 record = self.extender.deliveries.get(poll_key)
                 if record is not None and record.applied_at is not None and record.applied_at != already_applied_at:
                     break
+                if record is not None and record.rejected_at is not None:
+                    break  # the extender refused it; nothing will confirm
                 await asyncio.sleep(1.0)
             else:
                 game_events_logger.warning(f"[heavy queue] no confirmation for {arm_name} after 10 minutes, "
@@ -4503,13 +4741,24 @@ class KotorContext(CommonContext):
         from kvui import GameManager
         from kivy.clock import Clock
         from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.scrollview import ScrollView
         from kivymd.uix.label import MDLabel
+
+        def status_label(text):
+            # Grows with its text, so a long queue wraps onto more lines instead of running into the label below it.
+            return MDLabel(text=text, size_hint_y=None, adaptive_height=True)
 
         class KotorStatusView(BoxLayout):
             def __init__(self, ctx: "KotorContext", **kwargs):
-                super().__init__(orientation="vertical", padding=10, spacing=6, **kwargs)
+                super().__init__(orientation="vertical", **kwargs)
                 self.ctx = ctx
-                self.connection_label = MDLabel(text="Extender: not connected", size_hint_y=None, height=30)
+                # Every label lives in one scrolling column: with many queued, staged or settled items the page scrolls
+                # instead of the lists overlapping each other.
+                column = BoxLayout(orientation="vertical", padding=10, spacing=6, size_hint_y=None)
+                column.bind(minimum_height=column.setter("height"))
+                scroll = ScrollView(do_scroll_x=False)
+                scroll.add_widget(column)
+                self.connection_label = status_label("Extender: not connected")
                 # The new-character safeguard (_evaluate_character_safety)
                 # can silently pause EVERY delivery/reconciliation send for
                 # a whole session with no in-game indication at all -- a
@@ -4520,15 +4769,14 @@ class KotorContext(CommonContext):
                 # watching it. This label is the fix: impossible-to-miss
                 # on the main Status tab, matching connection_label's own
                 # visibility, not just another log line.
-                self.character_label = MDLabel(text="", size_hint_y=None, height=30)
-                self.checks_label = MDLabel(text="Checks: 0 / 0", size_hint_y=None, height=30)
-                self.pending_label = MDLabel(text="Pending delivery: none", size_hint_y=None, height=60)
-                self.recent_label = MDLabel(text="Recent items: none")
-                self.add_widget(self.connection_label)
-                self.add_widget(self.character_label)
-                self.add_widget(self.checks_label)
-                self.add_widget(self.pending_label)
-                self.add_widget(self.recent_label)
+                self.character_label = status_label("")
+                self.checks_label = status_label("Checks: 0 / 0")
+                self.pending_label = status_label("Pending delivery: none")
+                self.recent_label = status_label("Recent items: none")
+                for label in (self.connection_label, self.character_label, self.checks_label,
+                              self.pending_label, self.recent_label):
+                    column.add_widget(label)
+                self.add_widget(scroll)
 
             def refresh(self):
                 ext = self.ctx.extender
@@ -4553,8 +4801,14 @@ class KotorContext(CommonContext):
                 pending = ext.pending_deliveries()
                 queued = [d for d in pending if delivery_state(d) == "Queued"]
                 staged = [d for d in pending if delivery_state(d) == "Staged"]
-                if queued or staged:
+                rejected = [d for d in pending if delivery_state(d) == "Rejected"]
+                if queued or staged or rejected:
                     sections = []
+                    if rejected:
+                        sections.append(
+                            f"Rejected by the game ({len(rejected)}, not delivered, retried automatically; see the "
+                            f"Heartbeat tab for what to do):\n" + ", ".join(d.arm_name for d in rejected)
+                        )
                     if queued:
                         sections.append(
                             f"Queued ({len(queued)}, sent but not yet confirmed received):\n"

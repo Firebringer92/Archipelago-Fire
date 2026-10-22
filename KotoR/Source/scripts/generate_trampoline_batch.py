@@ -154,7 +154,9 @@ void HideoutCarthReunion()
 }
 """
 AREA_ENTRY_FUNCS = {"tar_m02af": HIDEOUT_REUNION_FUNC}
-AREA_ENTRY_CALLS = {"tar_m02af": ["DelayCommand(0.2, HideoutCarthProbe(\"enter\"));", "DelayCommand(3.0, HideoutCarthProbe(\"t3\"));", "if (nVisitMark == 0) DelayCommand(7.0, HideoutCarthReunion());"]}
+# sta_m45ad (the Malak fight): ap_goal_watch reports his death within a quarter second; the ending follows within seconds, before the
+# ordinary poll can see it. Keep in sync with AREA_PERMANENT_SPAWNS in generate_area_trampolines.py.
+AREA_ENTRY_CALLS = {"sta_m45ad": ['ExecuteScript("ap_goal_watch", OBJECT_SELF);'], "tar_m02af": ["DelayCommand(0.2, HideoutCarthProbe(\"enter\"));", "DelayCommand(3.0, HideoutCarthProbe(\"t3\"));", "if (nVisitMark == 0) DelayCommand(7.0, HideoutCarthReunion());"]}
 
 
 def permanent_spawn_lines_for(base, indent):
@@ -267,8 +269,10 @@ if not os.path.isfile(GEAR_JSON):
 if not os.path.isfile(GEAR_JSON):
     GEAR_JSON = os.path.join(REPO_ROOT, "worlds", "kotor", "gear_items.json")
 try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from gear_quest_tags import with_shared_quest_tags  # see that module for why the table is passed through it
     with open(GEAR_JSON, encoding="utf-8") as _f:
-        _GEAR = json.load(_f)
+        _GEAR = with_shared_quest_tags(json.load(_f))
     QUEST_EXEMPT_TAGS = sorted(tag for tag, v in _GEAR.items() if v.get("quest_dependent"))
 except Exception:
     QUEST_EXEMPT_TAGS = []
@@ -2315,8 +2319,27 @@ def _planet_for_module(base):
     return None
 
 
+# Quest items that vanilla stores sell, by store tag: the restock below must leave them in the store, or the quest can become
+# unfinishable (the item may have no other source). Listed per store, not as one global list, so the generated script stays tiny: a
+# store compares against one to two tags. Values are lower-case ITEM TAGS (the serum copies are tagged "rakghoulserum" and the gizka
+# poison "gizkapoison", not their resrefs). Found by scanning every store (UTM) in the game for quest-flagged items.
+#   zelka stores (Taris Upper City South)  Rakghoul Serum, for the Rakghoul Serum quest
+#   xxkeblastore                           Permacrete Detonator
+#   kas_twostore (Tatooine Docking Bay)    Bantha Fodder (A Desert Hunt) and Gizka Poison
+#   kas_elistore (Kashyyyk Czerka Landing) Gizka Poison
+STORE_KEEP_TAGS = {
+    "zelkastore2": ("rakghoulserum",),
+    "zelkastore3": ("rakghoulserum",),
+    "zelkastore2d": ("rakghoulserum",),
+    "zelkastore3d": ("rakghoulserum",),
+    "xxkeblastore": ("ptar_permacrete",),
+    "kas_twostore": ("tat20_banthafod", "gizkapoison"),
+    "kas_elistore": ("gizkapoison",),
+}
+
+
 def build_shop_stock_block(store_tags, resrefs):
-    """One-time destroy-and-restock for each store tag in this area, gated
+    """One-time destroy-and-restock for each store tag in this area (leaving the quest items STORE_KEEP_TAGS names), gated
     by a LocalBoolean on the store object itself (not the module) -- so
     each store tracks its own restocked state independently with no index-
     assignment bookkeeping needed. Runs unconditionally on every entry into
@@ -2333,7 +2356,12 @@ def build_shop_stock_block(store_tags, resrefs):
         lines.append(f'    object oShopItem{i} = GetFirstItemInInventory(oShop{i});')
         lines.append(f'    while (GetIsObjectValid(oShopItem{i}))')
         lines.append('    {')
-        lines.append(f'        DestroyObject(oShopItem{i});')
+        keep = STORE_KEEP_TAGS.get(tag.lower(), ())
+        if keep:
+            test = " || ".join(f'GetStringLowerCase(GetTag(oShopItem{i})) == "{k}"' for k in keep)
+            lines.append(f'        if (!({test})) DestroyObject(oShopItem{i});')
+        else:
+            lines.append(f'        DestroyObject(oShopItem{i});')
         lines.append(f'        oShopItem{i} = GetNextItemInInventory(oShop{i});')
         lines.append('    }')
         for resref in resrefs:

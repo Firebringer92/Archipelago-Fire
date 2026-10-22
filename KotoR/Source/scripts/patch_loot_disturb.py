@@ -341,9 +341,14 @@ PLACEABLE_EXCLUDE_SCOPED = {("end_m01aa_s.rim", "footlker001")}
 _LOOT_MODE_NAMES = {0: "skip", 1: "destroy", 2: "bonus", 3: "replace"}
 
 
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gear_quest_tags import with_shared_quest_tags  # noqa: E402 -- see that module for why the table is passed through it
+
+
 def load_gear_whitelist():
     with open(GEAR_JSON, encoding="utf-8") as f:
-        gear = json.load(f)
+        gear = with_shared_quest_tags(json.load(f))
     suppress_resrefs = {r.lower() for r, v in gear.items() if not v.get("quest_dependent")}
     loot_pool = sorted(r for r, v in gear.items() if v.get("shop_randomize"))
     progression_resrefs = {r.lower() for r, v in gear.items() if v.get("progression_suppression") == "1"}

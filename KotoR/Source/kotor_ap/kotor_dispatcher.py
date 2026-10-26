@@ -20,7 +20,6 @@ Answers from the game, all lines starting AP|DISPATCH|:
   SYNC|seq=N|have=S      wrong number: the game has S, the job is renumbered S+1 and sent again
   FAILED|seq=N|...       the action ran but could not do its job (e.g. no such item): not retried
   UNKNOWN|seq=N|...      the game does not know that action: not retried
-  PROBE|mask=M|prev=P    the scene-like state changed (same bits as gate, minus 32 and 64); logged for study
 """
 import asyncio
 import collections
@@ -375,11 +374,7 @@ class DispatchClient:
             logger.warning(f"[dispatch] the game does not know the action {job.action!r} (job {n}); not retried. "
                            "Written to the delivery log.")
             self._fail(job, f"the game does not know the action {job.action!r} {job.args!r}")
-        elif kind == "PROBE":
-            mask = int(f.get("mask", "0") or 0)
-            prev = int(f.get("prev", "0") or 0)
-            logger.info(f"[dispatch] game state changed: {gate_text(prev)} -> {gate_text(mask)}")
-        elif kind in ("SCENE_START", "SCENE_END", "BAD"):
+        elif kind == "BAD":
             logger.info(f"[dispatch] game: {kind.lower()} {f}")
 
     def _on_state(self, n: typing.Optional[int]) -> None:

@@ -1357,8 +1357,7 @@ void DtSetSeq(object oPC, int nSeq)
 }
 
 // Which scene-like states are on right now, as bits: 1 scripted scene flag (ApSceneBusyMask), 2 conversation, 4 STUNT cutscene module,
-// 8 PC not commandable, 16 combat, 128 player restrict mode, 256 PC dead. Logged on every change as PROBE, whether or not a
-// job is waiting, so a real cutscene shows which of them it actually sets.
+// 8 PC not commandable, 16 combat, 128 player restrict mode, 256 PC dead.
 int DtProbeMask(object oPC)
 {
     int nBits = 0;
@@ -1476,15 +1475,6 @@ void DtTick()
     {
         KSE_SetData("dt_lastseq", IntToString(nSeq));
         DtLog("STATE|seq=" + IntToString(nSeq));
-    }
-
-    int nProbe = DtProbeMask(oPC);
-    int nProbeLast = -1;
-    if (KSE_HasData("dt_probe")) nProbeLast = StringToInt(KSE_GetData("dt_probe"));
-    if (nProbe != nProbeLast)
-    {
-        KSE_SetData("dt_probe", IntToString(nProbe));
-        DtLog("PROBE|mask=" + IntToString(nProbe) + "|prev=" + IntToString(nProbeLast));
     }
 
     string sJob = "";

@@ -427,7 +427,7 @@ def update_gear_items_json() -> None:
         gear[resref] = {
             "name": name, "base_item_type": "Lightsaber_Crystals", "cost": cost,
             "first_seen_in": "CORE", "stack_limit": 99, "quest_dependent": False,
-            "progression_dependent": False, "stat_modifiers": "", "description": desc,
+            "progression_dependent": False, "stat_modifiers": "",
             "included_as_item": True, "shop_randomize": True, "equipment_slot": "",
             "progression_suppression": "0",
         }

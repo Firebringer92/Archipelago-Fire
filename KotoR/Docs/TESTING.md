@@ -10,13 +10,13 @@ regenerated poll script need that file before the game starts reading its Overri
 
 On every connect the client regenerates and deploys `ap_poll_shared.ncs` for the seed (look for `[poll_shared] regenerated for ...`; a `regeneration
 FAILED` line means a stale `nwnnsscomp.exe` path or `--game-dir` mismatch, retry with `/ap_regen_poll`). It then applies the per-seed game-file patches:
-Loot Mode, item suppression, the story gates (Progression System), door randomization and Additional Enemies, then Galactic Shop, New Companion, the droid
+Loot Mode, item suppression, the story gates (Progression System), door randomization, Additional Enemies and the Bazaar tokens, then Galactic Shop, New Companion, the droid
 assets, the area poll hooks and the boss datapads. It prints `[patching] ...` when it starts and a `Finished` line when you can start the game (a warning if
 a patch failed); relaunch the game if it was already running, since the droid options replace tables it reads once at startup.
 
-Look for `[loot_disturb] ...`, `[item_suppression] ...`, `[story_gates] ...`, `[door_randomizer] ...` and `[additional_enemies] ...` in the client log:
+Look for `[loot_disturb] ...`, `[item_suppression] ...`, `[story_gates] ...`, `[door_randomizer] ...`, `[additional_enemies] ...` and `[bazaar_tokens] ...` in the client log:
 `applied: ...` the first time, `already applied for this option set -- skipping re-run.` when you reconnect with the same options, and `APPLY FAILED: ...`
-when something needs fixing (usually a `--game-dir` mismatch). These five do a real per-module sweep, so they only re-run when the seed's options change; use
+when something needs fixing (usually a `--game-dir` mismatch). These six do a real per-module sweep, so they only re-run when the seed's options change; use
 `/ap_patch_all` to force a re-apply after fixing a failure. If the install was last patched for a different seed or option set, the client prints a reminder:
 quit and restart the client when you switch seeds, then run `/ap_restore_all` and reconnect.
 
@@ -24,25 +24,26 @@ If the client cannot find the project's `scripts\` folder (an unusual folder lay
 
 ## 2. Useful client commands
 
-- `/ap_status` — extender connection state, pending/recent deliveries.
+- `/ap_status` — extender connection state and the delivery window: "Deliveries waiting", the job in flight, failed jobs with the reason, and the last results.
+  The Status tab shows the same block.
 - `/ap_apply <arm_name>` — admin/testing safety valve: directly queue an
   arm with the extender, bypassing the AP server entirely (exactly the
   same call the real item-received path makes). Use `/ap_apply` with no
   argument to see the full list of known arm names. Special forms:
   `give_item:<resref>[:<count>]` for gear, `companion_class:<name>:<class>`
   for the companion class-randomization feature (see `Options.py`'s
-  `CompanionClass`), `additional_feats:<key>` (`pc`, `bastila`, `canderous`,
-  `carth`, `jolee`, `juhani`, `mission`, `zaalbar`), `force_power:<row>` and
-  `trap:<type>[:<params>]` (for example `trap:remove_companion`).
+  `CompanionClass`), `force_power:<row>` and `trap:<type>[:<params>]` (for
+  example `trap:remove_companion`). It goes through the same dispatcher as a
+  real item, so it lands when the game is calm, not instantly. To unlock a
+  companion's feat training use `give_item:ap_ft_<key>:1` (`bastila`,
+  `canderous`, `carth`, `jolee`, `juhani`, `mission`, `zaalbar`).
 - `/ap_check <location name>` — manually report a location check by name
   (bypasses the normal auto-detection).
 - `/ap_locations` — list every location and whether it's checked.
-- `/ap_clear_queue` — admin: drops EVERY entry staged for the game but not yet applied. The client already drops the entries it
-  re-derives from fresh polls (XP/credit/level corrections, companion classes, the tracker stages) every time it connects to the game;
-  use this when anything else staged keeps firing on every load. The gear, traps and other grants it drops that cannot be re-derived are
-  journaled (`extender/area_trampolines/_dropped_queue.json`); `/ap_restore_queue` stages them again.
-- `/ap_restore_queue` — admin: re-stages what the last `/ap_clear_queue` dropped (item grants, traps, force powers, feats, plain arms).
-  Corrections the reconciler recomputes and queued DeathLink deaths are never restored; an entry already staged is not added twice.
+- `/ap_clear_queue` — admin, rarely needed now: deliveries go through the dispatcher and are not in the older staged queue this command empties. It only matters when an entry
+  an earlier version left staged keeps firing on every load. What it drops that cannot be re-derived is journaled (`extender/area_trampolines/_dropped_queue.json`);
+  `/ap_restore_queue` stages it again.
+- `/ap_restore_queue` — admin: re-stages what the last `/ap_clear_queue` dropped. Corrections the reconciler recomputes and queued DeathLink deaths are never restored.
 - `/ap_regen_poll` — manual fallback: re-run the automatic `ap_poll_shared.ncs`
   regeneration described above, using this session's already-connected
   `area_randomizer` and Additional Enemies setting. Use this if the automatic regeneration
@@ -53,15 +54,15 @@ If the client cannot find the project's `scripts\` folder (an unusual folder lay
   suppression wrapper (prevents the vanilla trial from granting a free
   Jedi class outside `starting_class`'s gating), same idea as `/ap_regen_poll`.
 - `/ap_patch_all` — re-applies the per-seed game-file patches (Loot Mode,
-  item suppression, story gates, door randomization, Additional Enemies, boss
-  datapads, Jedi suppression), ignoring the already-applied marker. Use it after an
+  item suppression, story gates, door randomization, Additional Enemies, Bazaar
+  tokens, boss datapads, the droid assets, Jedi suppression), ignoring the already-applied marker. Use it after an
   `APPLY FAILED` line, or after manually restoring or editing the game install and
   wanting a clean re-apply.
-- `/ap_apply_galactic_shop`, `/ap_apply_new_companion`,
+- `/ap_apply_galactic_shop`, `/ap_apply_new_companion`, `/ap_apply_droid_assets`,
   `/ap_apply_area_poll_hooks`, `/ap_apply_shop_item_costs`,
   `/ap_apply_tracker_quest` — the same kind of manual fallback for the
   patches that run on every connect (Galactic Shop crate, the New
-  Companion assets, the poll hook for areas with no OnEnter script, shop
+  Companion assets, the droid assets, the poll hook for areas with no OnEnter script, shop
   prices, the in-game Archipelago Tracker journal quest). The boss
   datapad patch and the vendor refresh also run on every connect and have
   no manual command; reconnecting re-runs them.
@@ -82,6 +83,9 @@ If the client cannot find the project's `scripts\` folder (an unusual folder lay
   has been escaped, then removes them; `on` always removes, `log` never does, `off` disables it.
 - `/ap_shop` — Galactic Shop (Void Trade) status for this slot.
 - `/received` — item receipt history (standard Archipelago client command).
+
+A few more commands (`/ap_raw` and the `/ap_dispatch*` family) are developer tools. They are refused unless the environment variable `KOTOR_AP_DEV=1` is set when the
+client starts, and they are not needed for playing or for reporting a bug.
 
 **Use `/`, not `!`, for the commands above** — despite older guidance in
 this doc, `/` is the ONLY real command marker: `CommandProcessor`'s base
@@ -169,21 +173,16 @@ crash bug — send these along with it:
 - **The client's log** around the time it happened — the newest
   `logs\KotorClient_<date>.txt` in your Client folder (it holds the same lines
   as the client's Heartbeat tab, including the game events it relayed).
-- If it's specifically a delivery that's stuck (staged but never lands):
-  also grab `extender\area_trampolines\_pending_queue.json` and
-  `_armed_state.json` from wherever you installed this project — shows
-  exactly what's still queued and which areas currently have it baked in.
+- If it's specifically a delivery that's stuck or failed: a screenshot of the Status tab's delivery block (or the `/ap_status` output) and the `[dispatch]`
+  lines in the client log around that time. They show whether the job was waiting for a calm moment, was sent again, or failed, and why.
 
 ## Troubleshooting
 
-- Companion recruit arms and some other deliveries are serialized
-  (`HEAVY_ARMS` in `entitlement.py`) and apply on the player's *next* area
-  transition, not instantly — a documented "one-transition delivery lag,"
-  not a bug.
-- If an armed delivery shows "STAGED" in the log but never actually lands
-  in-game, check `extender.log` for an `ap_run_orchestrator: FAILED`
-  block first: a failed orchestrator call is the usual reason a staged
-  delivery never lands.
+- Deliveries wait for a calm moment: not during a conversation, a cutscene or a fight (the client log says `job N is waiting for a calm moment: <why>`). A long fight
+  or scene delays them until it ends; that is not a bug. Companion recruits and class changes are sent one at a time on purpose.
+- If the log shows `[dispatch] no answer for job N yet; sending it again`, the game is not answering: KOTOR pauses all script activity while its window is not focused, so click
+  into it. If it is focused and the client keeps resending, check `extender.log` for the extender losing its connection.
+- A `[dispatch] ... the game does not know the action` or `could not apply job` line means that one job failed and was not retried; it is in the delivery log with the reason. Report it.
 - Close an old KotorClient before starting a new one: a leftover client process can hold the game's connection, and the new client then connects to nothing
   without showing an error.
 - Crashes in the Taris Undercity or during a dialogue are known vanilla issues (graphics driver, audio engine); README's "Other Notes" has the workarounds.

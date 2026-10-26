@@ -19,28 +19,23 @@ optional — skipping either means the mod won't work.
   needed to run the installer and `KotorClient.py`. 3.11.9 or a newer 3.11
   also works; **Python 3.14 does not** (the Archipelago client refuses to run
   on it), so install 3.12 or 3.13 alongside it if that is what you have.
-- **Archipelago 0.6.7 or newer, the "Source code" download, not the
-  installer app** — [get it here](https://github.com/ArchipelagoMW/Archipelago/releases).
-  `KotorClient.py` needs to sit inside a real Archipelago source folder to
-  run, so the installer app (which has no source files in it) won't work
-  for this part. Extract the source zip anywhere — that folder is your
-  **Client folder** for everything below.
+- **The Archipelago Launcher, 0.6.7 or newer (the normal Windows installer)** — only to **generate or host** a seed yourself. To
+  play a seed someone else hosts you do not need it: the KOTOR download already contains the Archipelago files the client runs on, so
+  there is no Archipelago source code to download any more.
+- **Git for Windows**, if the installer says it needs it (it offers to install it for you).
 
 ## Step 1 — Get the files
 
 1. Download both zips from **[this project's Releases page](https://github.com/Firebringer92/Archipelago-Fire/releases)**
    (same release, don't mix versions): `KOTOR-AP-World-vX.Y.Z.zip`
-   (contains `kotor.apworld`) and `KOTOR-AP-PlayerBundle-vX.Y.Z.zip`
+   (contains only `kotor.apworld`) and `KOTOR-AP-PlayerBundle-vX.Y.Z.zip`
    (everything else).
-2. Extract the PlayerBundle zip's contents directly into your Client
-   folder (the one from "What you'll need" above) — a plain "extract
-   here," nothing to move around afterward.
-3. Put `kotor.apworld` in two places:
-   - `<Client folder>\custom_worlds\kotor.apworld`
-   - `custom_worlds\kotor.apworld` inside the Archipelago Launcher app's
-     own install folder (create `custom_worlds\` there if needed — find
-     that folder via the Launcher's Start Menu shortcut → right-click →
-     Open file location).
+2. Right-click the PlayerBundle zip, choose **Extract All**, and pick a new folder
+   (for example `C:\KOTOR-AP`; not inside Program Files and not inside the zip). This is your **Client folder** for everything below.
+3. Only if you generate or host seeds: put `kotor.apworld` in the `custom_worlds` folder of your Archipelago Launcher install
+   (create `custom_worlds\` there if needed — find that folder via the Launcher's Start Menu shortcut → right-click →
+   Open file location). Do not put it in the Client folder. The client checks that its release matches the seed's
+   and stops with a message if it does not, so keep both zips on the same release.
 
 ## Step 2 — Install
 
@@ -60,37 +55,45 @@ To remove everything later, double-click **`Uninstall.bat`** the same way.
    under `KotOR:`. **If someone else is hosting**, skip straight to step
    3 — send them your yaml instead.
 2. In the Archipelago Launcher: click **Generate** and select your yaml,
-   then click **Host** and select the seed zip it just made.
-3. click **"KOTOR Client"** in the Archipelago Launcher to connect (Step 2's installer registers this
-   button — it's the same client as running `KotorClient.py` directly,
-   just no terminal needed). Then connect to server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes. The client prints `[patching] ...` while it prepares the game files and a `Finished` line when you can start the game; if KOTOR was already running, relaunch it, because the game reads some of the tables the patches replace (the droid options) only at startup. Connect before you start KOTOR: the first connect after an
+   then click **Host** and select the seed zip it just made (or upload it to archipelago.gg).
+3. Double-click **`Start KOTOR Client.bat`** in your Client folder (or click **"KOTOR Client"** in the Archipelago Launcher, if you
+   put `kotor.apworld` there: it starts the same client). Then connect to the server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes. The client prints `[patching] ...` while it prepares the game files and a `Finished` line when you can start the game; if KOTOR was already running, relaunch it, because the game reads some of the tables the patches replace (the droid options) only at startup. Connect before you start KOTOR: the first connect after an
    install or update also adds a few entries to the game's `dialog.tlk` once, which can't happen while the game is running.
 4. Open the actual game. You should see on the client.py it switch status to `Extender: CONNECTED`  otherwise type   command  `/ap_status` to see if your client is talking to game. If it shows connected and your in the server. You are  good to go!
 
 Note: If Kotor doesn't launch from archipelago launcher try launching it from your client folder instead.
 
 Every option that changes game files (Loot Mode, Progression System, door
-randomization, additional enemies, Galactic Shop, New Companion, the droid options, boss datapads
-and the Archipelago Vendor, whichever you enabled) applies itself automatically
+randomization, additional enemies, Galactic Shop, New Companion, the droid options, boss datapads,
+the Archipelago Vendor and the Bazaar, whichever you enabled) applies itself automatically
 the moment you connect — no separate patch step. See `TESTING.md` for client commands and what to
 send if you hit a bug.
 
-New in 0.1.9: the Progression System now holds story events (not doors or travel) until you own enough of that planet's
-Progression items, and it works with every goal and both area randomizer modes. `companion_mode: ap_limited` hands out a
-companion for every 25 of your own checks, with no companion items. `starting_class: droid` and `companion_class: droid` turn your
-character and the seven organic companions into droids; the game must be relaunched after the client finishes patching, because
-those options replace class, appearance and weapon tables the game reads once at startup. `KotoR_TEMPLATE.yaml` documents every option.
+New in 0.2.0:
+- **Items arrive when the game is calm.** Everything the client delivers now goes through one queue, one job at a time, and is applied the moment you are not in a
+  conversation, a cutscene or a fight (see "How do checks/locations work" below). The old wait for the next loading zone is gone.
+- **New Companion is a console** on the Ebon Hawk (`new_companion`: `off`, `on` or `random_class`). Once you receive the item "Ebon Hawk: New Companion Selection" you can
+  swap HK-47's place or T3-M4's place for Meetra Surik, Darth Malak, Calo Nord, Yuthura Ban, Darth Bandon or Trask Ulgo, and back. With `random_class` each of the six is
+  dealt a random class for the seed. A swap does not carry over gear or levels, so take the gear off first.
+- **Additional Feats is a training option in the companion's own conversation.** The item unlocks "train in a new feat" for one companion; you pick any feat they do not
+  know and pay credits, which rise with every feat.
+- **New checks:** `quest_item_checks` (13 checks for picking up the game's quest items, on by default) and `bazaar` (a Jawa trader on the Ebon Hawk: 5 purchases and 20
+  Bazaar Token Exchange checks, with tokens hidden in containers around the game).
+- **Traps with `item_filler` are limited to 36 per seed.**
+- Checks you never reached on Taris and the Endar Spire are released when the Ebon Hawk takes off from Taris, and several story-gate and area randomizer door problems were fixed.
+  `KotoR_TEMPLATE.yaml` documents every option.
+
 
 
 ## Updating from an earlier version
 
-Download both zips of the new release, close the Archipelago client and KOTOR,
-extract the PlayerBundle zip over your Client folder and let it replace the
-whole `extender\` and `scripts\` folders (copying over only the files you
-recognize can leave out `extender\scripts_src\`), put the new `kotor.apworld`
-in both places from Step 1, and double-click `Install.bat` again. Seeds
+Download both zips of the new release and close the client and KOTOR. Extract the new PlayerBundle zip into a **new folder** and run its
+`Install.bat` (you no longer need the Archipelago source folder an older release asked for; delete it if you like). If you
+keep using the same Client folder instead, extract over it and let it replace the whole `extender\`, `scripts\`, `worlds\` and `data\`
+folders (copying over only the files you recognize can leave out `extender\scripts_src\`). Put the new `kotor.apworld` in the Launcher's
+`custom_worlds` (replace the old one). Seeds
 generated with an older world version have to be generated again when a release
-changes the item or location tables (0.1.8 and 0.1.9 do). Then connect once with the
+changes the item or location tables (0.1.8, 0.1.9 and 0.2.0 do); the client refuses a seed from a different world release. Then connect once with the
 game closed, as in Step 3, before launching KOTOR.
 
 **Switching to a new seed on the same install:** quit and restart the client first (a grant still waiting in the client from the
@@ -149,15 +152,18 @@ engine issues, not this mod** — worth ruling out before reporting a bug:
 
 
 ## How do checks/locations work in this mod?
-Due to nature of game, this mod has a specialized delivery/receipt pipeline to read and write to the game.
-When you first launch KotorClient.py and connect to server you will see an "extender" along with status. 
-This extender is what is used to get information from the game to report on current status and the client will 
-then use this information to determine "Did you achieve requirements for a known check". If you did, it will then send back to AP Server to mark it as completed and the attached item is then sent by client to be delivered to your game.
-You in game might not see the result check immediately. The delivery pipeline is designed to provide you items when you load into a new module (loading zone). Additionally because of how taxing some of the items are to the game client, there is a queuing system in place so you might not get all the items your supposed to get on your first transition. This is designed purposefully to prevent a game crash. A known issue where if more than 30 or so items being sent at once overwhelms the game. So if you see you should have gotten an item, it wsn't delivered ensure you check if its queued in the KotorClient status page or if it is marked as Completed/Received and you didn't get it that would be a bug. You will notice during playing that your KotorClient.py will get lots of messages, these are in game events that is being reported to client from game on current status and used to detect a check, this happens every 5 seconds. 
+Because of how the game works, this mod has its own pipeline for reading from and writing to the game.
+When you launch KotorClient.py and connect to a server you will see an "extender" along with its status.
+The extender reports what is happening in the game (every 5 seconds or so), and the client uses those reports to decide "did you achieve the requirements for a known check".
+If you did, it tells the Archipelago server, and the item attached to that check goes to whoever it belongs to.
+Items that come to you are delivered by a **dispatcher**: the client sends one job at a time (an item, credits, XP, a skill, a class, a trap, a message) and the game applies it as soon as it is calm: never during a conversation, a cutscene or a fight.
+ Usually that is within a few seconds, and a message box lists what you received after all jobs are done. If you have a lot of checks (30 or more) this can take a few minutes. If you are in a long fight or a long scene, the deliveries wait until it ends. Each job has a number, so a repeat is dropped, and if you load an older save the client sends again what that save is missing, once. A death from DeathLink is the one thing that is never sent again after a reload. The client's Status tab and `/ap_status` list "Deliveries waiting", the job in flight and the
+last results; if an item you expect has not arrived, look there first, and a failed job says why. If the client shows it as applied and you did not get it, that is a bug: report it.
+
+The client's log fills with lines from the game: those are the game's reports, used to detect checks.
 You will also see a few small quest items in your inventory: a "Location: <area>" item for each area you visit and,
 on a new character, a "Player ID: <slot> <hash>" item. They are record-keeping the mod uses to remember which areas
-you have seen and which seed a character belongs to, so don't drop or sell them (the Remove Half Inventory trap leaves them alone). The Progression items ("Taris Progression 2" and so on)
-are plot items as well: they cannot be sold or dropped, and a lost one is given back.
+you have seen and which seed a character belongs to, so don't drop or sell them (the Remove Half Inventory trap leaves them alone). The Progression items ("Taris Progression 2" and so on) are plot items as well: they cannot be sold or dropped, and a lost one is given back.
 For more technical details on how it all works refer to DESIGN.md
 
 ## Known alpha limitations
@@ -170,8 +176,10 @@ For more technical details on how it all works refer to DESIGN.md
   Ebon hawk travel to all planets is enabled automatically in this mode to ensure you can still use it as a hub
   and travel to and from planets. Ebon-Hawk entrance/exit always leads to it.
   End game areas (leviathan/unknown world/star forge) are taken out of randomization on doors
-- Death link will not kill the player if he has party members due to having a companion still up. Known issue.
-  A received death is applied on your next area transition, and deaths that arrive while the client is closed are discarded.
+- DeathLink: an incoming death waits until you are out of a conversation, cutscene or fight, then kills you once; loading an older save does not repeat it, and a death caused by an
+  incoming one is not sent on to the others. Deaths that arrive while the client is closed are discarded.
+- New Companion console: swapping does not carry over gear or levels. Darth Bandon cannot wear body armor or robes (equipping them crashed the game), so he has the armor built in instead.
+  On Kashyyyk the landing scenes treat whoever stands in HK-47's slot as HK-47 and play his lines.
 - **Crash Confirmed In Game: opening a companion's Force Powers
   screen right after they've been granted a Jedi class, before they've
   reached level 2 in it.** A freshly-granted level-1 Jedi companion has

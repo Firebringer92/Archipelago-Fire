@@ -402,10 +402,10 @@ def install(game_dir: str) -> None:
             print("\n" + _wrap_note(w, f"  {i}. ", "     "))
         print("-" * 60)
     print("\nNext steps:")
-    print(_wrap("Copy kotor.apworld into the custom_worlds folder of your Archipelago install "
-                "(skip this if you already did).", "  1. ", "     "))
-    print(_wrap("Open the Archipelago Launcher and click \"KOTOR Client\", then connect to your "
-                "server. The first connect finishes setting up the game files by itself.", "  2. ", "     "))
+    print(_wrap("To generate or host a seed, copy kotor.apworld (the other download) into the custom_worlds folder of your "
+                "Archipelago Launcher install (skip this if you already did, or if someone else hosts for you).", "  1. ", "     "))
+    print(_wrap("Start the client: double-click \"Start KOTOR Client.bat\" in this folder (or click \"KOTOR Client\" in the "
+                "Archipelago Launcher), then connect to your server. The first connect finishes setting up the game files by itself.", "  2. ", "     "))
 
 
 def uninstall() -> None:
@@ -443,8 +443,8 @@ def uninstall() -> None:
     # here; the Galactic Shop and area poll hook patchers were missing and left their edits behind, and the story
     # gate and droid asset patchers after them (gate scripts left in Override would keep gating a vanilla game).
     for name in ("patch_loot_disturb.py", "patch_item_suppression.py", "patch_door_randomizer.py", "patch_additional_enemies.py",
-                 "patch_boss_datapads.py", "patch_galactic_shop.py", "patch_area_poll_hooks.py", "patch_story_gates.py",
-                 "generate_droid_assets.py"):
+                 "patch_bazaar_tokens.py", "patch_boss_datapads.py", "patch_galactic_shop.py", "patch_area_poll_hooks.py", "patch_story_gates.py",
+                 "generate_droid_assets.py", "patch_party_console.py"):
         result = subprocess.run(
             [sys.executable, os.path.join(SCRIPT_DIR, name), "--restore", f"--game-dir={game_dir}"],
             capture_output=True, text=True,

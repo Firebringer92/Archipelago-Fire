@@ -84,7 +84,12 @@ parser.add_argument("--additional-enemies", type=int, default=None, choices=[0, 
 parser.add_argument("--no-deploy", action="store_true",
                      help="Only write the .nss source -- skip compiling and deploying to --game-dir's Override "
                           "(matches this script's old dev-only behavior).")
+parser.add_argument("--dispatch-test", action="store_true", help="Kept so older callers still work; the dispatcher is always in the poll now.")
+parser.add_argument("--no-dispatcher", action="store_true",
+                     help="Leaves the job dispatcher out of the poll (only for comparing against a build without it).")
 cli_args = parser.parse_args()
+# Every delivery goes through the job dispatcher (generate_trampoline_batch.py's old staged path is retired), so it is part of the poll.
+cli_args.dispatch_test = not cli_args.no_dispatcher
 GAME_DIR = cli_args.game_dir
 
 
@@ -347,6 +352,10 @@ lines.append("    if (GetLocalBoolean(oPC, 78)) nMask = nMask + 2;")
 lines.append("    if (KSE_GetData(\"ff_mission_staged\") == \"1\") nMask = nMask + 4;")
 lines.append("    if (KSE_GetData(\"zaal_mission_staged\") == \"1\") nMask = nMask + 8;")
 lines.append("    if (GetLocalBoolean(GetModule(), 50)) nMask = nMask + 16;")
+lines.append("    // The Taris Duel Ring: the organizer's dialog (k_ptar_duelring) sets TAR_DUELINPROGRESS, takes the party out and jumps the player to the arena; the")
+lines.append("    // end scripts (k_ptar_duelend, k_ptar_duelend2, k_ptar_dlcutend, k_ptar_dueply_ex) clear it and restore the party by index from stored globals, so no companion or")
+lines.append("    // class job may run meanwhile. Only counted inside the cantina module, so a flag left set by a crash cannot hold deliveries elsewhere.")
+lines.append("    if (GetGlobalBoolean(\"TAR_DUELINPROGRESS\") && GetStringLowerCase(GetModuleFileName()) == \"tar_m02ae\") nMask = nMask + 32;")
 lines.append("    return nMask;")
 lines.append("}")
 lines.append("")
@@ -633,56 +642,14 @@ lines.append('    KSE_Diag(138, sReport);')
 lines.append("}")
 lines.append("")
 
-# Feats self-healing (see DEVELOPMENT_HISTORY.md section 13) -- same per-companion GetObjectByTag+IsNPCPartyMember guard as
-# CheckCompanionClasses() above, but restricted to a small explicit id set
-# rather than the full 122-feat CheckFeats() scan below -- expected_feats
-# (kotor_reconciliation.py) can only ever contain ids from these two
-# sources anyway, so scanning the other ~100 feat.2da ids per companion
-# every poll would be pure waste. Keep both lists in sync by hand:
-# - KotorClient.py's ADDITIONAL_FEATS_POOL (17 ids, random Additional
-#   Feats draws)
-# - entitlement.py's JEDI_CLASS_FEATS (the Jedi class-conversion bundle --
-#   55/107/116 aren't in the pool above; 43/101/88/98 already are, listed
-#   here too for clarity rather than de-duplicated across two constants).
-_ADDITIONAL_FEATS_POOL = [
-    40, 42, 43, 4, 5, 6, 14, 28, 29, 11, 30, 8, 31, 60, 104, 101, 88, 98,
-]
-_JEDI_CLASS_FEATS_EXTRA = [55, 107, 116]  # Jedi Defense, Jedi Sense, Force Sensitivity -- not in the pool above
-_COMPANION_FEAT_SCAN_IDS = sorted(set(_ADDITIONAL_FEATS_POOL) | set(_JEDI_CLASS_FEATS_EXTRA))
-lines.append("// Reports which of the tracked feat ids (Additional Feats pool +")
-lines.append("// Jedi class-conversion bundle) each of the 7 non-droid companions")
-lines.append("// currently holds, so the reconciler can self-heal a companion's feats the")
-lines.append("// same way CheckCompanionClasses() does for class -- companion feats")
-lines.append("// previously had NO live polling at all. \"NONE\" means not currently")
-lines.append("// recruited (IsNPCPartyMember false) -- distinct from a real but empty held")
-lines.append("// list (recruited, holds none of the tracked ids).")
-lines.append("void CheckCompanionFeats()")
-lines.append("{")
-lines.append('    string sReport = "AP|COMPANIONFEATSREPORT";')
-for key, tag, npc_const in _COMPANION_CLASS_POLL:
-    var = key[0].upper() + key[1:]
-    lines.append(f'    object oF{var} = GetObjectByTag("{tag}");')
-    lines.append(f'    int bF{var}Recruited = IsNPCPartyMember({npc_const}) && GetIsObjectValid(oF{var});')
-    # No ternary operator -- NWScript's compiler doesn't support ?: (see
-    # this project's own accumulated NWScript-syntax findings). Plain
-    # if/else building the string instead.
-    lines.append(f'    string sF{var} = "NONE";')
-    lines.append(f"    if (bF{var}Recruited)")
-    lines.append("    {")
-    lines.append(f'        sF{var} = "";')
-    for feat_id in _COMPANION_FEAT_SCAN_IDS:
-        lines.append(f'        if (KSE_GetFeatAcquired({feat_id}, oF{var})) sF{var} += "{feat_id},";')
-    lines.append("    }")
-    lines.append(f'    sReport = sReport + "|{key}=" + sF{var};')
-lines.append('    KSE_Diag(139, sReport);')
-lines.append("}")
-lines.append("")
+# The feats CheckFeats() reports for the player character (the reconciler's fallback when the full list has not arrived yet; the Remove Half Known
+# Feats trap uses the full list from CheckFeatsFull()): the ids the feat training offers plus the Jedi class feats.
+_PC_FEAT_SCAN_IDS = sorted({40, 42, 43, 4, 5, 6, 14, 28, 29, 11, 30, 8, 31, 60, 104, 101, 88, 98, 55, 107, 116})
 
 # Items whose silent loss would strand the player (the 24 story-gate progression items and the Archipelago Vendor
 # passes). A narrow, targeted GetItemPossessedBy() check per resref, not full reconciliation -- these
 # are simple possession facts (has it or doesn't). Keep this list in sync by hand with entitlement.py's
-# own PROGRESSION_ITEM_RESREFS and worlds/kotor/Items.py's PROGRESSION_ITEM_RESREFS (same reasoning as
-# _ADDITIONAL_FEATS_POOL above -- these three don't share an import boundary).
+# own PROGRESSION_ITEM_RESREFS and worlds/kotor/Items.py's PROGRESSION_ITEM_RESREFS (these three don't share an import boundary).
 _PROGRESSION_ITEM_RESREFS = [
     (f"tok_{_key}{_n}", f"ap_tk_{_key}{_n}")
     for _key in ("tar", "dan", "tat", "kas", "man", "kor", "unk", "fin") for _n in (1, 2, 3)
@@ -693,6 +660,12 @@ _PROGRESSION_ITEM_RESREFS = [
     ("vendor_feat", "ap_vtok_feat"),
     ("vendor_power", "ap_vtok_power"),
     ("vendor_align", "ap_vtok_align"),
+] + [
+    # 0.2.0 plot items -- same keys/order as entitlement.py's PROGRESSION_ITEM_RESREFS.
+    (f"ft_{_k}", f"ap_ft_{_k}") for _k in ("bastila", "canderous", "carth", "jolee", "juhani", "mission", "zaalbar")
+] + [
+    ("nc_console", "ap_nc_console"),
+    ("party_console", "ap_partycon_a"),
 ]
 lines.append("// Roster report for the reconciler's stray-companion cleanup (kotor_")
 lines.append("// reconciliation.py). Reports which of the 9 companions are AVAILABLE (on the")
@@ -809,6 +782,82 @@ lines.append("    if (sNow == sLast && !bFull) return;")
 lines.append('    KSE_SetData("d_vals", sNow);')
 for i, (key, resref) in enumerate(_BOSS_DATAPADS):
     lines.append(f'    if (GetSubString(sNow, {i}, 1) == "1") KSE_Diag(178, "AP|DATAPAD|{key}");')
+lines.append("}")
+lines.append("")
+
+# Quest items (Locations.py, location_type "quest_item"): reports each quest item the player holds, by tag, so the client can credit
+# the matching "Quest Item: ..." check whatever the way the item was obtained. Keep the tags in step with Locations.py's quest_item_tags
+# (worlds/kotor/test/test_generation.py checks this). Same on-change-plus-a-full-report-every-12-polls shape as the datapads.
+_QUEST_ITEM_TAGS = [
+    "ptar_sitharmor", "ptar_sithpapers", "ptar_shieldcodes", "rakghoulserum", "tat17_sandperdis", "tat20aa_westmap",
+    "tat20_banthafod", "k33_itm_sithmdln", "k37_itm_freedont", "kor_itm_sithtabl", "kas25_swordblade", "man28_envirosuit", "w_ddata",
+]
+lines.append("void CheckQuestItems()")
+lines.append("{")
+lines.append("    object oPC = GetFirstPC();")
+lines.append("    int nQ = 0;")
+lines.append('    if (KSE_HasData("qi_n")) nQ = StringToInt(KSE_GetData("qi_n"));')
+lines.append('    KSE_SetData("qi_n", IntToString(nQ + 1));')
+lines.append("    int bFull = (nQ % 12 == 0);")
+lines.append('    string sNow = "";')
+for tag in _QUEST_ITEM_TAGS:
+    lines.append(f'    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "{tag}")));')
+lines.append('    string sLast = "";')
+lines.append('    if (KSE_HasData("qi_vals")) sLast = KSE_GetData("qi_vals");')
+lines.append("    if (sNow == sLast && !bFull) return;")
+lines.append('    KSE_SetData("qi_vals", sNow);')
+for i, tag in enumerate(_QUEST_ITEM_TAGS):
+    lines.append(f'    if (GetSubString(sNow, {i}, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|{tag}");')
+lines.append("}")
+lines.append("")
+
+# Archipelago Bazaar receipts: the Jawa gives one plot item per purchase (ap_bz_buy) and per token exchange (ap_bz_swap); the check
+# numbers are their stack counts, so the client credits by count like the bounty cards. One line "AP|BAZAAR|<purchases>|<exchanges>",
+# on change and about once a minute.
+lines.append("void CheckBazaar()")
+lines.append("{")
+lines.append("    object oPC = GetFirstPC();")
+lines.append("    int nB = 0;")
+lines.append('    if (KSE_HasData("bz_n")) nB = StringToInt(KSE_GetData("bz_n"));')
+lines.append('    KSE_SetData("bz_n", IntToString(nB + 1));')
+lines.append("    int bFull = (nB % 12 == 0);")
+lines.append("    int nBuy = 0;")
+lines.append("    int nSwap = 0;")
+lines.append('    object oBuy = GetItemPossessedBy(oPC, "ap_bz_buy");')
+lines.append("    if (GetIsObjectValid(oBuy)) nBuy = GetItemStackSize(oBuy);")
+lines.append('    object oSwap = GetItemPossessedBy(oPC, "ap_bz_swap");')
+lines.append("    if (GetIsObjectValid(oSwap)) nSwap = GetItemStackSize(oSwap);")
+lines.append('    string sNow = IntToString(nBuy) + "|" + IntToString(nSwap);')
+lines.append('    string sLast = "";')
+lines.append('    if (KSE_HasData("bz_vals")) sLast = KSE_GetData("bz_vals");')
+lines.append("    if (sNow == sLast && !bFull) return;")
+lines.append('    KSE_SetData("bz_vals", sNow);')
+lines.append('    if (nBuy > 0 || nSwap > 0) KSE_Diag(203, "AP|BAZAAR|" + sNow);')
+lines.append("}")
+lines.append("")
+
+# Korriban, Naga Sadow's tomb (korr_m39aa): taking the ceremonial saber closes and locks the star map door and the Uthar / Yuthura scene locks the
+# exit; the game unlocks both again only on certain outcomes. A player who took the saber before the star map (the third Korriban item gates the
+# star map) and killed both was left with the star map door and the exit locked, unable to return for the map. Once both are dead, unlock both.
+lines.append("void CheckTombDoors()")
+lines.append("{")
+lines.append('    if (GetStringLowerCase(GetModuleFileName()) != "korr_m39aa") return;')
+lines.append('    object oUthar = GetObjectByTag("kor39_utharwynn");')
+lines.append('    object oYuthura = GetObjectByTag("kor39_yuthura");')
+lines.append("    if (!GetIsObjectValid(oUthar) || !GetIsDead(oUthar)) return;")
+lines.append("    if (!GetIsObjectValid(oYuthura) || !GetIsDead(oYuthura)) return;")
+lines.append('    object oMap = GetObjectByTag("k39_door_starmap");')
+lines.append('    object oExit = GetObjectByTag("kor39_kor36");')
+lines.append("    if (GetIsObjectValid(oMap) && GetLocked(oMap))")
+lines.append("    {")
+lines.append("        SetLocked(oMap, FALSE);")
+lines.append('        KSE_Diag(205, "AP|TOMB|unlocked|k39_door_starmap");')
+lines.append("    }")
+lines.append("    if (GetIsObjectValid(oExit) && GetLocked(oExit))")
+lines.append("    {")
+lines.append("        SetLocked(oExit, FALSE);")
+lines.append('        KSE_Diag(205, "AP|TOMB|unlocked|kor39_kor36");')
+lines.append("    }")
 lines.append("}")
 lines.append("")
 
@@ -931,8 +980,7 @@ lines.append("// currently holds (KSE_GetFeatAcquired is per-id membership only,
 lines.append("// no 'list all feats' native), so the client can pick half at random for")
 lines.append("// the Remove Half Known Feats trap without guessing at what's held.")
 lines.append("//")
-lines.append("// Every poll this checks ONLY the feats the reconciler and the Additional Feats picker use")
-lines.append("// (the Additional Feats pool plus the Jedi class feats, the same ids as the companion scan)")
+lines.append("// Every poll this checks ONLY a short list of feats (the ones feat training offers plus the Jedi class feats)")
 lines.append("// -- each KSE_GetFeatAcquired call writes a native log line, and scanning all of them every")
 lines.append("// 5 s was most of kse.log. The full list the Remove Half Known Feats trap needs is reported by")
 lines.append("// CheckFeatsFull() below, about once a minute.")
@@ -940,7 +988,7 @@ lines.append("void CheckFeats()")
 lines.append("{")
 lines.append("    object oPC = GetFirstPC();")
 lines.append('    string sHeld = "";')
-for feat_id in _COMPANION_FEAT_SCAN_IDS:
+for feat_id in _PC_FEAT_SCAN_IDS:
     lines.append(f"    if (KSE_GetFeatAcquired({feat_id}, oPC)) sHeld += \"{feat_id},\";")
 lines.append('    KSE_Diag(135, "AP|FEATREPORT|" + sHeld);')
 lines.append("}")
@@ -1262,6 +1310,321 @@ if wants_droid_look:
     lines.append('    KSE_Diag(188, "AP|DROIDLOOK|restored");')
     lines.append("}")
     lines.append("")
+if cli_args.dispatch_test:
+    DT_FUNCTIONS = r'''
+// ---- the job dispatcher (generate_poll_shared.py; every delivery goes through it) -----------------------------------
+// A job from the client arrives in the in-DLL inbox, KSE data "dt_job" = "<seq>:<action>:<args>[^^<message>]" (the extender writes it for the
+// client's DISPATCH: command). seq is a number 0-255 kept in the PC's local booleans 48-55, which are saved with the game, so a
+// reloaded save brings back the number that matches its own state. A job fires only when the saved number is seq - 1; the number is
+// advanced and the inbox cleared BEFORE the action runs, so a job can be lost but never run twice. A job already applied
+// (saved number = seq) is dropped as a duplicate; any other number is reported so the client can resync. A job also waits for a
+// calm moment (see DtGateBits). The optional message after ^^ is shown to the player in the same apply, once the action has run.
+// Every decision is logged as AP|DISPATCH|... (KSE_Diag 199).
+void DtMarkReady()
+{
+    KSE_SetData("dt_ready", "1");
+}
+
+void DtLog(string sMsg)
+{
+    KSE_Diag(199, "AP|DISPATCH|" + sMsg + "|mod=" + GetModuleFileName());
+}
+
+int DtGetSeq(object oPC)
+{
+    int nSeq = 0;
+    int nMul = 1;
+    int i = 0;
+    while (i < 8)
+    {
+        if (GetLocalBoolean(oPC, 48 + i) != 0) nSeq = nSeq + nMul;
+        nMul = nMul * 2;
+        i = i + 1;
+    }
+    return nSeq;
+}
+
+void DtSetSeq(object oPC, int nSeq)
+{
+    int nRest = nSeq;
+    int i = 0;
+    while (i < 8)
+    {
+        SetLocalBoolean(oPC, 48 + i, nRest % 2);
+        nRest = nRest / 2;
+        i = i + 1;
+    }
+}
+
+// Which scene-like states are on right now, as bits: 1 scripted scene flag (ApSceneBusyMask), 2 conversation, 4 STUNT cutscene module,
+// 8 PC not commandable, 16 combat, 128 player restrict mode, 256 PC dead. Logged on every change as PROBE, whether or not a
+// job is waiting, so a real cutscene shows which of them it actually sets.
+int DtProbeMask(object oPC)
+{
+    int nBits = 0;
+    if (ApSceneBusyMask() != 0) nBits = nBits + 1;
+    if (GetIsInConversation(oPC)) nBits = nBits + 2;
+    if (GetStringLeft(GetStringLowerCase(GetModuleFileName()), 5) == "stunt") nBits = nBits + 4;
+    if (!GetCommandable(oPC)) nBits = nBits + 8;
+    if (GetIsInCombat(oPC)) nBits = nBits + 16;
+    if (GetPlayerRestrictMode(oPC)) nBits = nBits + 128;
+    if (GetIsDead(oPC)) nBits = nBits + 256;
+    return nBits;
+}
+
+// A job fires only when this is 0: the probe bits plus 32 settling after an area change (3 s) and 64 no party.
+int DtGateBits(object oPC)
+{
+    int nBits = DtProbeMask(oPC);
+    if (GetPartyMemberCount() < 1) nBits = nBits + 64;
+    return nBits;
+}
+
+// On-screen text does not work in this game (docs/MODE_DEPENDENCIES.md); the one-line dialog ap_gate_msg does.
+void DtShowMessage(object oPC, string sMsg)
+{
+    // "~~" in the text is a line break (the client joins the messages of a batch of jobs with it)
+    int nBr = FindSubString(sMsg, "~~");
+    while (nBr >= 0)
+    {
+        sMsg = GetSubString(sMsg, 0, nBr) + "\n" + GetSubString(sMsg, nBr + 2, GetStringLength(sMsg));
+        nBr = FindSubString(sMsg, "~~");
+    }
+    SetCustomToken(901, sMsg);
+    AssignCommand(oPC, ActionStartConversation(oPC, "ap_gate_msg", FALSE, CONVERSATION_TYPE_CINEMATIC, TRUE));
+}
+
+// give_item:<resref>:<count> -- the same grant as the area-entry give_item block (items created one at a time, marked so the loot
+// handler does not destroy them), without that block's starpad progress marker.
+int DtGiveItem(object oPC, string sArgs)
+{
+    string sRes = sArgs;
+    int nCount = 1;
+    int nC = FindSubString(sArgs, ":");
+    if (nC >= 0)
+    {
+        sRes = GetSubString(sArgs, 0, nC);
+        nCount = StringToInt(GetSubString(sArgs, nC + 1, GetStringLength(sArgs)));
+    }
+    if (nCount < 1) nCount = 1;
+    if (nCount > 50) nCount = 50;
+    KSE_SetData("granted_exempt_" + GetStringLowerCase(sRes), "1");
+    int nMade = 0;
+    int i = 0;
+    while (i < nCount)
+    {
+        object oItem = CreateItemOnObject(sRes, oPC, 1);
+        if (GetIsObjectValid(oItem)) nMade = nMade + 1;
+        i = i + 1;
+    }
+    DtLog("GIVE|resref=" + sRes + "|asked=" + IntToString(nCount) + "|created=" + IntToString(nMade) + "|held=" + IntToString(GetItemStackSize(GetItemPossessedBy(oPC, sRes))));
+    if (nMade < 1) return 2;
+    return 1;
+}
+
+// The actions. Returns 0 for one it does not know, 1 when done, 2 when it ran but could not do its job (for example an item
+// that does not exist). "notify" does nothing itself: its text is the message.
+// "arm:<name>" runs one of the fixed arms (DtArm, generated from generate_trampoline_batch.py's APPLIES table).
+int DtRun(object oPC, string sAction, string sArgs)
+{
+    if (sAction == "notify") return 1;
+    if (sAction == "arm") return DtArm(sArgs);
+    if (sAction == "give_item") return DtGiveItem(oPC, sArgs);
+    if (sAction == "set_xp") return DtSetXp(sArgs);
+    if (sAction == "delevel") return DtDelevel(sArgs);
+    if (sAction == "force_power") return DtForcePower(sArgs);
+    if (sAction == "companion_class") return DtCompanionClass(sArgs);
+    if (sAction == "trap") return DtTrap(sArgs);
+    if (sAction == "set_credits")
+    {
+        KSE_SetCredits(oPC, StringToInt(sArgs));
+        if (GetGold(oPC) != StringToInt(sArgs)) return 2;
+        return 1;
+    }
+    return 0;
+}
+
+void DtTick()
+{
+    object oPC = GetFirstPC();
+    if (!GetIsObjectValid(oPC)) return;
+    int nPoll = 0;
+    if (KSE_HasData("dt_poll")) nPoll = StringToInt(KSE_GetData("dt_poll"));
+    nPoll = nPoll + 1;
+    KSE_SetData("dt_poll", IntToString(nPoll));
+    int nSeq = DtGetSeq(oPC);
+
+    // an area change restarts the settling period; the companions are not materialized yet at the instant of entry
+    int bState = FALSE;
+    string sMod = GetModuleFileName();
+    string sLastMod = "";
+    if (KSE_HasData("dt_mod")) sLastMod = KSE_GetData("dt_mod");
+    if (sMod != sLastMod)
+    {
+        KSE_SetData("dt_mod", sMod);
+        KSE_SetData("dt_ready", "0");
+        DelayCommand(3.0, DtMarkReady());
+        DtLog("area_change|from=" + sLastMod);
+        bState = TRUE;
+    }
+    // the saved number as the client needs it: on every change (a reloaded save), at an area change, and every 12th poll
+    string sLastSeq = "";
+    if (KSE_HasData("dt_lastseq")) sLastSeq = KSE_GetData("dt_lastseq");
+    if (sLastSeq != IntToString(nSeq)) bState = TRUE;
+    if (nPoll % 12 == 0) bState = TRUE;
+    if (bState)
+    {
+        KSE_SetData("dt_lastseq", IntToString(nSeq));
+        DtLog("STATE|seq=" + IntToString(nSeq));
+    }
+
+    int nProbe = DtProbeMask(oPC);
+    int nProbeLast = -1;
+    if (KSE_HasData("dt_probe")) nProbeLast = StringToInt(KSE_GetData("dt_probe"));
+    if (nProbe != nProbeLast)
+    {
+        KSE_SetData("dt_probe", IntToString(nProbe));
+        DtLog("PROBE|mask=" + IntToString(nProbe) + "|prev=" + IntToString(nProbeLast));
+    }
+
+    string sJob = "";
+    if (KSE_HasData("dt_job")) sJob = KSE_GetData("dt_job");
+    if (sJob == "") return;
+    int nC1 = FindSubString(sJob, ":");
+    if (nC1 < 1)
+    {
+        KSE_SetData("dt_job", "");
+        DtLog("BAD|raw=" + sJob);
+        return;
+    }
+    int nJobSeq = StringToInt(GetSubString(sJob, 0, nC1));
+    string sRest = GetSubString(sJob, nC1 + 1, GetStringLength(sJob));
+    string sMsg = "";
+    int nMsg = FindSubString(sRest, "^^");
+    if (nMsg >= 0)
+    {
+        sMsg = GetSubString(sRest, nMsg + 2, GetStringLength(sRest));
+        sRest = GetSubString(sRest, 0, nMsg);
+    }
+    string sAction = sRest;
+    string sArgs = "";
+    int nC2 = FindSubString(sRest, ":");
+    if (nC2 >= 0)
+    {
+        sAction = GetSubString(sRest, 0, nC2);
+        sArgs = GetSubString(sRest, nC2 + 1, GetStringLength(sRest));
+    }
+    if (sAction == "notify") sMsg = sArgs;
+
+    // nothing is judged during the settling period after an area change: the saved number is read once the game has finished loading
+    int nWaited = 0;
+    if (KSE_HasData("dt_waitseq") && KSE_GetData("dt_waitseq") == IntToString(nJobSeq)) nWaited = StringToInt(KSE_GetData("dt_waited"));
+    else
+    {
+        KSE_SetData("dt_waitseq", IntToString(nJobSeq));
+        KSE_SetData("dt_lastgate", "-1");
+    }
+    nWaited = nWaited + 1;
+    KSE_SetData("dt_waited", IntToString(nWaited));
+    int nGate = 0;
+    if (!KSE_HasData("dt_ready") || KSE_GetData("dt_ready") != "1") nGate = 32;
+    else
+    {
+        // "state" only asks for the saved number (the client has not learned it yet); it changes nothing
+        if (sAction == "state")
+        {
+            KSE_SetData("dt_job", "");
+            KSE_SetData("dt_lastseq", IntToString(nSeq));
+            DtLog("STATE|seq=" + IntToString(nSeq));
+            return;
+        }
+        if (nJobSeq == nSeq)
+        {
+            KSE_SetData("dt_job", "");
+            DtLog("DUP|seq=" + IntToString(nJobSeq));
+            return;
+        }
+        if (nJobSeq != (nSeq + 1) % 256)
+        {
+            KSE_SetData("dt_job", "");
+            DtLog("SYNC|seq=" + IntToString(nJobSeq) + "|have=" + IntToString(nSeq));
+            return;
+        }
+        nGate = DtGateBits(oPC);
+        // An incoming DeathLink is not held for combat (that is when it matters), and a player who is already dead is not a reason to wait: the
+        // arm reads wasDead itself. Every other gate (conversation, scene, cutscene, locked player, area just loaded, no party) still holds it.
+        if (sAction == "arm" && sArgs == "force_death")
+        {
+            if ((nGate / 16) % 2 == 1) nGate = nGate - 16;
+            if ((nGate / 256) % 2 == 1) nGate = nGate - 256;
+        }
+    }
+
+    if (nGate != 0)
+    {
+        int nLast = StringToInt(KSE_GetData("dt_lastgate"));
+        if (nGate != nLast || nWaited % 6 == 1)
+        {
+            KSE_SetData("dt_lastgate", IntToString(nGate));
+            DtLog("WAIT|seq=" + IntToString(nJobSeq) + "|gate=" + IntToString(nGate) + "|waited=" + IntToString(nWaited));
+        }
+        return;
+    }
+
+    DtSetSeq(oPC, nJobSeq);
+    KSE_SetData("dt_job", "");
+    KSE_SetData("dt_lastseq", IntToString(nJobSeq));
+    int nRan = DtRun(oPC, sAction, sArgs);
+    if (nRan == 1)
+    {
+        DtLog("APPLIED|seq=" + IntToString(nJobSeq) + "|action=" + sAction + "|waited=" + IntToString(nWaited) + "|party=" + IntToString(GetPartyMemberCount()));
+        if (sMsg != "") DtShowMessage(oPC, sMsg);
+    }
+    else if (nRan == 2)
+        DtLog("FAILED|seq=" + IntToString(nJobSeq) + "|action=" + sAction + "|args=" + sArgs);
+    else
+        DtLog("UNKNOWN|seq=" + IntToString(nJobSeq) + "|action=" + sAction);
+}
+'''
+    # The fixed arms the dispatcher can run, with the same bodies the area-entry batches use (one source of truth).
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import generate_trampoline_batch as _gtb
+    _DT_ARM_LABELS = [
+        "class_guardian", "class_consular", "class_sentinel", "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel",
+        "companion_bastila", "companion_canderous", "companion_carth", "companion_hk47", "companion_jolee",
+        "companion_juhani", "companion_mission", "companion_t3m4", "companion_zaalbar", "xp", "credits",
+        "force_death",   # an incoming DeathLink (not held for combat, see DtTick)
+        "computer_use", "demolitions", "stealth", "awareness", "persuade", "repair", "security", "treat_injury",
+        "ability_strength", "ability_dexterity", "ability_constitution", "ability_intelligence", "ability_wisdom",
+        "ability_charisma",
+        "pc_droid",
+        "journal_tracker_20", "journal_tracker_40", "journal_tracker_60", "journal_tracker_80", "journal_tracker_100", "journal_tracker_1",
+    ]
+    _by_label = {label: body for label, body in _gtb.APPLIES.values()}
+    _arm_funcs = ["// ---- fixed arms (generated from APPLIES) ----"]
+    for _label in _DT_ARM_LABELS:
+        _arm_funcs.append("void DtArm_" + _label + "()")
+        _arm_funcs.append("{")
+        _arm_funcs.extend("    " + stmt for stmt in _by_label[_label])
+        _arm_funcs.append("}")
+        _arm_funcs.append("")
+    import dispatch_actions as _da
+    _arm_funcs.append(_da.build_arm_checks(_by_label, _DT_ARM_LABELS))
+    _arm_funcs.append("// 0 = no such arm, 1 = it ran and did its job, 2 = it ran but the result is not there (see dispatch_actions.build_arm_checks)")
+    _arm_funcs.append("int DtArm(string sName)")
+    _arm_funcs.append("{")
+    _arm_funcs.append("    object oPC = GetFirstPC();")
+    _arm_funcs.append("    int nBefore = DtArmValue(oPC, sName);")
+    for _label in _DT_ARM_LABELS:
+        _arm_funcs.append('    if (sName == "' + _label + '") { DtArm_' + _label + "(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }")
+    _arm_funcs.append("    return 0;")
+    _arm_funcs.append("}")
+    _arm_funcs.append("")
+    _marker = "// On-screen text does not work in this game"
+    assert DT_FUNCTIONS.count(_marker) == 1
+    DT_FUNCTIONS = DT_FUNCTIONS.replace(_marker, "\n".join(_arm_funcs) + "\n// ---- parameterized actions (dispatch_actions.py) ----\n"
+                                        + _da.build_source(_gtb) + "\n" + _marker)
+    lines.extend(DT_FUNCTIONS.split("\n"))
 lines.append("void main()")
 lines.append("{")
 lines.append("    // A begin without an end in kse.log marks a poll that stopped partway. The stage markers")
@@ -1272,6 +1635,8 @@ lines.append('    int bTrace = (KSE_HasData("poll_open") && KSE_GetData("poll_op
 lines.append('    KSE_SetData("poll_open", "1");')
 lines.append('    KSE_Diag(176, "AP|POLLRUN|begin|party=" + IntToString(GetPartyMemberCount()));')
 lines.append("    EnsureHeartbeat();")
+if cli_args.dispatch_test:
+    lines.append("    DtTick();")
 lines.append('    if (bTrace) KSE_Diag(176, "AP|POLLRUN|s1");')
 lines.append("    CheckCompanionStuck();")
 lines.append('    if (bTrace) KSE_Diag(176, "AP|POLLRUN|s2");')
@@ -1291,11 +1656,13 @@ lines.append("    CheckClasses();")
 if wants_droid_look:
     lines.append("    CheckDroidLook();")
 lines.append("    CheckCompanionClasses();")
-lines.append("    CheckCompanionFeats();")
 lines.append("    CheckRoster();")
 lines.append("    CheckProgressionItems();")
 lines.append("    CheckSithArmor();")
 lines.append("    CheckBossDatapads();")
+lines.append("    CheckQuestItems();")
+lines.append("    CheckBazaar();")
+lines.append("    CheckTombDoors();")
 lines.append("    CheckVisitedMarkers();")
 lines.append("    CheckPlayerId();")
 lines.append("    CheckHideoutCarth();")
@@ -1320,16 +1687,19 @@ lines.append('    KSE_SetData("poll_open", "0");')
 lines.append('    KSE_Diag(176, "AP|POLLRUN|end");')
 lines.append("}")
 
-out_path = os.path.join(SRC_DIR, "ap_poll_shared.nss")
+_poll_name = "ap_poll_shared"
+out_path = os.path.join(SRC_DIR, f"{_poll_name}.nss")
 with open(out_path, "w") as f:
     f.write("\n".join(lines) + "\n")
 
 print(f"Wrote {out_path} ({len(lines)} lines) -- area_randomizer={wants_area_randomizer}")
+if cli_args.dispatch_test:
+    print("The job dispatcher is in this poll.")
 
 if cli_args.no_deploy:
     sys.exit(0)
 
-ncs_path = os.path.join(SRC_DIR, "ap_poll_shared.ncs")
+ncs_path = os.path.join(SRC_DIR, f"{_poll_name}.ncs")
 # Same os.path.exists()-only bug generate_trampoline_batch.py already hit and
 # fixed: extender/scripts_src/ ships a precompiled fallback .ncs for machines
 # without nwnnsscomp, so a silently-failed compile would leave that stale

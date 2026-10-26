@@ -48,7 +48,14 @@ DEFAULT_OUT = os.path.join(REPO_ROOT, "dist", "kotor.apworld")
 # player can compare to confirm they're running the same generation logic.
 # No existing version tracking anywhere in worlds/kotor/ before this
 # script -- starting fresh at 0.1.0 for the first packaged release.
-WORLD_VERSION = "0.1.9"
+def _world_version() -> str:
+    """The release number kept in worlds/kotor/__init__.py (WORLD_VERSION), the one place it is changed."""
+    import re
+    with open(os.path.join(WORLD_DIR, "__init__.py"), encoding="utf-8") as f:
+        return re.search(r'^WORLD_VERSION = "([0-9.]+)"', f.read(), re.M).group(1)
+
+
+WORLD_VERSION = _world_version()
 
 # The Archipelago core the players actually run. Used for minimum_ap_version unless --min-ap-version is given;
 # NOT this machine's own core (0.6.8 here), which twice produced an apworld that players on 0.6.7 refused to load.
@@ -100,7 +107,7 @@ def main():
     included = []
     with zipfile.ZipFile(args.out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for root, dirs, files in os.walk(WORLD_DIR):
-            dirs[:] = [d for d in dirs if d not in ("__pycache__", "logs")]
+            dirs[:] = [d for d in dirs if d not in ("__pycache__", "logs", "test")]   # tests stay in the repo, not in the shipped world
             for fname in files:
                 if fname == "archipelago.json":
                     continue

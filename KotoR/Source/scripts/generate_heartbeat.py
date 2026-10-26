@@ -6,11 +6,8 @@ transitions.
 REMOVED (this session): the old MAIN_PLOT-based Dispatch block that used to
 inline every apply's logic directly into Tick() and run it when
 GetGlobalNumber("MAIN_PLOT") was nonzero. Confirmed dead -- the current
-delivery pipeline (arm_orchestrator.py / generate_trampoline_batch.py)
-queues everything through the player's current-area-and-neighbors
-trampolines instead, and dllmain.c's ap_apply() explicitly documents that
-every real arm_id bypasses MAIN_PLOT/k_pend_modab staging entirely and goes
-straight to the orchestrator. Nothing has set MAIN_PLOT in the current
+delivery pipeline is the job dispatcher inside ap_poll_shared (see
+generate_poll_shared.py), and nothing has set MAIN_PLOT in the current
 architecture, so this Dispatch branch could never fire. Removed along with
 its 41 now-fully-dead ap_arm_*.nss / ap_apply_*.nss standalone scripts and
 their generator (generate_arm_scripts.py) -- see project cleanup notes.

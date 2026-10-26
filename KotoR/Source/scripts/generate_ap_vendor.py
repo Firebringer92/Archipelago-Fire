@@ -5,8 +5,8 @@ full design and decision history.
 
 Phase 1: Train Skill (8-way picker) and Train Ability (6-way picker),
 both credit-gated and capped at 5 total uses each. Phase 2 (this
-revision): Train Feat (18-way picker, reusing KotorClient.py's own
-already-vetted ADDITIONAL_FEATS_POOL) and Train Force Power (15-way
+revision): Train Feat (18-way picker, the same curated feats the companions' feat
+training offers) and Train Force Power (15-way
 picker, curated straight from spells.2da's own prerequisites/class-level
 columns -- every entry is genuinely base-tier, no dependency on an
 earlier power). Neither is purchase-count capped like Skill/Ability --
@@ -177,14 +177,12 @@ ABILITIES = [
 FEAT_PRICE = 3000
 POWER_PRICE = 3000
 
-# Reuses the SAME curated pool KotorClient.py's ADDITIONAL_FEATS_POOL
-# already vets and grants elsewhere (weapon/armor profs, Implant Level 1,
-# each base class's signature feat) -- not reinvented here. (feat.2da id,
+# The same curated pool the companions' feat training offers (generate_feat_training.py:
+# weapon/armor profs, Implant Level 1, each base class's signature feat). (feat.2da id,
 # display text, is_signature). The 3 Jedi-signature feats
 # (Force Jump/Force Focus/Force Immunity: Fear -- KotorClient.py's own
 # _JEDI_ONLY_FEATS) are additionally gated on the PC actually having Force
-# levels, same is_jedi reasoning _check_pending_additional_feats already
-# applies for companions.
+# levels (the companions' feat training applies the same rule).
 #
 # REAL BUG confirmed: Power Attack, Power Blast, Flurry,
 # Rapid Shot, Critical Strike, Sniper Shot, and Force Jump (feat, not the
@@ -238,7 +236,7 @@ FEATS = [
 # needs a lower-tier power already known. The whole Train Force Power
 # option is gated on the PC having real Force levels (see
 # ap_vpwr_jedi below) -- these are dead weight otherwise, same reasoning
-# ADDITIONAL_FEATS_POOL's is_jedi filter already applies. (spells.2da id,
+# as the Force-level rule on the Jedi-signature feats above. (spells.2da id,
 # display text)
 #
 # IDs 21 (Force Jump) and 39 (Regeneration) were originally on this list
@@ -433,9 +431,8 @@ int StartingConditional()
     return GetGold(GetPCSpeaker()) < {FEAT_PRICE};
 }}
 ''')
-    # Same is_jedi test KotorClient.py's _check_pending_additional_feats
-    # already uses for the PC (any real level in one of the 3 Jedi
-    # classes) -- gates the whole Train Force Power option, and is ANDed
+    # Same is_jedi test as the companions' feat training uses
+    # (any real level in one of the 3 Jedi classes) -- gates the whole Train Force Power option, and is ANDed
     # directly into each of the 3 Jedi-signature feats' own conditional
     # below (DLGLink's active2/logic combinator fields are, like
     # active1_not, never used anywhere in the base game -- not relied on).
@@ -811,6 +808,8 @@ def new_reply(text):
 
 def build_dlg():
     dlg = DLG()
+    # Skippable: the player can click through a line. Left off (the default) every line has to run out its reading time, which is what made these menus slow.
+    dlg.skippable = True
 
     entry_greet = new_entry(
         "Welcome to the Archipelago Vendor. What can I help you with today?"

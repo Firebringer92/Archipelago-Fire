@@ -27,7 +27,7 @@ import sys
 
 from pykotor.common.language import LocalizedString
 from pykotor.common.misc import ResRef
-from pykotor.extract.installation import Installation
+from pykotor.extract.installation import Installation, SearchLocation
 from pykotor.resource.formats.gff import read_gff, write_gff
 from pykotor.resource.formats.rim import read_rim
 from pykotor.resource.generics.uti import construct_uti, dismantle_uti
@@ -69,7 +69,8 @@ TOKENS_PER_FAMILY = 3
 TOKEN_BASE_ITEM = "g_i_datapad001"  # same known-good icon and model as the progress marker
 
 # name: the vanilla script resref this gate replaces.
-# module: the one module whose _s.rim holds the vanilla script to preserve (wrap only).
+# module: the one module whose _s.rim holds the vanilla script to preserve (wrap only); None means the script is in the game's core
+#         files (no module copy), and the original is read from there.
 # alias: where the preserved original is deployed (wrap only).
 # src: source file in extender/scripts_src.
 GATES = [
@@ -102,7 +103,10 @@ GATES = [
     {"name": "k_pman_planet34", "kind": "reimpl", "src": "sg_k_pman_planet34"},
     {"name": "demo_trig03", "kind": "reimpl", "src": "sg_demo_trig03"},
     {"name": "k_pman_starmap06", "kind": "wrap", "module": "manm28ad", "alias": "apo_sg_mmap06", "src": "sg_k_pman_starmap06"},
-    {"name": "k_pman_door08", "kind": "reimpl", "src": "sg_k_pman_door08"},
+    # The Hrakert Rift's exits (two doors, the computer panel and two triggers) stay open: the vanilla scripts seal them until the star map is
+    # found, and the star map waits for the third Manaan item. Core scripts, so the originals are read from the game's core files.
+    {"name": "k_pman_at01", "kind": "wrap", "module": None, "alias": "apo_sg_at01", "src": "sg_k_pman_at01"},
+    {"name": "k_pman_at02", "kind": "wrap", "module": None, "alias": "apo_sg_at02", "src": "sg_k_pman_at02"},
     # Kashyyyk
     {"name": "k_pkas_poachove2", "kind": "reimpl", "src": "sg_k_pkas_poachove2"},
     {"name": "k_pkas_poachover", "kind": "reimpl", "src": "sg_k_pkas_poachover"},
@@ -111,6 +115,7 @@ GATES = [
     {"name": "k_pkas_freyyhelp", "kind": "reimpl", "src": "sg_k_pkas_freyyhelp"},
     {"name": "k_pkas_freyydead", "kind": "reimpl", "src": "sg_k_pkas_freyydead"},
     {"name": "k_pkas_chuuntrig", "kind": "reimpl", "src": "sg_k_pkas_chuuntrig"},
+    {"name": "ap_kas_k3x", "kind": "new", "src": "sg_ap_kas_k3x"},
     # Korriban
     {"name": "ap_kor_ko1", "kind": "new", "src": "sg_ap_kor_ko1"},
     {"name": "ap_kor_ko1x", "kind": "new", "src": "sg_ap_kor_ko1x"},
@@ -132,6 +137,26 @@ GATES = [
     {"name": "k_ptar_alertsith", "kind": "wrap", "module": "tar_m02ab", "alias": "apo_sg_alertsith",
      "src": "sg_k_ptar_alertsith", "needs": "area_randomizer"},
 ]
+
+# Gates that no longer exist. A copy an earlier version left in Override is removed (only when it is still the script this patcher built,
+# so nothing else is touched), which gives the game back its own script. The source and compiled files stay in extender/scripts_src so
+# the copy can be recognised.
+RETIRED_GATES = [
+    # Manaan: used to unlock and open the submarine door (man26ac_door05) for everyone. The game's own script is used again: the door needs the
+    # card W_REPKEY2 that Roland hands over at the debrief (the second Manaan gate).
+    {"name": "k_pman_door08", "src": "sg_k_pman_door08"},
+]
+
+
+def remove_retired():
+    removed = 0
+    for gate in RETIRED_GATES:
+        path = os.path.join(OVERRIDE, f"{gate['name']}.ncs")
+        if _ours(path, gate["src"]):
+            os.remove(path)
+            removed += 1
+            print(f"  {gate['name']}: retired gate removed (the game's own script is used)")
+    return removed
 
 
 def write_token_templates(installation):
@@ -166,6 +191,11 @@ def _read_module_script(module, resref):
         if res.resref.get().lower() == resref.lower() and res.restype == ResourceType.NCS:
             return res.data
     return None
+
+
+def _read_core_script(resref):
+    res = Installation(GAME_DIR).resource(resref, ResourceType.NCS, [SearchLocation.CHITIN])
+    return res.data if res is not None else None
 
 
 def _compile(src_name):
@@ -217,9 +247,9 @@ def apply_gates(slot):
             if missing:
                 continue
         if gate["kind"] == "wrap":
-            orig = _read_module_script(gate["module"], name)
+            orig = _read_module_script(gate["module"], name) if gate["module"] else _read_core_script(name)
             if orig is None:
-                print(f"  {name}: vanilla script not found in {gate['module']}_s.rim -- gate NOT applied")
+                print(f"  {name}: vanilla script not found in {gate['module'] + '_s.rim' if gate['module'] else 'the core files'} -- gate NOT applied")
                 continue
             alias_path = os.path.join(OVERRIDE, f"{gate['alias']}.ncs")
             with open(alias_path, "wb") as f:
@@ -345,11 +375,11 @@ def main():
                 if os.path.isfile(path):
                     os.remove(path)
                     tokens += 1
-        print(f"Removed {remove_gates() + remove_dialogs() + tokens} story gate file(s).")
+        print(f"Removed {remove_gates() + remove_retired() + remove_dialogs() + tokens} story gate file(s).")
         return
     on = "--force" in sys.argv or _connected_progression_system()
     if not on:
-        n = remove_gates() + remove_dialogs()
+        n = remove_gates() + remove_retired() + remove_dialogs()
         print(f"Progression System is off -- story gates not applied. Removed {n} stale gate file(s).")
         return
     slot = _slot_data()
@@ -363,6 +393,7 @@ def main():
                 alias = os.path.join(OVERRIDE, f"{alias_name}.ncs")
                 if os.path.isfile(alias):
                     os.remove(alias)
+    remove_retired()
     tokens = write_token_templates(Installation(GAME_DIR))
     deployed, wanted = apply_gates(slot)
     dialogs = apply_dialogs()

@@ -1,3 +1,5 @@
+// RETIRED in 0.2.0: no longer deployed (scripts/patch_story_gates.py RETIRED_GATES). Kept only so an old copy in Override can be recognised and removed;
+// the game's own k_pman_door08 is used again, and man26ac_door05 needs the card W_REPKEY2 from Roland's debrief.
 // Manaan: the Republic submarine door stays open to everyone. Replaces the vanilla script k_pman_door08, the
 // OnFailToOpen script shared by eighteen locked doors on Manaan and Dantooine. Vanilla body: start the door's own
 // message conversation with the player. This keeps that behaviour for every door except man26ac_door05, the key door

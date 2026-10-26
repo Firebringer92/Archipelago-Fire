@@ -58,6 +58,33 @@ def _connected_archipelago_vendor() -> bool:
 
 _ARCHIPELAGO_VENDOR_ON = _connected_archipelago_vendor()
 
+
+def _connected_bazaar() -> bool:
+    """True when the connected seed has the Archipelago Bazaar's purchases or Loot Exchange on (slot data "bazaar", written by
+    KotorClient.py's write_slot_data_for_patch_scripts): the Jawa trader then stands next to the Archipelago Vendor."""
+    if not os.path.isfile(_SLOT_DATA_PATH):
+        return False
+    try:
+        with open(_SLOT_DATA_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return bool(data.get("bazaar", False))
+    except Exception:
+        return False
+
+
+_BAZAAR_ON = _connected_bazaar()
+
+
+def _connected_flag(key: str) -> bool:
+    """True when the connected seed's slot data has `key` on (a plain on/off option)."""
+    if not os.path.isfile(_SLOT_DATA_PATH):
+        return False
+    try:
+        with open(_SLOT_DATA_PATH, encoding="utf-8") as f:
+            return bool(json.load(f).get(key, False))
+    except Exception:
+        return False
+
 # Permanent-object spawns that must survive every regeneration of an
 # area's OnEnter trampoline -- this script rebuilds the target area's
 # trampoline from scratch on every real arm delivery, so a permanent
@@ -73,14 +100,42 @@ _ARCHIPELAGO_VENDOR_ON = _connected_archipelago_vendor()
 # at module-parse time rather than per-call. `arm_orchestrator.py
 # --ensure-vendor` rebuilds the Hawk's trampoline on every Connect so the
 # spawn tracks the connected seed's option.
-AREA_PERMANENT_SPAWNS = {
-    "ebo_m12aa": [
+#
+# The Bazaar's Jawa trader (generate_bazaar_jawa.py) stands about five feet from the Vendor and is spawned when the seed has the
+# Bazaar's purchases or Loot Exchange on, whether or not the Vendor is.
+_HAWK_SPAWNS = []
+if _ARCHIPELAGO_VENDOR_ON:
+    _HAWK_SPAWNS += [
         'if (!GetIsObjectValid(GetObjectByTag("ap_vendor_npc")))',
         '{',
         '    CreateObject(OBJECT_TYPE_CREATURE, "ap_vendor_npc", Location(Vector(55.5, 36.5, 1.80), 0.0));',
         '}',
-    ],
-} if _ARCHIPELAGO_VENDOR_ON else {}
+    ]
+if _BAZAAR_ON:
+    _HAWK_SPAWNS += [
+        'if (!GetIsObjectValid(GetObjectByTag("ap_jawa_npc")))',
+        '{',
+        '    CreateObject(OBJECT_TYPE_CREATURE, "ap_jawa_npc", Location(Vector(57.0, 36.5, 1.80), 0.0));',
+        '}',
+    ]
+# The New Companion console (generate_new_companion_console.py) stands between HK-47's waypoint (61.2, 27.0) and the swoop racing map note (70.0, 27.4), on the line
+# between them (two spots known to be walkable; a spot at the side of HK-47 was inside the wall, and the vendor row was in the way of a bench), a little clear of the
+# pod, facing back the way HK-47 faces (270 degrees; 90 was the wrong way round), once the player holds its unlock item
+# (the AP item "Ebon Hawk: New Companion Selection"); the Hawk's entry script places it, so it appears on the next entry after the item arrives.
+if _connected_flag("new_companion"):
+    _HAWK_SPAWNS += [
+        # The terminal is a clone of the Endar Spire's computer terminal (end_comp02). It stands where the first terminal did, between HK-47's spot and the swoop pod, so the
+        # player knows where to look. Replaced on every entry so an older copy saved with
+        # the module never stays.
+        'if (GetIsObjectValid(GetObjectByTag("ap_nc_term"))) DestroyObject(GetObjectByTag("ap_nc_term"));',
+        'if (GetIsObjectValid(GetItemPossessedBy(GetFirstPC(), "ap_nc_console")))',
+        '{',
+        '    object oNcTerm = CreateObject(OBJECT_TYPE_PLACEABLE, "ap_nc_term", Location(Vector(64.9, 27.2, 1.80), 270.0));',
+        '    vector vNcTerm = GetPosition(oNcTerm);',
+        '    KSE_Diag(207, "AP|NCTERM|spawned|valid=" + IntToString(GetIsObjectValid(oNcTerm)) + "|x100=" + IntToString(FloatToInt(vNcTerm.x * 100.0)) + "|y100=" + IntToString(FloatToInt(vNcTerm.y * 100.0)));',
+        '}',
+    ]
+AREA_PERMANENT_SPAWNS = {"ebo_m12aa": _HAWK_SPAWNS} if _HAWK_SPAWNS else {}
 
 
 # Area-specific helper functions placed at file level in a trampoline (before main), and the statements that call them
@@ -157,6 +212,17 @@ AREA_ENTRY_FUNCS = {"tar_m02af": HIDEOUT_REUNION_FUNC}
 # sta_m45ad (the Malak fight): ap_goal_watch reports his death within a quarter second; the ending follows within seconds, before the
 # ordinary poll can see it. Keep in sync with AREA_PERMANENT_SPAWNS in generate_area_trampolines.py.
 AREA_ENTRY_CALLS = {"sta_m45ad": ['ExecuteScript("ap_goal_watch", OBJECT_SELF);'], "tar_m02af": ["DelayCommand(0.2, HideoutCarthProbe(\"enter\"));", "DelayCommand(3.0, HideoutCarthProbe(\"t3\"));", "if (nVisitMark == 0) DelayCommand(7.0, HideoutCarthReunion());"]}
+
+
+# Area-randomizer seeds only: these two areas' own OnEnter scripts lock a port gate again on every entry (Manaan sets MAN_PORT_ZONE, then locks
+# man26ac_door02 and closes it; Korriban locks k33a_dor_port), and the fee-paying NPC stands on the far side, so a shuffled arrival from the
+# city side could never get through. The entry block runs after the original script, so it unlocks them again. The doors' blueprints are
+# unlocked by patch_door_randomizer.py (KNOWN_LOCAL_LOCKED_DOORS). arm_orchestrator.py --ensure-vendor rebuilds these areas on every Connect so
+# the statements are present or absent to match the connected seed.
+ENTRY_UNLOCKS = {"manm26ac": "man26ac_door02", "korr_m33aa": "k33a_dor_port"}
+if _connected_flag("area_randomizer"):
+    for _area, _door_tag in ENTRY_UNLOCKS.items():
+        AREA_ENTRY_CALLS.setdefault(_area, []).append(f'SetLocked(GetObjectByTag("{_door_tag}"), FALSE);')
 
 
 def permanent_spawn_lines_for(base, indent):
@@ -247,12 +313,10 @@ def _connected_new_companion() -> int:
         return 0
 
 
-# Her/his real object Tag stays "HK47" and NPC slot stays NPC_HK_47 either
-# way (see _COMPANION_TAGS's own comment) -- only the template resref (what
-# .utc gets spawned) changes. 1=mystery (Meetra Surik, Jedi Sentinel,
-# p_meetra), 2=malak (Darth Malak, Jedi Guardian, p_malak) -- see
-# DEVELOPMENT_HISTORY.md's "New Companion" section.
-NEW_COMPANION_TEMPLATES = {1: "p_meetra", 2: "p_malak"}
+# The replacement keeps the object Tag "HK47" and NPC slot NPC_HK_47 (see _COMPANION_TAGS's own comment); only the template resref
+# (what .utc gets spawned) differs. Since 0.2.0 the swap is done by the ship's New Companion console (generate_new_companion_console.py),
+# not at recruitment, so the HK-47 recruit arm always uses p_hk47. This dict is no longer read by the arm.
+NEW_COMPANION_TEMPLATES = {1: "p_meetra", 2: "p_malak", 3: "p_calo", 4: "p_yuthura", 5: "p_bandon"}
 _NEW_COMPANION_MODE = _connected_new_companion()
 
 # For build_trap_block's remove_half_inventory branch, which
@@ -436,10 +500,9 @@ APPLIES = {
         'KSE_Diag(2, "AP|APPLIED|treat_injury|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
     # GUARD against a real bug: two Bastilas can result after her
-    # grant arm re-fires on a later area transition, since the known
-    # one-transition delivery-lag retry logic re-queues an arm whenever its
-    # APPLIED confirmation isn't cleanly matched, and this arm previously
-    # had no idempotency check at all, so a re-fire created a genuine
+    # grant arm is sent again (the old retry logic re-queued an arm whenever
+    # its APPLIED confirmation wasn't cleanly matched), and this arm previously
+    # had no idempotency check at all, so a re-send created a genuine
     # second CreateObject+AddPartyMember. `nWasAvailable` used to be purely
     # diagnostic (captured, never branched on) -- now it actually gates the
     # grant, same pattern generate_companion_suppressors.py's wrapper
@@ -611,14 +674,9 @@ APPLIES = {
         'int nAfter = GetGold(oPC);',
         'KSE_Diag(39, "AP|APPLIED|credits|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
-    18: ("grant_test_ability", [
-        # BUG FIXED: this diag used to report itself as "ability_charisma",
-        # not "grant_test_ability" -- the actual registered arm name (see
-        # AP_ARM_NAMES in dllmain.c). ap_arm_id_for_name() could never match
-        # the mismatched name back to an ID, so this arm's confirmation
-        # never cleared the pending queue -- confirmed: it silently
-        # re-fires on every single area transition indefinitely once
-        # received, until caught.
+    18: ("ability_charisma", [
+        # Arm 18 was named grant_test_ability before it was renamed; the DLL's AP_ARM_NAMES, the item table and the poll now all use ability_charisma
+        # (deliveries go through the dispatcher, which finds the arm by this label).
         # REWRITTEN to an absolute KSE_SetCreatureField SET instead of
         # ApplyEffectToObject + EffectAbilityIncrease -- see arms 27-31's own
         # comment (same file) for the full reasoning: the old Effect-based
@@ -635,7 +693,7 @@ APPLIES = {
         'int nBefore = GetAbilityScore(oPC, ABILITY_CHARISMA);',
         'KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_CHA_BASE(), 1);',
         'int nAfter = GetAbilityScore(oPC, ABILITY_CHARISMA);',
-        'KSE_Diag(92, "AP|APPLIED|grant_test_ability|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
+        'KSE_Diag(92, "AP|APPLIED|ability_charisma|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
     # Companion re-grant arms 19-25 -- same shape as companion_bastila/
     # companion_canderous above (arm IDs 9/10), just the 7 remaining
@@ -665,7 +723,8 @@ APPLIES = {
     ]),
     20: ("companion_hk47", [
         'int nNPC = NPC_HK_47;',
-        f'string sTemplate = "{NEW_COMPANION_TEMPLATES.get(_NEW_COMPANION_MODE, "p_hk47")}";',
+        # Always HK-47's own template: the New Companion console (generate_new_companion_console.py) swaps him later.
+        'string sTemplate = "p_hk47";',
         'int nWasAvailable = IsAvailableCreature(nNPC);',
         '// Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.',
         'int nCrew = GetJournalEntry("ap_ent_hk47");',
@@ -803,16 +862,16 @@ APPLIES = {
         # real earned Sentinel level back to 1. Confirmed.
         'KSE_Diag(9, "AP|APPLIED|class_sentinel|ok=1");',
     ]),
-    # Ability-score increases 27-31 -- same shape as grant_test_ability (18,
+    # Ability-score increases 27-31 -- same shape as ability_charisma (18,
     # Charisma) above, covering the remaining 5 abilities for the starting-
     # abilities option. Increment-only (fire N times for a "+N" preset,
-    # matching how grant_test_ability already works) -- unlike set_xp/
+    # matching how ability_charisma already works) -- unlike set_xp/
     # set_credits there's no single "clamp to target" call site, since each
     # firing only knows "add one more," not the eventual total.
     #
     # All 5 REWRITTEN to an absolute KSE_SetCreatureField SET instead of
     # ApplyEffectToObject + EffectAbilityIncrease -- same reasoning as
-    # grant_test_ability/the 5 ability traps: the old approach stacks a new
+    # ability_charisma/the 5 ability traps: the old approach stacks a new
     # effect object every firing, and firing N times in a row for a preset
     # is exactly the repeated pattern that exhausted a real character's
     # stacked-effect budget (confirmed by a follow-up:
@@ -863,18 +922,24 @@ APPLIES = {
         'int nAfter = GetAbilityScore(oPC, ABILITY_WISDOM);',
         'KSE_Diag(62, "AP|APPLIED|ability_wisdom|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));',
     ]),
-    # DeathLink incoming half -- modeled as just another arm, same delivery
-    # latency as everything else (next area transition), not instant. True
-    # low-latency delivery would need the extender to poke KOTOR's live
-    # global-variable memory directly so the already-ticking heartbeat (see
-    # ap_heartbeat.nss, 5s cadence, independent of area) picks it up sooner
-    # -- that's unproven reverse-engineering, deliberately not attempted
-    # here. This is the cheap, safe v1.
+    # DeathLink incoming half -- a dispatcher job like every other delivery: held while the
+    # game is not calm, applied once, and never sent again after a save is loaded
+    # (kotor_dispatcher.DEATH_ARMS).
     32: ("force_death", [
+        # A DeathLink must kill: protections that stop a death effect (a plot flag, "minimum one hit point") are lifted for the instant the
+        # effect lands and put back. The diag line reports what was found, so a death that still does not happen can be explained from the log.
         'object oPC = GetFirstPC();',
         'int nWasDead = GetIsDead(oPC);',
+        'int nPlot = GetPlotFlag(oPC);',
+        'int nMin1 = GetMinOneHP(oPC);',
+        'int nHp = GetCurrentHitPoints(oPC);',
+        'if (nPlot) SetPlotFlag(oPC, FALSE);',
+        'if (nMin1) SetMinOneHP(oPC, FALSE);',
         'ApplyEffectToObject(DURATION_TYPE_INSTANT, EffectDeath(), oPC);',
-        'KSE_Diag(63, "AP|APPLIED|force_death|wasDead=" + IntToString(nWasDead));',
+        'if (nPlot) SetPlotFlag(oPC, TRUE);',
+        'if (nMin1) SetMinOneHP(oPC, TRUE);',
+        'KSE_Diag(63, "AP|APPLIED|force_death|wasDead=" + IntToString(nWasDead) + "|plot=" + IntToString(nPlot) + "|min1=" + IntToString(nMin1)'
+        ' + "|hp=" + IntToString(nHp) + "|nowDead=" + IntToString(GetIsDead(oPC)));',
     ]),
     # StartingClass=random_class, base-class roll only -- a Jedi
     # roll reuses class_guardian/class_consular/class_sentinel above
@@ -1435,6 +1500,44 @@ _COMPANION_NPC_CONST = {
 _COMPANION_NPC_CONST_ALL = {**_COMPANION_NPC_CONST, "hk47": "NPC_HK_47", "t3m4": "NPC_T3_M4"}
 
 
+def companion_unequip_lines():
+    """Lines (indented 4) that unequip a lightsaber from either weapon slot and a Jedi robe from the body slot of `oCompanion`:
+    the removal path of build_companion_class_block, also used by the dispatcher's runtime companion_class action."""
+    _LIGHTSABER_CHECK = (
+        "nBase{n} == BASE_ITEM_LIGHTSABER || nBase{n} == BASE_ITEM_SHORT_LIGHTSABER"
+        " || nBase{n} == BASE_ITEM_DOUBLE_BLADED_LIGHTSABER"
+    )
+    _ROBE_CHECK = (
+        "nBase3 == BASE_ITEM_JEDI_ROBE || nBase3 == BASE_ITEM_JEDI_KNIGHT_ROBE"
+        " || nBase3 == BASE_ITEM_JEDI_MASTER_ROBE"
+    )
+    unequip_lines = []
+    for n, slot in ((1, "INVENTORY_SLOT_RIGHTWEAPON"), (2, "INVENTORY_SLOT_LEFTWEAPON")):
+        unequip_lines += [
+            f"    object oWpn{n} = GetItemInSlot({slot}, oCompanion);",
+            f"    if (GetIsObjectValid(oWpn{n}))",
+            "    {",
+            f"        int nBase{n} = GetBaseItemType(oWpn{n});",
+            f"        if ({_LIGHTSABER_CHECK.format(n=n)})",
+            "        {",
+            f"            AssignCommand(oCompanion, ActionUnequipItem(oWpn{n}, TRUE));",
+            "        }",
+            "    }",
+        ]
+    unequip_lines += [
+        "    object oBody3 = GetItemInSlot(INVENTORY_SLOT_BODY, oCompanion);",
+        "    if (GetIsObjectValid(oBody3))",
+        "    {",
+        "        int nBase3 = GetBaseItemType(oBody3);",
+        f"        if ({_ROBE_CHECK})",
+        "        {",
+        "            AssignCommand(oCompanion, ActionUnequipItem(oBody3, TRUE));",
+        "        }",
+        "    }",
+    ]
+    return unequip_lines
+
+
 def build_companion_class_block(name, class_name):
     """Companion-class-randomization action (Options.py's CompanionClass) --
     the one mechanism behind both no_jedi/randomize_all (queued by
@@ -1449,11 +1552,9 @@ def build_companion_class_block(name, class_name):
 
     Deliberately emits NO KSE_Diag("AP|APPLIED|...") when the companion
     isn't found (not yet recruited, e.g. CompanionMode=ap_gated and their
-    own recruit item hasn't landed yet) -- the existing pending-queue
-    retry (arm_orchestrator.py's --queue-companion-class=/--delivered=)
-    re-fires this exact same action on the player's next area transition
-    until it actually lands, same "one-transition delivery lag" every
-    other arm already relies on. No new retry logic needed.
+    own recruit item hasn't landed yet) -- the dispatcher job then fails and the client
+    sends the class again once the companion has joined (KotorClient's
+    companion-class follow-up and the reconciler), until it actually lands.
 
     The "found" check must not be plain
     GetIsObjectValid(oCompanion) on a GetObjectByTag() lookup. Confirmed
@@ -1604,49 +1705,7 @@ def build_companion_class_block(name, class_name):
     feat_lines = build_class_feat_delta_lines(
         class_const, "oCompanion", old_class_var="nOldClass", delay_grants=is_jedi, indent="        "
     )
-    _LIGHTSABER_CHECK = (
-        "nBase{n} == BASE_ITEM_LIGHTSABER || nBase{n} == BASE_ITEM_SHORT_LIGHTSABER"
-        " || nBase{n} == BASE_ITEM_DOUBLE_BLADED_LIGHTSABER"
-    )
-    _ROBE_CHECK = (
-        "nBase3 == BASE_ITEM_JEDI_ROBE || nBase3 == BASE_ITEM_JEDI_KNIGHT_ROBE"
-        " || nBase3 == BASE_ITEM_JEDI_MASTER_ROBE"
-    )
-    unequip_lines = []
-    if not is_jedi:
-        for n, slot in ((1, "INVENTORY_SLOT_RIGHTWEAPON"), (2, "INVENTORY_SLOT_LEFTWEAPON")):
-            unequip_lines += [
-                f"    object oWpn{n} = GetItemInSlot({slot}, oCompanion);",
-                f"    if (GetIsObjectValid(oWpn{n}))",
-                "    {",
-                f"        int nBase{n} = GetBaseItemType(oWpn{n});",
-                f"        if ({_LIGHTSABER_CHECK.format(n=n)})",
-                "        {",
-                f"            AssignCommand(oCompanion, ActionUnequipItem(oWpn{n}, TRUE));",
-                "        }",
-                "    }",
-            ]
-        unequip_lines += [
-            "    object oBody3 = GetItemInSlot(INVENTORY_SLOT_BODY, oCompanion);",
-            "    if (GetIsObjectValid(oBody3))",
-            "    {",
-            "        int nBase3 = GetBaseItemType(oBody3);",
-            f"        if ({_ROBE_CHECK})",
-            "        {",
-            "            AssignCommand(oCompanion, ActionUnequipItem(oBody3, TRUE));",
-            "        }",
-            "    }",
-        ]
-    # Single write mechanism for every direction (Jedi or base-class
-    # target, whatever the companion currently holds) -- see this
-    # function's docstring for why AddMultiClass()/a second class slot
-    # was removed. Guarded by a no-op check on Class0 alone: a redundant
-    # re-roll of an already-applied assignment (e.g. this companion's
-    # recruit arm resending after a save/reload) would otherwise reset
-    # CLASS0_LEVEL back to 1, de-leveling an already-progressed companion.
-    # AP|APPLIED still fires either way, so the retry system sees this as
-    # landed; nClass1 rides along in that diagnostic purely for
-    # visibility (see docstring), never branched on.
+    unequip_lines = [] if is_jedi else companion_unequip_lines()
     class_lines = [
         f"    if (nOldClass == {class_const})",
         "    {",
@@ -1676,129 +1735,12 @@ def build_companion_class_block(name, class_name):
     ]
 
 
-def build_additional_feats_block(name, feat_ids):
-    """AdditionalFeats action (Options.py) -- grants exactly
-    3 feats (feat_ids, already chosen client-side, see KotorClient.py's
-    _check_pending_additional_feats/ADDITIONAL_FEATS_POOL) to either the
-    PC (name == "pc") or a named companion, resolved by their real object
-    tag (see _COMPANION_TAGS) the same way build_companion_class_block
-    does -- an item-triggered action, not tied to recruit timing, so it
-    needs to find the companion wherever they currently are. Companion
-    targets get the same IsNPCPartyMember guard build_companion_class_block
-    uses, for the same reason (a tagged object can exist and resolve as
-    valid before/after they're actually a real party member).
-
-    Every grant is guarded with a live GetHasFeat check -- belt and
-    suspenders against the rare case where a character's real feat state
-    already has something from this pool that KotorClient.py's own
-    bookkeeping didn't account for (an incidental vanilla template pick,
-    or an overlap with a class-change action's own grants). The pool is
-    KotorClient.py's ADDITIONAL_FEATS_POOL (derived from feat.2da).
-
-    No target-not-found retry logic needed beyond the existing "no Diag
-    emitted -> pending-queue retry fires this again next transition"
-    pattern every other item-triggered action already relies on (see
-    build_companion_class_block's own docstring) -- KotorClient.py's
-    recruited/class-finalized gating already means this only ever fires
-    once the target is known to exist, but the guard costs nothing."""
-    if name == "pc":
-        resolve_lines = ["object oTarget = GetFirstPC();"]
-        guard = "GetIsObjectValid(oTarget)"
-    else:
-        tag = _COMPANION_TAGS[name]
-        npc_const = _COMPANION_NPC_CONST[name]
-        resolve_lines = [f'object oTarget = GetObjectByTag("{tag}");']
-        guard = f"IsNPCPartyMember({npc_const}) && GetIsObjectValid(oTarget)"
-
-    # FIX #1: the confirmation must not just echo back feat_ids
-    # verbatim ("feats=28,29,31"), since that only proves the script ran to
-    # completion -- NOT that each KSE_GrantFeatArrayA write actually took.
-    # A real failure mode: Mission's additional_feats grant reported
-    # feats=28,29,31 as APPLIED, but she came out with 28 and 31 while 29
-    # (Power Blast) silently never landed. Now reports each feat's
-    # "before" state (GetHasFeat right before the attempt).
-    #
-    # FIX #2, root cause found via this same diagnostic on a
-    # SECOND attempt: with the fix #1 diagnostic in place, a retry showed
-    # ALL 3 requested feats at before=0/after=0 -- a complete, 100% write
-    # failure for a companion target. This is the EXACT symptom already
-    # solved once in build_companion_class_block's own fix note above:
-    # granting feats to a companion immediately after AddMultiClass/class-
-    # settling races the engine's own asynchronous feat-list rebuild,
-    # which silently overwrites/discards the immediate grant. That fix's
-    # proven remedy -- DelayCommand(1.0, KSE_GrantFeatArrayA(...)) instead
-    # of an immediate call -- is applied here too, but ONLY for companion
-    # targets (name != "pc"); the PC path has never shown this symptom
-    # (additional_feats:pc's own live test only ever hit the SEPARATE
-    # already-known-feat no-op case, never a genuine failed write), so it
-    # stays immediate rather than adding an unproven delay with no
-    # evidence it's needed.
-    #
-    # Delaying the grant means an immediate post-grant GetHasFeat read
-    # would always show the PRE-delay state (NWScript evaluates
-    # DelayCommand's argument expression immediately, only the outermost
-    # action itself is deferred -- there is no cheap way to read the true
-    # post-delay state from this same script without a custom helper
-    # function, which build_notify_chain's own docstring already
-    # documents as a fragile path in this codegen, given NWScript's
-    # forward-declaration-order requirement). So for companions this now
-    # honestly reports "before" + "delayed=1" instead of a fabricated
-    # same-tick "after" that would always read wrong. Real confirmation
-    # is a live in-game feat-sheet check a few seconds later, same as
-    # build_companion_class_block's own verification story.
-    # FIX #3: fix #2's DelayCommand wrap didn't help either --
-    # confirmed on Bastila, who NEVER goes through AddMultiClass at
-    # all under jedi_companion mode (trivially class-finalized, no roll
-    # ever happens for her) -- her grant still failed the same way. That
-    # rules out the AddMultiClass-settling race entirely; whatever's
-    # actually wrong is unrelated to timing. The one remaining concrete
-    # difference from build_companion_class_block's PROVEN-working Jedi-
-    # feat grant (Canderous, confirmed, all 4 feats landed) is that
-    # proven path grants UNCONDITIONALLY -- no GetHasFeat guard at all --
-    # while this one guards each grant with `if (!GetHasFeat(...))`
-    # first. Matching the proven pattern exactly: companion grants are now
-    # unconditional (still harmless if already known, same reasoning
-    # build_companion_class_block's own docstring gives for its redundant-
-    # but-harmless re-grants) and drop the guard. This is a hypothesis
-    # test, not a confirmed fix -- needs a live re-check, same as the
-    # last two attempts.
-    grant_lines = []
-    report_parts = []
-    delay_grants = name != "pc"
-    for i, feat in enumerate(feat_ids):
-        grant_lines.append(f"    int nHadFeat{i} = GetHasFeat({feat}, oTarget);")
-        if delay_grants:
-            grant_lines.append(f"    DelayCommand(1.0, KSE_GrantFeatArrayA({feat}, oTarget));")
-            report_parts.append(f'"{feat}:before=" + IntToString(nHadFeat{i}) + ":delayed=1"')
-        else:
-            grant_lines += [
-                f"    if (!nHadFeat{i})",
-                "    {",
-                f"        KSE_GrantFeatArrayA({feat}, oTarget);",
-                "    }",
-                f"    int nHasFeat{i} = GetHasFeat({feat}, oTarget);",
-            ]
-            report_parts.append(
-                f'"{feat}:" + IntToString(nHadFeat{i}) + "->" + IntToString(nHasFeat{i})'
-            )
-
-    feats_report_expr = ' + "," + '.join(report_parts)
-    return [
-        *resolve_lines,
-        f"if ({guard})",
-        "{",
-        *grant_lines,
-        f'    KSE_Diag(122, "AP|APPLIED|additional_feats|name={name}|feats=" + {feats_report_expr});',
-        "}",
-    ]
-
-
 def build_trap_block(trap_type, params_str):
     """Traps action (Options.py's Traps) -- ONE
     consolidated wire action ("trap:<trap_type>:<params_str>", see
     KotorClient.py's _deliver_item interception and
     kotor_extender_bridge.py's send_trap) covering all 12 trap items,
-    mirroring additional_feats' shape: the item itself
+    a marker item: the item itself
     (arm_name="trap:<trap_type>", Items.py's TRAP_ITEMS) is just a
     marker, and every real specific (which feat/power ids, which
     companion, how much to reduce a stat by, the new level/XP) is
@@ -1890,8 +1832,7 @@ def build_trap_block(trap_type, params_str):
     elif trap_type == "remove_half_feats":
         # params_str = "<id1>,<id2>,..." -- already exactly half (or the
         # whole set minus one), rounded/picked client-side; guarded with
-        # a live GetHasFeat check the same defensive way
-        # build_additional_feats_block's own grants are guarded.
+        # a live GetHasFeat check.
         ids = [i for i in params_str.split(",") if i]
         for feat_id in ids:
             lines += [
@@ -1927,9 +1868,14 @@ def build_trap_block(trap_type, params_str):
         # with no ceiling on repeated triggers.
         lines += [
             "int nMaxBefore = GetMaxHitPoints(oPC);",
+            "int nConBefore = GetAbilityScore(oPC, ABILITY_CONSTITUTION);",
             "KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_MAX_HP_VIA_CON(), 0);",
             "int nMaxAfter = GetMaxHitPoints(oPC);",
-            f'KSE_Diag(134, "AP|APPLIED|trap|type=cut_max_hp|maxbefore=" + IntToString(nMaxBefore) + "|maxafter=" + IntToString(nMaxAfter));',
+            "int nConAfter = GetAbilityScore(oPC, ABILITY_CONSTITUTION);",
+            # The Constitution drop is reported so the reconciler lowers its Constitution baseline by the same amount (it only knew the
+            # Strength / Dexterity / Intelligence / Wisdom traps) instead of granting the lost points back one job at a time.
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=cut_max_hp|maxbefore=" + IntToString(nMaxBefore) + "|maxafter=" + IntToString(nMaxAfter)'
+            f' + "|conbefore=" + IntToString(nConBefore) + "|conafter=" + IntToString(nConAfter));',
         ]
 
     elif trap_type == "remove_companion":
@@ -2406,9 +2352,7 @@ def build_batch_block(batch_items):
                 label, body = "companion_class", build_companion_class_block(name, class_name)
                 lines.append(f"        // companion_class={name}:{class_name}")
             elif action == "additional_feats":
-                name, feat_ids = item["name"], item["feat_ids"]
-                label, body = "additional_feats", build_additional_feats_block(name, feat_ids)
-                lines.append(f"        // additional_feats={name}:{feat_ids}")
+                continue  # retired (feats are trained in the companions' dialogs now): an entry left in an old queue is skipped, not built
             elif action == "trap":
                 trap_type, params = item["trap_type"], item["params"]
                 label, body = "trap", build_trap_block(trap_type, params)
@@ -2478,9 +2422,6 @@ def main():
         elif a.startswith("companion_class:"):
             _, name, class_name = a.split(":", 2)
             batch_items.append({"action": "companion_class", "name": name, "class_name": class_name})
-        elif a.startswith("additional_feats:"):
-            _, name, feats_csv = a.split(":", 2)
-            batch_items.append({"action": "additional_feats", "name": name, "feat_ids": [int(f) for f in feats_csv.split(",")]})
         elif a.startswith("trap:"):
             # trap:<trap_type>:<params> -- params' own internal shape
             # (comma-list, colon-pair, bare int, companion key) varies by

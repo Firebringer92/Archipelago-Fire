@@ -12,6 +12,7 @@ byte-for-byte the vanilla ones: nothing is removed, reordered or renumbered, the
   unk44_evilbast2  (unk_m44ac)  U2, 2 progression items  same scene, alternate copy (no caller was found in the game data; edited anyway)
   unk44_comp       (unk_m44ac)  U3, 3 progression items  the temple computer (shield and disruptor shutdown)
   dan14_juhani     (danm14ac)   Dantooine D2, 2 progression items  the Juhani confrontation (not an Unknown World gate; same technique)
+  kas22_chorraw_02 (kas_m22ab)  Kashyyyk K3, 3 progression items  Chorrawl's walk to the throne room (same technique)
 
 All five names exist in exactly one module, so an Override copy replaces only the intended dialog. The originals are read from
 the game's module resources only (never from Override), so a previously patched copy can never be re-patched.
@@ -38,6 +39,7 @@ U2_TEXT = "[This confrontation cannot begin yet. You need more Unknown World Pro
 D2_TEXT = "[This confrontation cannot begin yet. You need more Dantooine Progression items to continue.]"
 D1_TEXT = "[Master Dorak will not guide you on the Jedi path yet. You need more Dantooine Progression items to continue.]"
 M1_TEXT = "[Roland Wann will not discuss the mission yet. You need more Manaan Progression items to continue.]"
+K3_TEXT = "[Chorrawl will not lead you to the throne room yet.]"   # the player then says the number needed (sg_ap_kas_k3x)
 U3_TEXT = ("ACCESS DENIED\nAUTHORIZATION INCOMPLETE\n[You need more Unknown World Progression items to continue.]\n"
            "SYSTEM LOGGING OFF...")
 
@@ -53,6 +55,8 @@ DIALOGS = {
     "dan13_dorak": ("danm13", "ap_dan_d1", D1_TEXT, "sg_ap_dan_d1"),
     # Manaan M1, Roland Wann's dialog (manm26ae only): the whole conversation waits, so none of his branches can start early.
     "man26_repdip": ("manm26ae", "ap_man_m1x", M1_TEXT, "sg_ap_man_m1x"),
+    # Kashyyyk K3, Chorrawl on the Great Walkway (kas_m22ab only): his whole conversation, which ends with the walk into the throne room, waits.
+    "kas22_chorraw_02": ("kas_m22ab", "ap_kas_k3x", K3_TEXT, "sg_ap_kas_k3x"),
 }
 
 def _plain_reply(r):

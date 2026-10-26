@@ -2,54 +2,22 @@
 kotor_extender_bridge.py -- the real socket connection from KotorClient.py
 to the injected extender (127.0.0.1:25586)
 
-Protocol (see extender/src/dllmain.c):
-  Outgoing:  "APPLY:<arm_name>\n"       -- request a grant be queued/armed
-             "NOTIFY:<url-encoded text>\n" -- one-shot on-screen message
-                                           (see send_notify), not a grant
-                                           --Indicates in game feedback screen that they are connected
-  Incoming:  "STAGED:<arm_name>\n"      -- ack for an APPLY: we sent
-             "ERROR:<message>\n"        -- an APPLY: (or other request) failed
-             "EVENT:<log line>\n"       -- a kse.log line the extender's
-                                           log-tail thread matched (AP|...
-                                           marker), pushed unprompted
+Every delivery to the game is a job for the job dispatcher (kotor_dispatcher.py): the send_* methods below turn their arguments into one
+job, and the dispatcher writes it to the extender as DISPATCH:<seq>:<action>[:<args>] when it is its turn. The game applies it at a calm
+moment, once, and answers with AP|DISPATCH|APPLIED (or FAILED / UNKNOWN). The older staged-arm commands (APPLY:, APPLYVALUE:, NOTIFY:) are
+no longer sent.
 
-#BK Notes - Shouldn''t above incoming event detail out AP-Applied confirms receipt of the appllied arms.
-#To confirm if any current apply will not be notifying the logging mechanisms.
-#
-# _track_delivery_from_event below is generic -- it matches ANY
-# "AP|APPLIED|<name>|..." line, not a fixed list, so any arm whose
-# NWScript emits that marker gets tracked automatically. Every real grant
-# arm in generate_trampoline_batch.py (skills, XP, credits, companions,
-# give_item, companion_class, etc.) ends with a matching
-# KSE_Diag("AP|APPLIED|...") call -- this is the same marker
-# arm_orchestrator.py's own --delivered= dequeue depends on, so a
-# systematically-missing one would show up as "this arm re-arms forever,"
-# a much louder bug than a stale GUI label.
-# ONE confirmed, deliberate exception: `notify` actions (one-shot on-screen
-# messages, see send_notify) never emit AP|APPLIED at all -- there's no
-# real "success" state to confirm for a text message, so
-# arm_orchestrator.py clears them unconditionally on the next area
-# transition instead (see its own NOTIFY_PATH comment). This means a
-# `notify` entry in kotor_extender_bridge's `deliveries` table would stay
-# "queued" forever if one were ever tracked there -- but notify isn't
-# routed through send_apply/deliveries at all (send_notify doesn't create
-# a DeliveryRecord), so this doesn't actually surface as a bug in practice.
+Protocol (see extender/src_k1se/ap_extender.c):
+  Outgoing:  "DISPATCH:<seq>:<action>[:<args>][^^<message>]\n"  -- one dispatcher job
+             "SHOPSTOCK:<planet>:<resref>,...\n"                -- the stores' catalog (baked into the area-entry scripts)
+  Incoming:  "STAGED:..."  -- ack for a command the extender queued (a DISPATCH: job is answered "staged" / "busy" / "toolong")
+             "ERROR:<message>" -- a request failed
+             "EVENT:<log line>" -- a kse.log line the extender's log-tail thread matched (AP|... marker), pushed unprompted
 
-This module owns the persistent connection and a small delivery-tracking
-table (arm_name -> DeliveryRecord) so the GUI can show, per item, one of
-three states -- see delivery_state() and DeliveryRecord's own field
-comments:
-  Queued  -- we decided to send it and wrote to the socket
-  Staged  -- the extender's STAGED: ack confirmed it actually RECEIVED
-             the command and queued it into the trampoline system (not
-             just that our local write() didn't raise -- see
-             wait_staged()'s docstring for the real casualty this
-             distinction was built to catch)
-  Settled -- AP|APPLIED|... confirmed the trampoline actually fired
-             in-game
-This is the "why hasn't everything arrived yet" visibility the batching
-model needs, since a queued item can sit for a bit before the player's next
-area entry delivers it.
+This module owns the persistent connection and a small delivery table (key -> DeliveryRecord) that the rest of the client reads
+(wait_staged, rejection, the heavy-arm confirmation). A record follows its job: queued and staged when the job is accepted (the
+dispatcher resends until the game answers, so there is nothing further to wait for), settled when the game answers APPLIED or DUP,
+rejected when the job fails, removed when a newer job replaces it. See _submit_job and _watch_job.
 """
 
 from __future__ import annotations
@@ -111,6 +79,11 @@ class ExtenderBridge:
         self.connected = False
         self.deliveries: typing.Dict[str, DeliveryRecord] = {}
         self._delivery_seq = 0
+        # The job dispatcher every delivery goes through (set by KotorContext), and the job behind each delivery key.
+        self.dispatcher = None
+        self._jobs: typing.Dict[str, typing.Any] = {}
+        # Set by the dispatcher client (kotor_dispatcher.py): called as (kind, seq) for the extender's reply to a DISPATCH: line.
+        self.on_dispatch_reply: typing.Optional[typing.Callable[[str, int], None]] = None
 
     @property
     def is_connected(self) -> bool:
@@ -168,15 +141,30 @@ class ExtenderBridge:
                 # and move on, not take down the entire connection.
                 logger.exception(f"[extender] error handling event, dropping this line: {event!r}")
         elif line.startswith("STAGED:"):
-            self._track_staged_from_line(line[len("STAGED:"):])
+            if not self._dispatch_reply(line[len("STAGED:"):]):
+                self._track_staged_from_line(line[len("STAGED:"):])
             logger.info(f"[extender] {line}")
         elif line.startswith("ERROR:"):
-            self._track_error_from_line(line[len("ERROR:"):])
+            if not self._dispatch_reply(line[len("ERROR:"):]):
+                self._track_error_from_line(line[len("ERROR:"):])
             logger.info(f"[extender] {line}")
         # ACK:/SCANNED:/etc from diagnostic commands -- not used by the
         # normal item-delivery path, nothing to do with them here.
 
     _UNKNOWN_ITEM_RE = re.compile(r"unknown item '([^']*)'")
+    _DISPATCH_REPLY_RE = re.compile(r"^dispatch(?: (busy|too long))?:(\d+)")
+
+    def _dispatch_reply(self, rest: str) -> bool:
+        """The extender's answer to a DISPATCH: line (STAGED:dispatch:<seq>, ERROR:dispatch busy:<seq>, ERROR:dispatch too
+        long:<seq>), handed to the dispatcher client. These are not item deliveries, so they never get a DeliveryRecord.
+        Returns True if the line was one of them."""
+        m = self._DISPATCH_REPLY_RE.match(rest)
+        if m is None:
+            return False
+        if self.on_dispatch_reply is not None:
+            kind = {None: "staged", "busy": "busy", "too long": "toolong"}[m.group(1)]
+            self.on_dispatch_reply(kind, int(m.group(2)))
+        return True
 
     def _track_error_from_line(self, rest: str) -> None:
         """Marks a delivery Rejected when the extender answers 'ERROR:unknown item '<name>'': it does not know the
@@ -187,7 +175,7 @@ class ExtenderBridge:
             return
         parts = m.group(1).split(":")
         head = parts[0]
-        if head in ("give_item", "companion_class", "additional_feats", "trap", "force_power") and len(parts) > 1:
+        if head in ("give_item", "companion_class", "trap", "force_power") and len(parts) > 1:
             key = f"{head}:{parts[1]}"
         else:
             key = head
@@ -221,7 +209,7 @@ class ExtenderBridge:
         not a bug."""
         parts = rest.split(":")
         head = parts[0]
-        if head in ("give_item", "companion_class", "additional_feats", "trap") and len(parts) > 1:
+        if head in ("give_item", "companion_class", "trap") and len(parts) > 1:
             key = f"{head}:{parts[1]}"
         elif head == "force_power" and len(parts) > 1:
             key = f"force_power:{parts[1]}"
@@ -312,141 +300,81 @@ class ExtenderBridge:
         if record is not None and record.applied_at is None:
             self.deliveries[name] = record._replace(applied_at=time.time(), detail=detail)
 
-    async def send_apply_value(self, action: str, value: int) -> bool:
-        """Sends APPLYVALUE:<action>:<value> -- the parameterized-action
-        counterpart to send_apply, for exact-value corrections (set_xp,
-        set_credits) rather than fixed-increment grants. Replace-semantics
-        on the extender side: a new value supersedes an earlier pending one
-        for the same action, so tracking it under its action name (not a
-        per-call unique key) is correct here too."""
+    # ---- delivery through the job dispatcher -----------------------------------------------------------------------
+    # Every delivery is a dispatcher job (kotor_dispatcher.py): the game applies it at a calm moment, once, and answers APPLIED. The
+    # DeliveryRecord keeps the three states the rest of the client already reads: queued (accepted here), staged (set at the same
+    # moment: the dispatcher resends until the game answers, so there is nothing further to wait for), settled (the game answered
+    # APPLIED or DUP) -- or rejected (the game could not do it, or does not know the action).
+    def _submit_job(self, key: str, action: str, args: str = "", message: str = "") -> bool:
         if self._writer is None:
-            logger.warning(f"send_apply_value({action}, {value}): not connected to extender, not sent.")
+            logger.warning(f"{key}: not connected to extender, not sent.")
             return False
-        self._writer.write(f"APPLYVALUE:{action}:{value}\n".encode())
-        await self._writer.drain()
-        self.deliveries[action] = DeliveryRecord(action, time.time(), None, None, "")
-        logger.info(f"[extender] queued: {action}={value}")
+        if self.dispatcher is None:
+            logger.warning(f"{key}: no dispatcher attached, not sent.")
+            return False
+        now = time.time()
+        job = self.dispatcher.submit(action, args, message=message)
+        self.deliveries[key] = DeliveryRecord(key, now, now, None, "")
+        self._jobs[key] = job
+        logger.info(f"[extender] queued: {key} ({action} {args})".rstrip())
+        asyncio.ensure_future(self._watch_job(key, job))
         return True
+
+    async def _watch_job(self, key: str, job) -> None:
+        """Turns the job's final state into the delivery record's."""
+        await job.done.wait()
+        if self._jobs.get(key) is not job:
+            return          # a newer job for the same delivery has taken over the record
+        record = self.deliveries.get(key)
+        if record is None:
+            return
+        if job.state in ("applied", "duplicate"):
+            self.deliveries[key] = record._replace(applied_at=time.time(), detail=f"dispatcher: {job.state}")
+        elif job.state in ("replaced", "dropped"):
+            self.deliveries.pop(key, None)
+        else:
+            # a rejected delivery is one that never reached "staged" (rejection() and delivery_state() read it that way)
+            self.deliveries[key] = record._replace(staged_at=None, rejected_at=time.time(), reject_detail=job.fail_reason or job.state)
+
+    async def send_apply_value(self, action: str, value: int, message: str = "") -> bool:
+        """An exact-value correction (set_xp, set_credits): a dispatcher job that replaces a waiting one of the same kind."""
+        return self._submit_job(action, action, str(value), message)
 
     async def send_delevel(self, new_level: int, new_xp: int, new_force: int = -1) -> bool:
-        """Sends APPLYVALUE:delevel:<level>:<xp>:<force> -- the reconciler's
-        fix for the documented SetXP gap: native SetXP() can't lower XP
-        below the CURRENT level's banked threshold once vanilla
-        combat/quest XP has carried the player past it. Writes level and XP
-        directly via KSE_SetCreatureField instead. new_force=-1 (default)
-        means "don't touch Force" (non-Jedi PC); pass the reconciler's own
-        proportionally-scaled value (currentForce * newLevel/oldLevel) for a
-        Jedi PC -- see kotor_reconciliation.py's delevel trigger. Replace
-        semantics on the extender side, same as send_apply_value."""
+        """The reconciler's delevel fix (level, XP and Force points, -1 = leave the Force points alone) as a dispatcher job."""
+        return self._submit_job("delevel", "delevel", f"{new_level}:{new_xp}:{new_force}")
+
+    async def send_force_power(self, spell_id: int, message: str = "") -> bool:
+        """Grants one Force power (a spells.2da row) as a dispatcher job."""
+        return self._submit_job(f"force_power:{spell_id}", "force_power", str(spell_id), message)
+
+    async def send_dispatch(self, seq: int, action: str, args: str = "", message: str = "") -> bool:
+        """Sends DISPATCH:<seq>:<action>[:<args>] -- one job for the poll's dispatcher (see kotor_dispatcher.py). The
+        extender's STAGED:dispatch:<seq> reply only means the job is in the DLL's inbox; the game's own
+        AP|DISPATCH|APPLIED line is the confirmation. The args are free text, so line breaks are removed. The optional
+        message is shown to the player in the same apply, after the action (sent after a ^^ marker)."""
         if self._writer is None:
-            logger.warning(f"send_delevel({new_level}, {new_xp}, {new_force}): not connected to extender, not sent.")
             return False
-        self._writer.write(f"APPLYVALUE:delevel:{new_level}:{new_xp}:{new_force}\n".encode())
-        await self._writer.drain()
-        self.deliveries["delevel"] = DeliveryRecord("delevel", time.time(), None, None, "")
-        logger.info(f"[extender] queued: delevel level={new_level} xp={new_xp} force={new_force}")
+        text = f"{seq}:{action}" + (f":{args}" if args else "") + (f"^^{message.replace('^^', '^')}" if message else "")
+        text = text.replace("\r", " ").replace("\n", " ")
+        try:
+            self._writer.write(f"DISPATCH:{text}\n".encode())
+            await self._writer.drain()
+        except (ConnectionError, OSError):
+            return False
         return True
 
-    async def send_force_power(self, spell_id: int) -> bool:
-        """Sends APPLYVALUE:force_power:<spells.2da row id> -- grants one
-        Force Power to the PC (the TSL power-port pilot's grant half; see
-        generate_trampoline_batch.py's build_force_power_block
-        and scripts/patch_tsl_powers.py). Id-keyed like give_item, so two
-        different powers can be pending at once without colliding."""
-        if self._writer is None:
-            logger.warning(f"send_force_power({spell_id}): not connected to extender, not sent.")
-            return False
-        self._writer.write(f"APPLYVALUE:force_power:{spell_id}\n".encode())
-        await self._writer.drain()
-        key = f"force_power:{spell_id}"
-        self.deliveries[key] = DeliveryRecord(key, time.time(), None, None, "")
-        logger.info(f"[extender] queued: force_power {spell_id}")
-        return True
+    async def send_apply_item(self, resref: str, count: int, message: str = "") -> bool:
+        """Creates `count` of an item on the player as a dispatcher job."""
+        return self._submit_job(f"give_item:{resref}", "give_item", f"{resref}:{count}", message)
 
-    async def send_apply_item(self, resref: str, count: int) -> bool:
-        """Sends APPLYVALUE:give_item:<resref>:<count> -- the generic gear-
-        grant path (CreateItemOnObject), distinct from send_apply_value's
-        single-int actions (set_xp/set_credits) since this needs both a
-        resref and a count encoded together."""
-        if self._writer is None:
-            logger.warning(f"send_apply_item({resref}, {count}): not connected to extender, not sent.")
-            return False
-        self._writer.write(f"APPLYVALUE:give_item:{resref}:{count}\n".encode())
-        await self._writer.drain()
-        key = f"give_item:{resref}"
-        self.deliveries[key] = DeliveryRecord(key, time.time(), None, None, "")
-        logger.info(f"[extender] queued: give_item {resref} x{count}")
-        return True
+    async def send_companion_class(self, name: str, class_name: str, message: str = "") -> bool:
+        """Sets a companion's class (the companion must be in the party; the game answers FAILED otherwise) as a dispatcher job."""
+        return self._submit_job(f"companion_class:{name}", "companion_class", f"{name}:{class_name}", message)
 
-    async def send_companion_class(self, name: str, class_name: str) -> bool:
-        """Sends APPLYVALUE:companion_class:<name>:<class_name> -- the
-        CompanionClass mechanism (Options.py), used both for a real
-        jedi_companion AP item (arm_name is literally
-        "companion_class:<name>:<class_name>", see Items.py) and as a
-        client-initiated follow-up right after a companion recruit arm
-        fires for no_jedi/randomize_all (see KotorClient.py's
-        _maybe_queue_companion_class). Tracked under a per-name key so
-        concurrent assignments for different companions don't collide,
-        same reasoning as send_apply_item's per-resref keying."""
-        if self._writer is None:
-            logger.warning(f"send_companion_class({name}, {class_name}): not connected to extender, not sent.")
-            return False
-        self._writer.write(f"APPLYVALUE:companion_class:{name}:{class_name}\n".encode())
-        await self._writer.drain()
-        key = f"companion_class:{name}"
-        self.deliveries[key] = DeliveryRecord(key, time.time(), None, None, "")
-        logger.info(f"[extender] queued: companion_class {name} -> {class_name}")
-        return True
-
-    async def send_additional_feats(self, name: str, feat_ids: typing.List[int]) -> bool:
-        """Sends APPLYVALUE:additional_feats:<name>:<f1>,<f2>,<f3> -- the
-        AdditionalFeats mechanism (Options.py). Unlike every other
-        parameterized action, the target/values here are decided entirely
-        client-side at delivery time (see KotorContext._check_pending_
-        additional_feats), not baked into the received item itself -- the
-        item is just a marker saying "grant 3 for character <name>
-        eventually." feat_ids is always exactly 3 real feat.2da row ids
-        from the fixed 18-feat combined pool (KotorClient.py's
-        ADDITIONAL_FEATS_POOL);
-        comma-joined since APPLYVALUE's own framing is colon-delimited.
-        Tracked under a per-name key, same reasoning as
-        send_companion_class."""
-        if self._writer is None:
-            logger.warning(f"send_additional_feats({name}, {feat_ids}): not connected to extender, not sent.")
-            return False
-        feat_csv = ",".join(str(f) for f in feat_ids)
-        self._writer.write(f"APPLYVALUE:additional_feats:{name}:{feat_csv}\n".encode())
-        await self._writer.drain()
-        key = f"additional_feats:{name}"
-        self.deliveries[key] = DeliveryRecord(key, time.time(), None, None, "")
-        logger.info(f"[extender] queued: additional_feats {name} -> {feat_ids}")
-        return True
-
-    async def send_trap(self, trap_type: str, params: str) -> bool:
-        """Sends APPLYVALUE:trap:<trap_type>:<params> -- the single
-        consolidated wire action for every Traps item (Options.py's
-        Traps). One action name covers all 12 trap types, mirroring
-        additional_feats:'s "decided client-side at delivery" shape: the
-        item itself is just a marker (arm_name="trap:<trap_type>"),
-        KotorClient.py computes the real specifics from the character's
-        live state (which feat/power ids, which companion, how much to
-        reduce a stat by) and passes them here pre-encoded as params
-        (comma-joined ids, a companion key, a bare int -- whatever that
-        specific trap_type expects, see generate_trampoline_batch.py's
-        build_trap_block for the exact per-type shape). Tracked under a
-        per-trap_type key -- traps are one-time-only by design (see
-        Traps' docstring), so a collision here would mean the same
-        trap type firing twice in-flight at once, which shouldn't happen
-        given the delivery-log dedup every item already goes through."""
-        if self._writer is None:
-            logger.warning(f"send_trap({trap_type}, {params}): not connected to extender, not sent.")
-            return False
-        self._writer.write(f"APPLYVALUE:trap:{trap_type}:{params}\n".encode())
-        await self._writer.drain()
-        key = f"trap:{trap_type}"
-        self.deliveries[key] = DeliveryRecord(key, time.time(), None, None, "")
-        logger.info(f"[extender] queued: trap {trap_type} -> {params}")
-        return True
+    async def send_trap(self, trap_type: str, params: str, message: str = "") -> bool:
+        """A trap item as a dispatcher job: trap:<type>:<params> ("-" when the type takes none)."""
+        return self._submit_job(f"trap:{trap_type}", "trap", f"{trap_type}:{params}", message)
 
     async def send_raw(self, command: str) -> bool:
         """Sends an arbitrary raw line straight to the extender socket, no
@@ -466,18 +394,9 @@ class ExtenderBridge:
         logger.info(f"[extender] sent raw: {command}")
         return True
 
-    async def send_apply(self, arm_name: str) -> bool:
-        """Sends APPLY:<arm_name> to the extender. Returns False immediately
-        (no send attempted) if not currently connected -- callers should
-        surface that to the user rather than silently dropping the item."""
-        if self._writer is None:
-            logger.warning(f"send_apply({arm_name}): not connected to extender, not sent.")
-            return False
-        self._writer.write(f"APPLY:{arm_name}\n".encode())
-        await self._writer.drain()
-        self.deliveries[arm_name] = DeliveryRecord(arm_name, time.time(), None, None, "")
-        logger.info(f"[extender] queued: {arm_name}")
-        return True
+    async def send_apply(self, arm_name: str, message: str = "") -> bool:
+        """A fixed arm (a class, a companion, a skill, XP, a death...) as a dispatcher job."""
+        return self._submit_job(arm_name, "arm", arm_name, message)
 
     async def send_shop_stock(self, planet_stock: typing.Dict[str, typing.List[str]]) -> bool:
         """Sends SHOPSTOCK:<planet>:<resref1>,<resref2>,... ONCE PER PLANET
@@ -495,15 +414,9 @@ class ExtenderBridge:
         return True
 
     async def send_notify(self, text: str) -> bool:
-        """Sends NOTIFY:<url-encoded text> -- a one-shot on-screen message
-        for confirmation of connection status in game client"""
-        if self._writer is None:
-            return False
+        """A message for the player, shown by the dispatcher when the game is calm."""
         text = text.replace("\n", " ").replace("\r", " ")[:200]
-        encoded = urllib.parse.quote(text, safe="")
-        self._writer.write(f"NOTIFY:{encoded}\n".encode())
-        await self._writer.drain()
-        return True
+        return self._submit_job(f"notify:{text}", "notify", "", text)
 
     def pending_deliveries(self) -> typing.List[DeliveryRecord]:
         return [d for d in self.deliveries.values() if d.applied_at is None]

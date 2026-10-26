@@ -19,7 +19,6 @@ Usage:
   python arm_orchestrator.py --area=<base>                 (area change; use current pending queue)
   python arm_orchestrator.py --queue-add=<arm_id>           (new check arrived; re-derive armed set for last-known area)
   python arm_orchestrator.py --queue-companion-class=<name>:<class>  (CompanionClass -- see Options.py)
-  python arm_orchestrator.py --queue-additional-feats=<name>:<f1>,<f2>,<f3>  (AdditionalFeats -- see Options.py)
   python arm_orchestrator.py --queue-delevel=<level>:<xp>:<force>  (reconciler SetXP-gap fix -- force=-1 means don't touch Force)
   python arm_orchestrator.py --queue-trap=<trap_type>:<params>  (Traps -- see Options.py)
   python arm_orchestrator.py --queue-force-power=<spells.2da row id>  (TSL power port pilot / admin grant)
@@ -216,8 +215,6 @@ def _cli_token(item):
             return f"give_item:{item['resref']}:{item['count']}"
         if item["action"] == "companion_class":
             return f"companion_class:{item['name']}:{item['class_name']}"
-        if item["action"] == "additional_feats":
-            return f"additional_feats:{item['name']}:{','.join(str(f) for f in item['feat_ids'])}"
         if item["action"] == "trap":
             return f"trap:{item['trap_type']}:{item['params']}"
         if item["action"] == "force_power":
@@ -242,7 +239,7 @@ def _cli_token(item):
 
 # Set by regenerate() on any subprocess failure and checked at the very end
 # of main() -- a failed regenerate used to just print a warning and let
-# arm_orchestrator.py exit 0 anyway, which meant dllmain.c's CreateProcess
+# arm_orchestrator.py exit 0 anyway, which meant ap_extender.c's CreateProcess
 # (which only sees ITS direct child's exit code, not generate_trampoline_
 # batch.py's) had no way to know anything went wrong. A real example: a
 # stale _shop_stock.json schema crashed generate_trampoline_batch.py on
@@ -358,6 +355,8 @@ def reset_all():
 
 def apply_armed_set(new_area_base, graph, force_clean=False):
     queue = load_json(QUEUE_PATH, [])
+    # Additional Feats entries (retired: feats are trained in the companions' dialogs) left in a queue written by an earlier version are dropped.
+    queue = [q for q in queue if not (isinstance(q, dict) and q.get("action") == "additional_feats")]
     armed = load_json(ARMED_PATH, {})
     # Merged into every regenerate of to_arm below -- NOT just when
     # --queue-notify= itself runs. Real bug this fixes: a
@@ -485,7 +484,7 @@ def _dispatch():
 
     if arg.startswith("--queue-notify="):
         # Percent-decoded here -- kotor_extender_bridge.py's send_notify()
-        # encodes it before sending, since dllmain.c's ap_run_orchestrator()
+        # encodes it before sending, since ap_extender.c's ap_run_orchestrator()
         # builds an unquoted CreateProcessA command line that would
         # otherwise split this on every space before it even reaches this
         # script's argv (e.g. "Connected to AP Server" arriving
@@ -614,22 +613,6 @@ def _dispatch():
         apply_armed_set(current, graph)
         return
 
-    if arg.startswith("--queue-additional-feats="):
-        name, feats_csv = arg.split("=", 1)[1].split(":")
-        feat_ids = [int(f) for f in feats_csv.split(",")]
-        queue = load_json(QUEUE_PATH, [])
-        # Append, not replace: same reasoning as companion_class -- each
-        # character's grant is a distinct, one-shot delivery (the 3 feat
-        # ids were already chosen client-side, see KotorClient.py's
-        # _check_pending_additional_feats), and in principle more than one
-        # could be pending at once (e.g. the PC's and a companion's both
-        # clearing their gates in the same poll cycle).
-        queue.append({"action": "additional_feats", "name": name, "feat_ids": feat_ids})
-        save_queue(queue)
-        current = load_json(CURRENT_AREA_PATH, {}).get("area")
-        apply_armed_set(current, graph)
-        return
-
     if arg.startswith("--queue-trap="):
         # Format is "<trap_type>:<params>" -- split(":", 1), not a bare
         # split(":"), since params' own internal shape can legitimately
@@ -639,7 +622,7 @@ def _dispatch():
         # trap_type actually does.
         trap_type, params = arg.split("=", 1)[1].split(":", 1)
         queue = load_json(QUEUE_PATH, [])
-        # Append, not replace: same reasoning as additional_feats -- a
+        # Append, not replace: same reasoning as companion_class -- a
         # one-shot delivery, and in principle more than one trap could be
         # pending at once (e.g. two traps received close together).
         queue.append({"action": "trap", "trap_type": trap_type, "params": params})
@@ -667,7 +650,7 @@ def _dispatch():
         # Format is "<planet>:<resref1>,<resref2>,..." -- one call per
         # planet, sent as
         # 5 separate wire messages by kotor_extender_bridge.py so no
-        # individual message risks overflowing dllmain.c's fixed args[700]
+        # individual message risks overflowing ap_extender.c's fixed args[700]
         # buffer. _shop_stock.json is now {planet: [resrefs]} -- each call
         # only updates its own planet's key, merging into whatever the
         # other planets' earlier calls already wrote this connection.
@@ -719,13 +702,6 @@ def _dispatch():
                     if isinstance(q, dict) and q.get("action") == "companion_class" and q.get("name") == name:
                         queue.pop(idx)
                         break
-            elif i.startswith("additional_feats:"):
-                name = i.split(":", 1)[1]
-                # Same first-match-only removal as give_item/companion_class.
-                for idx, q in enumerate(queue):
-                    if isinstance(q, dict) and q.get("action") == "additional_feats" and q.get("name") == name:
-                        queue.pop(idx)
-                        break
             elif i.startswith("trap:"):
                 trap_type = i.split(":", 1)[1]
                 # Same first-match-only removal as the others above --
@@ -756,17 +732,20 @@ def _dispatch():
         # archipelago_vendor slot option) is present or absent to match the connected seed. The
         # trampoline is otherwise only rebuilt when an arm is queued for that area. Keeps whatever
         # batch is already armed there.
-        base = "ebo_m12aa"
-        armed = load_json(ARMED_PATH, {})
-        batch = armed.get(base) or []
-        regenerate([base], batch)
-        if _had_failure:
-            print(f"vendor trampoline regenerate for {base} FAILED")
-        else:
-            armed[base] = list(batch)
-            if batch:
-                save_json(ARMED_PATH, armed)
-            print(f"vendor spawn refreshed in {base} (armed batch kept: {len(batch)} item(s))")
+        # The Manaan and Korriban port-gate areas are rebuilt in the same pass: their entry unlocks (generate_trampoline_batch.py
+        # ENTRY_UNLOCKS) exist only on area-randomizer seeds.
+        for base in ("ebo_m12aa", "manm26ac", "korr_m33aa"):
+            armed = load_json(ARMED_PATH, {})
+            batch = armed.get(base) or []
+            failed_before = _had_failure
+            regenerate([base], batch)
+            if _had_failure and not failed_before:
+                print(f"entry trampoline regenerate for {base} FAILED")
+            else:
+                armed[base] = list(batch)
+                if batch:
+                    save_json(ARMED_PATH, armed)
+                print(f"entry script refreshed in {base} (armed batch kept: {len(batch)} item(s))")
         return
 
     if arg in ("--clear-derived", "--clear-all"):

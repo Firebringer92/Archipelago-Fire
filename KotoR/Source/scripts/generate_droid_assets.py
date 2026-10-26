@@ -20,6 +20,8 @@ Installs (or takes back out) everything the droid options need, in the game's Ov
   * companion_class=droid only: p_<companion>.utc templates for the seven non-droid companions (droid race, subrace 0, the
     seed's droid look and droid class at class level 1 with that class's level-1 feat kit, the droid hide), Canderous's
     combined droid + Regeneration hide, and the Mark Two ranged-animation fix.
+  * Droid gear (either option): better stats on the existing droid plating, shields, targeting computers and sensors (DROID_GEAR
+    below). Copies of the item templates in Override; the spike mounts, utility devices and repair kits are left alone.
 
 Needed when starting_class is droid (4) and/or companion_class is droid (4). With neither, everything this script ever wrote
 is removed again, so it runs on every Connect.
@@ -42,7 +44,7 @@ from pykotor.extract.installation import Installation, SearchLocation
 from pykotor.resource.formats.gff import write_gff
 from pykotor.resource.formats.twoda import read_2da, write_2da
 from pykotor.resource.generics.utc import UTCClass, dismantle_utc, read_utc
-from pykotor.resource.generics.uti import dismantle_uti, read_uti
+from pykotor.resource.generics.uti import UTIProperty, dismantle_uti, read_uti
 from pykotor.resource.type import ResourceType
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -52,7 +54,7 @@ SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_
 MANIFEST = "ap_droid_manifest.json"
 BACKUP_SUFFIX = ".ap_droid_backup"
 # Bump when any asset or rule below changes, so an unchanged-looking Connect still reinstalls.
-VERSION = 5
+VERSION = 6
 
 # Files left behind by the developer-only build/test scripts: they own their own backups, so refuse to stack on top of them.
 LEGACY_MARKERS = ("droid_test_manifest.json", "hk47_variant_appearance_backup.json", "ap_drdwar_appearance_backup.json",
@@ -240,6 +242,85 @@ def build_companion(inst, resref, appearance, droid_class):
     return utc
 
 
+# ---- droid gear -------------------------------------------------------------------------------------------------------
+# Item property encodings (property, subtype, cost table, cost value), taken from the game's own items.
+PROP_ABILITY, PROP_ARMOR, PROP_DAMAGE, PROP_RESIST, PROP_ATTACK = 0, 1, 11, 17, 38
+STR, DEX, CON, INT = 0, 1, 2, 3
+BLUD, PIERCE, SLASH, ACID, COLD, ELEC, FIRE, SONIC, ION, ENERGY = 0, 1, 2, 4, 5, 7, 8, 10, 11, 12
+ARMOR_MAX = 5  # iprp_meleecost, the armour bonus cost table, stops at +5
+FLOOR_COST = 500
+# resref -> stats. armor: the armour bonus on top of the plating's own base AC (light 3, medium 4, heavy 9, shields 0);
+# abilities {ability: bonus}; attack / damage: flat bonuses; resist {damage type: level 1-6 = 5/-, 10/- ... 30/-}; cost: shop price.
+DROID_GEAR = {
+    # plating: final AC light 5/7/8, medium 6/8/9, heavy 10/12/13, Composite Heavy 14 (human armour runs about 4-14). Resistances:
+    # blasters and lightsabers deal energy damage and melee weapons physical damage (baseitems damageflags), so energy comes first.
+    "g_i_drdltplat001": {"armor": 2, "resist": {ENERGY: 1}, "cost": 300},
+    "g_i_drdltplat002": {"armor": 4, "resist": {ENERGY: 1}, "cost": 600},
+    "g_i_drdltplat003": {"armor": 5, "resist": {ENERGY: 2}, "cost": 1000},
+    "g_i_drdmdplat001": {"armor": 2, "resist": {ENERGY: 1}, "cost": 800},
+    "g_i_drdmdplat002": {"armor": 4, "resist": {ENERGY: 2, BLUD: 1, PIERCE: 1, SLASH: 1}, "cost": 1500},
+    "g_i_drdmdplat003": {"armor": 5, "resist": {ENERGY: 2, BLUD: 2, PIERCE: 2, SLASH: 2}, "cost": 2500},
+    "g_i_drdhvplat001": {"armor": 1, "resist": {ENERGY: 2, BLUD: 1, PIERCE: 1, SLASH: 1}, "cost": 2000},
+    "g_i_drdhvplat002": {"armor": 3, "resist": {ENERGY: 3, BLUD: 2, PIERCE: 2, SLASH: 2}, "cost": 3500},
+    "g_i_drdhvplat003": {"armor": 4, "resist": {ENERGY: 3, BLUD: 3, PIERCE: 3, SLASH: 3}, "cost": 5000},
+    "g1_i_drdhvplat01": {"armor": 5, "abilities": {STR: 3},
+                         "resist": {ENERGY: 4, BLUD: 3, PIERCE: 3, SLASH: 3, ION: 2, SONIC: 2}, "cost": 12000},
+    # shields (belt slot): armour plus resistances
+    "g_i_drdshld001": {"armor": 1, "resist": {ENERGY: 1}, "cost": 600},
+    "g_i_drdshld002": {"armor": 2, "resist": {ENERGY: 2, SONIC: 1}, "cost": 1000},
+    "g_i_drdshld003": {"armor": 3, "resist": {ENERGY: 3, SONIC: 2, ION: 1}, "cost": 1600},
+    "g_i_drdshld005": {"armor": 1, "resist": {FIRE: 1, COLD: 1}, "cost": 600},
+    "g_i_drdshld006": {"armor": 2, "resist": {FIRE: 2, COLD: 2, ACID: 1}, "cost": 1000},
+    "g_i_drdshld007": {"armor": 3, "resist": {FIRE: 3, COLD: 3, ACID: 2, ELEC: 1}, "cost": 1600},
+    "g_i_drdshld008": {"armor": 3, "resist": {ENERGY: 2}, "cost": 5000},
+    "g1_i_drdshld001": {"armor": 4, "resist": {ENERGY: 4, SONIC: 3, ELEC: 3}, "cost": 6000},
+    # targeting computers (head slot, shared with the sensors and scopes)
+    "g_i_drdtrgcom001": {"attack": 1, "cost": 800},
+    "g_i_drdtrgcom002": {"attack": 2, "damage": 1, "cost": 2000},
+    "g_i_drdtrgcom003": {"attack": 3, "damage": 2, "abilities": {DEX: 2}, "cost": 3500},
+    "g_i_drdtrgcom005": {"abilities": {DEX: 1}},
+    "g_i_drdtrgcom006": {"abilities": {DEX: 2}},
+    # sensors and scopes: keep the skill bonus, the higher tiers add an ability
+    "g_i_drdmtnsen002": {"abilities": {DEX: 1}},
+    "g_i_drdmtnsen003": {"abilities": {DEX: 2}},
+    "g_i_drdsncsen002": {"abilities": {CON: 1}, "cost": FLOOR_COST},
+    "g_i_drdsncsen003": {"abilities": {CON: 2}, "cost": FLOOR_COST},
+    "g_i_drdsrcscp002": {"abilities": {STR: 1}, "cost": FLOOR_COST},
+    "g_i_drdsrcscp003": {"abilities": {STR: 2}, "cost": FLOOR_COST},
+}
+
+
+def _gear_property(name, subtype, table, value):
+    prop = UTIProperty()
+    prop.property_name, prop.subtype, prop.cost_table, prop.cost_value = name, subtype, table, value
+    prop.param1, prop.param1_value, prop.chance_appear = 255, 0, 100
+    return prop
+
+
+def build_gear(inst, resref, spec):
+    """The droid item's template with `spec` applied: its armour bonus replaced, the other bonuses added after its own properties
+    (the droid-only use limit and any skill bonus or cast spell are kept)."""
+    res = inst.resource(resref, ResourceType.UTI)  # default order: a few droid items are only in module files
+    if res is None:
+        raise RuntimeError(f"{resref}.uti not found")
+    uti = read_uti(res.data)
+    if "armor" in spec:
+        assert spec["armor"] <= ARMOR_MAX
+        uti.properties = [p for p in uti.properties if p.property_name != PROP_ARMOR]
+        uti.properties.append(_gear_property(PROP_ARMOR, 0, 2, spec["armor"]))
+    for ability, bonus in spec.get("abilities", {}).items():
+        uti.properties.append(_gear_property(PROP_ABILITY, ability, 1, bonus))
+    if "attack" in spec:
+        uti.properties.append(_gear_property(PROP_ATTACK, 0, 2, spec["attack"]))
+    if "damage" in spec:
+        uti.properties.append(_gear_property(PROP_DAMAGE, ENERGY, 4, spec["damage"]))
+    for damage_type, level in spec.get("resist", {}).items():
+        uti.properties.append(_gear_property(PROP_RESIST, damage_type, 7, level))
+    cost = max(uti.cost, spec.get("cost", 0), FLOOR_COST)
+    uti.cost = uti.add_cost = cost
+    return uti
+
+
 def build_cand_hide(inst):
     """The droid hide with Canderous's own Regeneration property added (copied from his original hide)."""
     find = [SearchLocation.OVERRIDE, SearchLocation.CHITIN]
@@ -332,6 +413,11 @@ def install(game_dir, override, rec, pc_droid, plan, gates_own_guard=False):
             utc = build_companion(inst, resref, int(look), int(droid_class))
             rec.put(resref + ".utc", lambda p, u=utc: write_gff(dismantle_utc(u), p, ResourceType.UTC))
 
+    # droid gear (either option): better plating, shields, targeting computers and sensors
+    for resref, spec in DROID_GEAR.items():
+        uti = build_gear(inst, resref, spec)
+        rec.put(resref + ".uti", lambda p, u=uti: write_gff(dismantle_uti(u), p, ResourceType.UTI))
+
 
 
 def _signature(pc_droid, plan, gates_own_guard=False):
@@ -341,7 +427,7 @@ def _signature(pc_droid, plan, gates_own_guard=False):
     for name in sorted(os.listdir(RAW_OVERRIDE_DIR)):
         if name.startswith(("ap_hk47v", "ap_drd", "c_drdmktwo")):
             sizes[name] = os.path.getsize(os.path.join(RAW_OVERRIDE_DIR, name))
-    return json.dumps({"v": VERSION, "pc": pc_droid, "plan": plan, "assets": sizes, "gates_guard": gates_own_guard}, sort_keys=True)
+    return json.dumps({"v": VERSION, "pc": pc_droid, "plan": plan, "assets": sizes, "gates_guard": gates_own_guard, "gear": DROID_GEAR}, sort_keys=True)
 
 
 def main():

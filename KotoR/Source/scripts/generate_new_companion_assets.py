@@ -1,49 +1,24 @@
 """
-Builds and deploys the assets for Options.py's new_companion option --
-either Meetra Surik (the Jedi Sentinel, "mystery") or Darth Malak (the
-Jedi Guardian, "malak") replacing HK-47 in his party slot. See
-DEVELOPMENT_HISTORY.md's "New Companion: replacing HK-47 with an
-original human character" section for the full feasibility research and
-__init__.py/Locations.py/Items.py/Rules.py/
-generate_trampoline_batch.py for the AP-side wiring this feeds.
+Builds and deploys the assets for Options.py's new_companion option (off / on / random_class): the six characters the New Companion console on the Ebon Hawk
+swaps into HK-47's party slot or T3-M4's -- Meetra Surik, Darth Malak, Calo Nord, Yuthura Ban, Darth Bandon and Trask Ulgo. The console itself (terminal, dialog,
+swap scripts) is built by generate_new_companion_console.py; the AP-side wiring is in worlds/kotor (Options.py, __init__.py, Items.py).
 
-Three pieces per character, all handled here:
-1. p_meetra.utc / p_malak.utc (build_new_companion_utc/
-   build_malak_companion_utc) -- level-1 stat block, built from a real
-   companion template of the same class as a guide (Bastila for Meetra's
-   Sentinel, Juhani for Malak's Guardian -- the one real companion of
-   that exact class).
-2. The vanilla Tatooine trigger's 3-way variant (deploy_vanilla_trigger)
-   -- apo_hk47_vanilla.ncs (true vanilla, spawns p_hk47), apo_hk47_new.ncs
-   (spawns p_meetra), apo_hk47_malak.ncs (spawns p_malak) -- each
-   confirmed via a compile+disassemble+diff pass to differ from vanilla
-   by exactly 1 opcode (the template string). All precompiled and checked
-   into extender/scripts_src/, same "no compiler needed at runtime"
-   convention patch_item_suppression.py already uses for its own mode
-   variants -- this script just copies the right one to
-   Override/apo_hk47_orig.ncs, the name the companion-suppression
-   wrapper's ExecuteScript call expects.
-3. k_hmee_dialog.dlg / k_hmal_dialog.dlg (build_placeholder_greeting_dlg)
-   -- HK-47's entire personal Ebon Hawk subplot replaced with one greeting
-   line, cut entirely for this option. Referenced by each .utc's own
-   `conversation` field.
+Per character, all handled here:
+1. A level 1 template (p_meetra.utc, p_malak.utc, p_calo.utc, p_yuthura.utc, p_bandon.utc, p_trask.utc), tag "HK47" so the shared companion scripts treat it as the slot
+   it stands in, and a second copy for T3-M4's slot (the same name + "_t3", tag "t3m4", write_t3_slot_variants). Meetra and Malak are built from a real companion of
+   their class as a guide; the other four from NEW_CHARACTERS. Everything except Meetra is an ordinary party body (Juhani's, Carth's for Calo) whose spawn script puts a
+   permanent disguise of the character's own look on it, so the unique NPC models need no custom model.
+2. A spawn script and a one-line greeting dialog (k_h<name>_spawn01.ncs, k_h<name>_dialog.dlg), and a portrait row in portraits.2da.
+3. With new_companion = 2 (random_class), the class rolled for the seed (slot data "new_companion_classes") is written into each template before the T3-M4 copies are made
+   (apply_rolled_classes).
+4. A character shown through a disguise cannot wear body armor safely (equipping robes on Bandon crashed the game): the characters in GEAR_RESTRICTED get a subrace that
+   baseitems.2da denies the body-armor rows to (ensure_malak_gear_restriction), plus natural armor class and save bonuses in place of the armor.
 
-Malak additionally needs a brand-new portraits.2da row (no usable vanilla
-portrait exists for him -- his real in-game PortraitId values are
-leftover garbage, one of them literally Carth's portrait) --
-see ensure_malak_portrait_row(), same add_row() precedent
-patch_tsl_powers.py already established for spells.2da.
+HK-47 is always recruited the vanilla way: the Tatooine trigger deployed by deploy_vanilla_trigger is the true vanilla one whatever the option says.
 
 Usage: python generate_new_companion_assets.py [--game-dir=<path>] [--new-companion=0|1|2]
-  Deploys the right pieces to that install's Override folder in one call
-  (0=off/vanilla, 1=mystery/Meetra, 2=malak). Meant to be invoked the same
-  way patch_item_suppression.py's other conditional deploy steps are --
-  once per Connect, gated on _slot_data.json's new_companion value -- not
-  a one-time setup step: deploy_vanilla_trigger() must run on EVERY
-  connect regardless of the value, to restore the true vanilla trigger
-  when new_companion is off just as much as to install either
-  replacement. --new-companion= overrides reading _slot_data.json, for
-  standalone testing.
+  Deploys the pieces to that install's Override folder in one call (0 = off, 1 = on, 2 = random_class); run once per Connect from KotorClient.py, which reads the value
+  from _slot_data.json. --new-companion= overrides it, for standalone testing.
 """
 import json
 import os
@@ -119,6 +94,26 @@ STARTING_POWERS = [
 MALAK_SUBRACE_ID = 2
 MALAK_DENYSUBRACE_BIT = 1 << MALAK_SUBRACE_ID  # 0x4
 
+# The console characters shown through a disguise get this subrace, so nothing can be equipped in the Body slot (robes, armor, clothing): putting robes on Bandon made the
+# game crash (the engine rebuilds the body model from the disguise's appearance row, and his row has no second body model to switch to; Yuthura's and Trask's do).
+# Head and Hands gear did not crash and stays allowed. What body armor would give an end-game character is built into the template instead: natural armor class and a bonus to each save.
+# GEAR_RESTRICTED names who gets both: a character is restricted only if a live test crashed on body gear.
+# Roughly end-game body armor: about 8 to 9 AC (more with upgrades), and robes about +1 on saves.
+GEAR_RESTRICTED = {"bandon"}       # live tests (2026-10-25): body armor crashed only Bandon (his row has one body model); Malak, Calo and Yuthura wore it without a crash, Trask not tried
+GEAR_SLOT_NATURAL_AC = 8
+GEAR_SLOT_SAVE_BONUS = 1
+
+
+def apply_gear_slot_compensation(utc, key: str) -> None:
+    """For a character in GEAR_RESTRICTED: the restricted subrace plus the stats of end-game body armor (see GEAR_SLOT_NATURAL_AC)."""
+    if key not in GEAR_RESTRICTED:
+        return
+    utc.subrace_id = MALAK_SUBRACE_ID
+    utc.natural_ac = GEAR_SLOT_NATURAL_AC
+    utc.reflex_bonus = GEAR_SLOT_SAVE_BONUS
+    utc.willpower_bonus = GEAR_SLOT_SAVE_BONUS
+    utc.fortitude_bonus = GEAR_SLOT_SAVE_BONUS
+
 # Real base-item rows covering Head/Body/Hands, confirmed via a full
 # equipableslots scan of baseitems.2da -- deliberately excludes the 9
 # Droid_*_Plating/Sensors/Spike_Mount rows also in that slot range,
@@ -128,8 +123,12 @@ MALAK_RESTRICTED_GEAR_LABELS = [
     "Jedi_Robe", "Jedi_Knight_Robe", "Jedi_Master_Robe",
     "Armor_Class_4", "Armor_Class_5", "Armor_Class_6",
     "Armor_Class_7", "Armor_Class_8", "Armor_Class_9",
-    "Mask", "Gauntlets", "Basic_Clothing", "Revan_Armor", "Disguise_Item",
+    "Basic_Clothing", "Revan_Armor", "Disguise_Item",
+    "Droid_Light_Plating", "Droid_Medium_Plating", "Droid_Heavy_Plating",    # droid-only already; listed so every item that fills the Body slot is covered
 ]
+# Head and Hands rows: live tests (Bandon, 2026-10-25) showed only Body gear crashes a disguised character, so these two carry NO restriction: the bit is cleared if
+# an earlier build set it.
+OPEN_GEAR_LABELS = ["Mask", "Gauntlets"]
 
 # Jedi Guardian (class_id 3) cross-class + signature feats, confirmed via
 # feat.2da's per-class feat columns: same 6 shared
@@ -322,6 +321,22 @@ def deploy_malak_spawn_script(override_dir: str) -> None:
     print(f"  deployed spawn script -> {dest}")
 
 
+def _party_npc_appearance_row(game_dir: str, label: str) -> int:
+    """The appearance.2da row with this label (rows shift with other Override edits, so never a fixed index)."""
+    override_dir = os.path.join(game_dir, "Override")
+    appearance_path = os.path.join(override_dir, "appearance.2da")
+    if os.path.isfile(appearance_path):
+        with open(appearance_path, "rb") as f:
+            twoda = read_2da(f.read())
+    else:
+        inst = Installation(game_dir)
+        twoda = read_2da(inst.resource("appearance", ResourceType.TwoDA, [SearchLocation.CHITIN]).data)
+    for i in range(twoda.get_height()):
+        if twoda.get_cell(i, "label") == label:
+            return i
+    raise RuntimeError(f"appearance.2da row {label!r} not found")
+
+
 def _party_npc_juhani_appearance_row(game_dir: str) -> int:
     """Looked up by label, not a hardcoded row index (real appearance.2da
     row numbers shift depending on other Override edits already applied,
@@ -464,6 +479,7 @@ def build_malak_companion_utc(appearance_id: int, portrait_id: int) -> UTC:
     utc.classes = [UTCClass(3, 1)]  # CLASS_TYPE_JEDIGUARDIAN, level 1
     utc.classes[0].powers = list(MALAK_STARTING_POWERS)
     utc.feats = list(MALAK_STARTING_FEATS)
+    apply_gear_slot_compensation(utc, "malak")
 
     return utc
 
@@ -477,22 +493,16 @@ def write_malak_companion_template(override_dir: str, appearance_id: int, portra
 
 
 def deploy_vanilla_trigger(override_dir: str, new_companion: int) -> None:
-    """Copies whichever precompiled variant matches `new_companion` (0=
-    vanilla, 1=mystery/Meetra, 2=malak) to Override/apo_hk47_orig.ncs --
-    the exact filename the companion-suppression wrapper's
-    ExecuteScript("apo_hk47_orig", OBJECT_SELF) call expects (see
-    generate_companion_suppressors.py's WRAPPER_TEMPLATE). MUST run on
-    every Connect regardless of new_companion's value, not just when it's
-    on -- restoring the true vanilla trigger when the option is off again
-    is just as much this function's job as installing either replacement,
-    same restore-on-switch discipline as Loot Mode."""
+    """Copies the precompiled Tatooine trigger variant for `mode` to Override/apo_hk47_orig.ncs -- the exact filename the companion-suppression wrapper's
+    ExecuteScript("apo_hk47_orig", OBJECT_SELF) call expects (see generate_companion_suppressors.py's WRAPPER_TEMPLATE). main() only ever asks for mode 0,
+    the true vanilla trigger (nothing replaces HK-47 at his recruitment any more); it runs on every Connect so a trigger left by an older version is put back."""
     src = _TRIGGER_NCS_BY_MODE[new_companion]
     with open(src, "rb") as f:
         data = f.read()
     dest = os.path.join(override_dir, "apo_hk47_orig.ncs")
     with open(dest, "wb") as f:
         f.write(data)
-    label = {0: "vanilla", 1: "new-companion (mystery)", 2: "new-companion (malak)"}[new_companion]
+    label = {0: "vanilla", 1: "retired replacement (Meetra)", 2: "retired replacement (Malak)"}[new_companion]
     print(f"  deployed {label} trigger -> {dest} ({len(data)} bytes)")
 
 
@@ -804,10 +814,21 @@ def ensure_malak_gear_restriction(game_dir: str) -> None:
             twoda.set_cell(row, "denysubrace", f"0x{new_val:08X}")
             changed = True
 
+    for label in OPEN_GEAR_LABELS:
+        row = label_to_row.get(label)
+        if row is None:
+            continue
+        current = twoda.get_cell(row, "denysubrace")
+        current_val = int(current, 16) if current and current.startswith("0x") else int(current or "0")
+        new_val = current_val & ~MALAK_DENYSUBRACE_BIT
+        if new_val != current_val:
+            twoda.set_cell(row, "denysubrace", f"0x{new_val:08X}" if new_val else "0")
+            changed = True
+
     if changed:
         os.makedirs(override_dir, exist_ok=True)
         write_2da(twoda, baseitems_path)
-        print(f"  updated baseitems.2da denysubrace on {len(MALAK_RESTRICTED_GEAR_LABELS)} rows -> {baseitems_path}")
+        print(f"  updated baseitems.2da denysubrace: body rows denied to the subrace, Head/Hands rows open -> {baseitems_path}")
     else:
         print("  baseitems.2da denysubrace already correct, no change needed")
 
@@ -840,6 +861,308 @@ def deploy_malak_portrait(override_dir: str) -> None:
     print(f"  deployed portrait -> {dest}")
 
 
+# ---------------------------------------------------------------------------------------------------------------------------
+# Calo Nord, Yuthura Ban and Darth Bandon (0.2.0): three more replacements for HK-47 on the New Companion console, next to
+# Meetra Surik and Darth Malak. Built the way Malak is: an ordinary party-member body (Juhani's appearance row) whose OnSpawn
+# script applies EffectDisguise with the character's own appearance row, so the unique NPC model is shown without a custom
+# model or appearance row. All three keep Tag "HK47" and NPC slot NPC_HK_47, like the other replacements. Their gear is not
+# restricted. The three have no portrait art in the game: each gets its own (extender/raw_override_files/po_<name>.tpc, made from a
+# screenshot with build_portrait.py) and, until that file exists, borrows an existing portrait row (portrait_row).
+# ---------------------------------------------------------------------------------------------------------------------------
+SOLDIER_FEATS = [
+    4,    # ARMOUR_PROF_HEAVY
+    5,    # ARMOUR_PROF_LIGHT
+    6,    # ARMOUR_PROF_MEDIUM
+    28,   # POWER_ATTACK
+    29,   # POWER_BLAST
+    39,   # WEAPON_PROF_BLASTER
+    40,   # WEAPON_PROF_BLASTER_RIFLE
+    42,   # WEAPON_PROF_HEAVY_WEAPONS
+    44,   # WEAPON_PROF_MELEE_WEAPONS
+]
+# Jedi Consular (class_id 4): the three shared Jedi feats plus Force Focus (its signature), as GameMechanics.md lists.
+CONSULAR_FEATS = [
+    39,   # WEAPON_PROF_BLASTER
+    43,   # WEAPON_PROF_LIGHTSABER
+    44,   # WEAPON_PROF_MELEE_WEAPONS
+    55,   # JEDI_DEFENSE
+    116,  # FORCE_SENSITIVE
+    107,  # JEDI_SENSE
+    88,   # FORCE_FOCUS (Consular signature)
+]
+
+NEW_CHARACTERS = {
+    "calo": {
+        "key": "calo", "base_label": "Party_NPC_Carth",     # the real body under his disguise: Juhani's looked too short beside the player; Carth is a normal-height man
+        "resref": "p_calo", "first": "Calo", "last": "Nord", "dialog": "k_hcal_dialog", "spawn": "k_hcal_spawn01",
+        "disguise_row": 13,       # appearance.2da Unique_Calo_Nord (model N_Calonord)
+        "gender": 0, "soundset": 34, "portrait": "po_calo", "portrait_row": 28,   # po_pmhb1 until po_calo.tpc exists
+        "class_id": 0,            # Soldier
+        "abilities": (16, 14, 16, 10, 10, 8), "hp": 13, "fp": 0, "alignment": 20,
+        "feats": SOLDIER_FEATS, "powers": [],
+        "line": "Credits first, questions later. Where are we headed?",
+    },
+    "yuthura": {
+        "key": "yuthura", "resref": "p_yuthura", "first": "Yuthura", "last": "Ban", "dialog": "k_hyut_dialog", "spawn": "k_hyut_spawn01",
+        "disguise_row": 280,      # appearance.2da Unique_Yuthura_Ban (model N_SithComF)
+        "gender": 1, "soundset": 0, "portrait": "po_yuthura", "portrait_row": 1,     # po_pfha1 until po_yuthura.tpc exists
+        "class_id": 4,            # Jedi Consular
+        "abilities": (10, 14, 12, 14, 16, 14), "hp": 7, "fp": 11, "alignment": 30,
+        "feats": CONSULAR_FEATS, "powers": list(STARTING_POWERS),
+        "line": "The Force is restless around you. I will walk beside you, for now.",
+    },
+    "bandon": {
+        "key": "bandon", "resref": "p_bandon", "first": "Darth", "last": "Bandon", "dialog": "k_hban_dialog", "spawn": "k_hban_spawn01",
+        "disguise_row": 184,      # appearance.2da Unique_Darth_Bandon (model N_DarthBand)
+        "gender": 0, "soundset": 41, "portrait": "po_bandon", "portrait_row": 31,   # po_pmhb4 until po_bandon.tpc exists
+        "class_id": 3,            # Jedi Guardian
+        "abilities": (16, 14, 14, 10, 12, 10), "hp": 12, "fp": 5, "alignment": 0,
+        "feats": list(MALAK_STARTING_FEATS), "powers": list(MALAK_STARTING_POWERS),
+        "line": "Do not mistake my service for loyalty. Lead on.",
+    },
+    # Trask Ulgo, from the Endar Spire. His vanilla template (end_trask) is a prologue one (its death, spawn and conversation scripts belong to the Endar Spire), so he is built
+    # like the others: a party-capable body with his own look applied by the spawn script. Look, name, abilities and alignment are his own from end_trask; he starts at
+    # level 1 like the other replacements.
+    "trask": {
+        "key": "trask", "resref": "p_trask", "first": "Trask", "last": "Ulgo", "dialog": "k_htra_dialog", "spawn": "k_htra_spawn01",
+        "disguise_row": 378,      # appearance.2da Unique_Trask (the Republic soldier body, head 68)
+        "gender": 0, "soundset": 65535, "portrait": "po_trask", "portrait_row": 40,   # po_ptrask is his own portrait row; there is no po_trask.tpc of ours
+        "class_id": 0,            # Soldier
+        "abilities": (14, 14, 12, 12, 14, 12), "hp": 11, "fp": 0, "alignment": 50,
+        "feats": SOLDIER_FEATS, "powers": [],
+        "line": "Trask Ulgo, reporting. I will watch your back.",
+    },
+}
+
+
+def build_character_utc(spec: dict, appearance_id: int) -> UTC:
+    """A level 1 template for one of NEW_CHARACTERS, with the same companion-universal fields as build_malak_companion_utc."""
+    utc = UTC()
+    utc.resref = ResRef(spec["resref"])
+    utc.tag = "HK47"  # see build_new_companion_utc: the tag and slot stay HK-47's
+    utc.first_name = LocalizedString.from_english(spec["first"])
+    utc.last_name = LocalizedString.from_english(spec["last"])
+    utc.conversation = ResRef(spec["dialog"])
+    utc.race_id = 6
+    utc.subrace_id = 0
+    utc.gender_id = spec["gender"]
+    utc.appearance_id = appearance_id
+    utc.portrait_id = spec["portrait_row"]
+    utc.soundset_id = spec["soundset"]
+    (utc.strength, utc.dexterity, utc.constitution, utc.intelligence, utc.wisdom, utc.charisma) = spec["abilities"]
+    utc.computer_use = 0
+    utc.demolitions = 0
+    utc.stealth = 0
+    utc.awareness = 4
+    utc.persuade = 0
+    utc.repair = 0
+    utc.security = 0
+    utc.treat_injury = 4
+    utc.current_hp = utc.max_hp = utc.hp = spec["hp"]
+    utc.max_fp = utc.fp = spec["fp"]
+    utc.save_will = 0
+    utc.save_fortitude = 0
+    utc.alignment = spec["alignment"]
+    utc.challenge_rating = 1.0
+    utc.faction_id = 2
+    utc.perception_id = 11
+    utc.walkrate_id = 7
+    utc.natural_ac = 0
+    utc.reflex_bonus = 0
+    utc.willpower_bonus = 0
+    utc.fortitude_bonus = 0
+    utc.morale = 0
+    utc.morale_recovery = 0
+    utc.morale_breakpoint = 0
+    utc.multiplier_set = 0
+    utc.blindspot = 0.0
+    utc.body_variation = 1
+    utc.texture_variation = 1
+    utc.min1_hp = False
+    utc.no_perm_death = True
+    utc.party_interact = False
+    utc.disarmable = False
+    utc.not_reorienting = False
+    utc.plot = False
+    utc.is_pc = False
+    utc.on_dialog = ResRef("k_hen_dialogue01")
+    utc.on_spawn = ResRef(spec["spawn"])
+    utc.on_attacked = ResRef("k_hen_attacked01")
+    utc.on_blocked = ResRef("k_hen_blocked01")
+    utc.on_damaged = ResRef("k_hen_damage01")
+    utc.on_end_round = ResRef("k_hen_combend01")
+    utc.on_heartbeat = ResRef("k_hen_heartbt01")
+    utc.on_notice = ResRef("k_hen_percept01")
+    utc.classes = [UTCClass(spec["class_id"], 1)]
+    utc.classes[0].powers = list(spec["powers"])
+    utc.feats = list(spec["feats"])
+    apply_gear_slot_compensation(utc, spec["key"])
+    return utc
+
+
+def _spawn_script_source(spec: dict) -> str:
+    return (f'// {spec["first"]} {spec["last"]} companion OnSpawn (generate_new_companion_assets.py): the real henchman spawn init, then a\n'
+            f'// permanent disguise as the character\'s own appearance row, the same mechanism as k_hmal_spawn01 (Darth Malak).\n'
+            f'#include "kse"\n\nvoid main()\n{{\n'
+            f'    ExecuteScript("k_hen_spawn01", OBJECT_SELF);\n'
+            f'    ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectDisguise({spec["disguise_row"]}), OBJECT_SELF);\n'
+            f'}}\n')
+
+
+def build_character_spawn_script(spec: dict) -> bytes:
+    """Writes and compiles the spawn script into extender/scripts_src (the checked-in precompiled convention), returns the NCS."""
+    import subprocess
+    from nwnnsscomp_path import resolve_nwnnsscomp
+    resref = spec["spawn"]
+    nss_path = os.path.join(SRC_DIR, f"{resref}.nss")
+    ncs_path = os.path.join(SRC_DIR, f"{resref}.ncs")
+    with open(nss_path, "w") as f:
+        f.write(_spawn_script_source(spec))
+    before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
+    result = subprocess.run([resolve_nwnnsscomp(), "-c", nss_path, "-o", ncs_path], capture_output=True, text=True, cwd=SRC_DIR, timeout=30)
+    if not os.path.exists(ncs_path) or os.path.getmtime(ncs_path) == before:
+        raise RuntimeError(f"compile failed for {resref}:\n{result.stdout}\n{result.stderr}")
+    with open(ncs_path, "rb") as f:
+        return f.read()
+
+
+def build_character_dlg(spec: dict) -> DLG:
+    """One greeting line and nothing else, like the other replacements' placeholder dialogs."""
+    dlg = DLG()
+    entry = DLGEntry()
+    entry.text = LocalizedString.from_english(spec["line"])
+    entry.speaker = ""
+    entry.delay = -1
+    entry.camera_angle = 0
+    dlg.starters.append(DLGLink(entry))
+    return dlg
+
+
+def ensure_portrait_row(game_dir: str, baseresref: str, appearance_id: int, sex: int) -> int:
+    """Adds a row for `baseresref` to Override/portraits.2da if it is not there (idempotent), like ensure_malak_portrait_row, and returns
+    its index."""
+    override_dir = os.path.join(game_dir, "Override")
+    portraits_path = os.path.join(override_dir, "portraits.2da")
+    if os.path.isfile(portraits_path):
+        with open(portraits_path, "rb") as f:
+            twoda = read_2da(f.read())
+    else:
+        inst = Installation(game_dir)
+        twoda = read_2da(inst.resource("portraits", ResourceType.TwoDA, [SearchLocation.CHITIN]).data)
+    for i in range(twoda.get_height()):
+        if twoda.get_cell(i, "baseresref") == baseresref:
+            return i
+    row = twoda.add_row(str(twoda.get_height()))
+    twoda.set_cell(row, "baseresref", baseresref)
+    twoda.set_cell(row, "sex", str(sex))
+    twoda.set_cell(row, "appearancenumber", str(appearance_id))
+    twoda.set_cell(row, "race", "6")
+    twoda.set_cell(row, "plot", "0")
+    twoda.set_cell(row, "forpc", "0")
+    os.makedirs(override_dir, exist_ok=True)
+    write_2da(twoda, portraits_path)
+    print(f"  added portraits.2da row {row} ({baseresref}) -> {portraits_path}")
+    return row
+
+
+def write_new_characters(override_dir: str, game_dir: str) -> None:
+    """Calo, Yuthura and Bandon: templates, spawn scripts, greeting dialogs and portraits."""
+    appearance_id = _party_npc_juhani_appearance_row(game_dir)
+    for key, spec in NEW_CHARACTERS.items():
+        spec = dict(spec)
+        tpc = os.path.join(RAW_OVERRIDE_DIR, f"{spec['portrait']}.tpc")
+        if os.path.isfile(tpc):
+            spec["portrait_row"] = ensure_portrait_row(game_dir, spec["portrait"], appearance_id, spec["gender"])
+            shutil.copy2(tpc, os.path.join(override_dir, f"{spec['portrait']}.tpc"))
+            print(f"  deployed portrait {spec['portrait']}.tpc (row {spec['portrait_row']})")
+        else:
+            print(f"  no {spec['portrait']}.tpc yet: {spec['first']} keeps the borrowed portrait row {spec['portrait_row']}")
+        base_id = _party_npc_appearance_row(game_dir, spec["base_label"]) if spec.get("base_label") else appearance_id
+        utc = build_character_utc(spec, base_id)
+        write_gff(dismantle_utc(utc), os.path.join(override_dir, f"{spec['resref']}.utc"))
+        ncs = build_character_spawn_script(spec)
+        with open(os.path.join(override_dir, f"{spec['spawn']}.ncs"), "wb") as f:
+            f.write(ncs)
+        write_gff(dismantle_dlg(build_character_dlg(spec), Game.K1), os.path.join(override_dir, f"{spec['dialog']}.dlg"))
+        print(f"  wrote {spec['resref']}.utc, {spec['spawn']}.ncs, {spec['dialog']}.dlg")
+
+
+
+# The tag of a template is fixed in the template and cannot be set when an object is created, so each swap character has a second template for T3-M4's slot:
+# the same file with the tag "t3m4" and the resref + T3_SUFFIX. The scripts, dialog and look are shared with the HK-47 slot's template.
+T3_SUFFIX = "_t3"
+
+
+def swap_template_resrefs() -> list:
+    return ["p_meetra", "p_malak"] + [spec["resref"] for spec in NEW_CHARACTERS.values()]
+
+
+def write_t3_slot_variants(override_dir: str) -> None:
+    from pykotor.resource.formats.gff import read_gff
+    from pykotor.resource.generics.utc import construct_utc
+    for resref in swap_template_resrefs():
+        with open(os.path.join(override_dir, f"{resref}.utc"), "rb") as f:
+            utc = construct_utc(read_gff(f.read()))
+        utc.resref = ResRef(resref + T3_SUFFIX)
+        utc.tag = "t3m4"
+        write_gff(dismantle_utc(utc), os.path.join(override_dir, f"{resref}{T3_SUFFIX}.utc"))
+    print(f"  wrote the T3-M4 slot templates: {', '.join(r + T3_SUFFIX for r in swap_template_resrefs())}")
+
+
+# New Companion = random_class: each swap character's class is rolled when the seed is made (slot_data "new_companion_classes": {character key: class name})
+# and the character's template is rewritten with that class: class, the class's own starting feats, the starting Force powers for a Jedi class, and the
+# hit points and Force points a level 1 character of that class has. Everything else (look, name, abilities, scripts) stays the character's own.
+CLASS_IDS = {"soldier": 0, "scout": 1, "scoundrel": 2, "guardian": 3, "consular": 4, "sentinel": 5}
+CLASS_HIT_DIE = {"soldier": 10, "scout": 8, "scoundrel": 6, "guardian": 10, "consular": 8, "sentinel": 8}
+CLASS_FORCE_POINTS = {"guardian": 5, "consular": 11, "sentinel": 10}      # the level 1 values the existing Jedi templates use
+# The auto-granted feats of each class (GameMechanics.md, "Base (auto-granted) feats per class").
+CLASS_FEATS = {
+    "soldier": SOLDIER_FEATS,
+    "scout": [5, 6, 11, 14, 30, 39, 40, 44],
+    "scoundrel": [5, 8, 31, 39, 40, 44, 60, 104],
+    "guardian": MALAK_STARTING_FEATS,
+    "consular": CONSULAR_FEATS,
+    "sentinel": STARTING_FEATS,
+}
+
+
+def apply_rolled_class(utc: UTC, class_name: str) -> None:
+    """Gives a level 1 template the named class (see CLASS_IDS). Hit points are the class's hit die plus the Constitution modifier."""
+    jedi = class_name in CLASS_FORCE_POINTS
+    utc.classes = [UTCClass(CLASS_IDS[class_name], 1)]
+    utc.classes[0].powers = list(STARTING_POWERS) if jedi else []
+    utc.feats = list(CLASS_FEATS[class_name])
+    utc.current_hp = utc.max_hp = utc.hp = max(1, CLASS_HIT_DIE[class_name] + (utc.constitution - 10) // 2)
+    utc.max_fp = utc.fp = CLASS_FORCE_POINTS.get(class_name, 0)
+
+
+def apply_rolled_classes(override_dir: str, rolls: dict) -> None:
+    from pykotor.resource.formats.gff import read_gff
+    from pykotor.resource.generics.utc import construct_utc
+    templates = {"meetra": "p_meetra", "malak": "p_malak"}
+    templates.update({key: spec["resref"] for key, spec in NEW_CHARACTERS.items()})
+    for key, resref in templates.items():
+        class_name = rolls.get(key)
+        if class_name not in CLASS_IDS:
+            print(f"  no class rolled for {key} ({class_name!r}): {resref} keeps its own")
+            continue
+        path = os.path.join(override_dir, f"{resref}.utc")
+        with open(path, "rb") as f:
+            utc = construct_utc(read_gff(f.read()))
+        apply_rolled_class(utc, class_name)
+        write_gff(dismantle_utc(utc), path)
+        print(f"  {resref}: class {class_name}")
+
+
+def _connected_new_companion_classes() -> dict:
+    """The seed's {character key: class name} rolls from _slot_data.json (empty if absent)."""
+    try:
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            return dict(json.load(f).get("new_companion_classes", {}))
+    except Exception:
+        return {}
+
+
 def _connected_new_companion() -> int:
     """Same read-_slot_data.json pattern as patch_item_suppression.py's
     _connected_progression_system() and generate_trampoline_batch.py's own
@@ -867,35 +1190,24 @@ def main():
         new_companion = _connected_new_companion()
 
     override_dir = os.path.join(game_dir, "Override")
-    deploy_vanilla_trigger(override_dir, new_companion)
-    if new_companion == 1:
-        # Only meaningful when this specific mode is active -- when it's
-        # not, p_meetra.utc/k_hmee_dialog.dlg being absent or stale in
-        # Override is harmless, since nothing points at them.
+    # 0.2.0: nothing replaces HK-47 at his recruitment any more. The Tatooine trigger is always the vanilla one; with the option on, the
+    # ship's New Companion console (generate_new_companion_console.py) swaps him for any of the characters below.
+    deploy_vanilla_trigger(override_dir, 0)
+    if new_companion:
         write_new_companion_template(override_dir)
         write_placeholder_dlg(override_dir)
-    elif new_companion == 2:
-        # v3: EffectDisguise(DISGUISE_TYPE_N_DARTHMALAK), self-applied on
-        # spawn (k_hmal_spawn01) -- his real, unmodified boss appearance
-        # (row 21), a real standard KOTOR effect (the same mechanism the
-        # game's own Sith Armor disguise uses). Supersedes v2 (Carth's body
-        # + a hand-spliced head model, ensure_malak_appearance_row_v2/
-        # ensure_malak_heads_row/deploy_malak_head_model, left in place
-        # below but unused) and the original row-21-clone approach --
-        # three separate model/appearance-row attempts deployed without
-        # errors but never actually rendered live, one suspected of
-        # causing a real crash. appearance_id only needs to be ANY safe,
-        # ordinary humanoid party-member row now (never actually seen once
-        # the disguise effect lands on spawn) -- reuses Juhani's real row
-        # directly (a genuine Guardian-class companion, matching Malak's
-        # own class, but not load-bearing).
+        # Malak: EffectDisguise(DISGUISE_TYPE_N_DARTHMALAK) on spawn (k_hmal_spawn01) over an ordinary party body (Juhani's row).
         deploy_malak_spawn_script(override_dir)
         appearance_id = _party_npc_juhani_appearance_row(game_dir)
         portrait_id = ensure_malak_portrait_row(game_dir, appearance_id)
         write_malak_companion_template(override_dir, appearance_id, portrait_id)
         write_malak_placeholder_dlg(override_dir)
         deploy_malak_portrait(override_dir)
-
+        write_new_characters(override_dir, game_dir)
+        ensure_malak_gear_restriction(game_dir)      # Head/Body/Hands gear is denied to the subrace those characters share
+        if new_companion == 2:      # random_class: rewrite each character with the class the seed rolled for them (before the T3-M4 copies are made)
+            apply_rolled_classes(override_dir, _connected_new_companion_classes())
+        write_t3_slot_variants(override_dir)
 
 if __name__ == "__main__":
     main()

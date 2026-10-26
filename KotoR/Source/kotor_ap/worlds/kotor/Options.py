@@ -20,8 +20,9 @@ class CompanionMode(Choice):
     none: companions never join at all. Their 9 recruit locations and the
     10 companion-specific Ebon Hawk quest locations (Bastila, Bastila's
     Mother, Canderous, Jagi's Challenge, Carth, HK-47, Jolee Bindo, Juhani,
-    Threat from Xor, Mission's Brother) are removed from the pool entirely
-    rather than left permanently uncompletable.
+    Threat from Xor, Mission's Brother) and the 6 Sunry quest-chain checks
+    on Manaan (they only start with Jolee present) are removed from the
+    pool entirely rather than left permanently uncompletable.
 
     ap_limited: no companion items exist. Companions are earned by your own
     progress instead: every 25 checks you complete (a fixed number, not an
@@ -29,9 +30,10 @@ class CompanionMode(Choice):
     after 25 of YOUR OWN checks, the ninth after 225, whether or not you have
     reached that companion's recruit moment. Their vanilla recruit triggers are suppressed
     exactly as in ap_gated, and the recruit moment still counts as a check.
-    The 10 companion-specific Ebon Hawk quest locations are removed from the
-    pool (they need that companion present at one exact moment, which a
-    random order cannot promise); the 9 recruit locations stay.
+    The 10 companion-specific Ebon Hawk quest locations and the 6 Sunry
+    quest-chain checks on Manaan are removed from the pool (they need that
+    companion present at one exact moment, which a random order cannot
+    promise); the 9 recruit locations stay.
     """
     display_name = "Companion Mode"
     option_ap_gated = 0
@@ -42,45 +44,31 @@ class CompanionMode(Choice):
 
 
 class NewCompanion(Choice):
-    """Replaces HK-47 with a new companion, occupying his exact party
-    slot -- not an addition, a swap. His recruitment mechanism (the
-    Tatooine droid-purchase trigger) is unchanged; only who you get is
-    different. His personal Ebon Hawk subplot is removed entirely and
-    replaced with a single placeholder greeting -- the "Ebon Hawk: HK-47"
-    journal check is removed from the pool rather than left permanently
-    uncompletable.
+    """Adds a console on the Ebon Hawk, beside HK-47's spot, with which HK-47 or T3-M4 can be swapped for a different companion:
+    Meetra Surik, Darth Malak, Calo Nord, Yuthura Ban, Darth Bandon or Trask Ulgo. The original can be switched back at any
+    time, and a character can stand in only one of the two places. The console appears once the item "Ebon Hawk: New Companion
+    Selection" has been received.
 
-    When not off, every AP-facing name that would otherwise say "HK-47"
-    for his companion item/location (relevant under companion_mode=
-    ap_gated, where his companion item is a real placed check) instead
-    reads "New Companion" -- this uses a second, always-present item/
-    location pair rather than renaming the vanilla HK-47 entries, since
-    AP's item/location name-to-id mapping can't vary per player within
-    the same multiworld game. Both replacement characters share this
-    exact same item/location pair -- mystery and malak differ only in
-    which character/template is actually deployed underneath, never in
-    AP item/location identity.
+    HK-47's and T3-M4's recruitment, items and checks stay exactly as in the vanilla game: the replacements are only a choice
+    made at the console, never separate items or checks.
 
-    Ignored (treated as off) when companion_class is droid.
+    off (default): no console and no item.
 
-    Both are also folded into companion_class and additional_feats
-    exactly like the 7 non-droid companions (so 8 companions in total; no_jedi/randomize_all
-    can reroll them; jedi_companion is unaffected -- neither is one of
-    its 4 target companions).
+    on: the six characters come with their own class (Meetra a Sentinel, Malak and Bandon Guardians, Yuthura a Consular, Calo
+    and Trask Soldiers).
 
-    off (default): vanilla HK-47, unchanged.
+    random_class: the same console, but each of the six characters is dealt a random class for the whole seed (any of Soldier,
+    Scout, Scoundrel, Guardian, Consular, Sentinel; two can get the same). Their look and name do not change.
 
-    mystery: Meetra Surik, an original Jedi Sentinel character (a KOTOR2
-    reference/easter egg).
+    A replacement ignores companion_class (it is never rolled a class by that option) and has no Additional Feats item.
 
-    malak: Darth Malak, a Jedi Guardian, using his real unique in-game
-    appearance/model. Because of that model he cannot equip robes, body
-    armor, helmets/masks or gloves (weapons, belts, implants and forearm
-    gear are fine)."""
+    Ignored (treated as off) when companion_class is droid, or when companion_mode is none."""
     display_name = "New Companion"
     option_off = 0
-    option_mystery = 1
-    option_malak = 2
+    option_on = 1
+    option_random_class = 2
+    alias_false = 0
+    alias_true = 1
     default = 0
 
 
@@ -146,9 +134,8 @@ class JediClass(Choice):
 class CompanionClass(Choice):
     """Randomizes the class of the 7 non-droid companions (Bastila,
     Canderous, Carth, Jolee, Juhani, Mission, Zaalbar -- HK-47 and T3-M4
-    are droids and never affected; if new_companion is on, the
-    replacement character is folded in as an 8th eligible companion in
-    his place). Independent
+    are droids and never affected, and neither is a new_companion
+    replacement). Independent
     of starting_class/jedi_class, which only ever control the PC's own
     class.
 
@@ -174,7 +161,7 @@ class CompanionClass(Choice):
     droid hide, a droid look) and dealt one of three droid classes -- 3
     Combat Droids, 2 Expert Droids and 2 Battle Droids, shuffled per seed.
     Only Battle Droids use melee weapons and lightsabers. The new_companion
-    option is ignored (HK-47 stays HK-47). If starting_class is also droid,
+    option is ignored (no console is given). If starting_class is also droid,
     the item pool and shop stock are droid-only.
     """
     display_name = "Companion Class"
@@ -187,22 +174,17 @@ class CompanionClass(Choice):
 
 
 class AdditionalFeats(Toggle):
-    """Whether "Additional Feats" items exist in the pool at all. When on,
-    one such item is placed per eligible character -- just the PC when
-    companion_mode is "none", otherwise the PC plus all 7 non-droid
-    companions (Bastila, Canderous, Carth, Jolee, Juhani, Mission,
-    Zaalbar -- HK-47 and T3-M4 are droids and never eligible; if
-    new_companion is on, the replacement character is eligible too).
+    """Whether companions can be trained in extra feats. When on, one
+    "Additional Feats Character" item is placed per non-droid companion
+    (Bastila, Canderous, Carth, Jolee, Juhani, Mission, Zaalbar; HK-47 and
+    T3-M4 are droids and never eligible, and the player character has no
+    such item). Nothing is chosen or granted by the item: receiving one
+    unlocks a "train a feat" option in that companion's dialog, which stays
+    available from then on. The player picks any feat the companion does not
+    already know and pays credits for each one, the price rising with every
+    feat trained.
 
-    Receiving one doesn't grant anything immediately -- which 3 feats it
-    grants is decided later, once that character is actually recruited
-    AND their class has settled (so a Randomize_class-in-progress
-    character is never granted feats against a class that's about to
-    change out from under them). The 3 feats are drawn randomly from a
-    fixed pool spanning every class's weapon/armor proficiencies and
-    signature abilities -- e.g. a Scoundrel could end up with Lightsaber
-    Proficiency, letting them wield a weapon their own class never would.
-    Off (default): no such items exist."""
+    Off (default): no such items exist and companions have no training option."""
     display_name = "Additional Feats"
     default = False
 
@@ -253,8 +235,8 @@ class Traps(Choice):
     item_distribution_type draw as their own weighted category (see
     trap_weight, same shape as weapon_weight/armor_weight/etc.) -- the
     NUMBER of traps in the pool scales with total item count and weight
-    like every other category, and the same trap type can appear more
-    than once. Under "normal" distribution the baseline trap weight is 5
+    like every other category (up to 36 traps in a seed, however large the
+    pool or the weight), and the same trap type can appear more than once. Under "normal" distribution the baseline trap weight is 5
     (same "shows up occasionally" tier as Skills/Abilities).
 
     fixed_amount: exactly 12 trap items (one of each type below) are
@@ -357,7 +339,7 @@ class GalacticShop(Toggle):
     multiworld you will only ever get the Medpacs.
 
     What comes back is delivered exactly like any other AP item grant --
-    on your next area transition, not instantly -- because the pool
+    once the game is calm, a moment after the lookup -- because the pool
     lookup is a real network round trip. Requires the KOTOR Client to be
     connected to the AP server at the moment you use the box; a deposit or
     coin used while offline is remembered locally and settled the next
@@ -396,6 +378,28 @@ class ArchipelagoVendor(Toggle):
 
     Off (default): no vendor on the ship, no passes in the pool."""
     display_name = "Archipelago Vendor"
+    default = False
+
+
+class QuestItemChecks(Toggle):
+    """Adds 13 checks that fire the moment you receive one of the game's quest items, from any source: Sith Armor, Sith Papers,
+    Taris Shield Codes, Rakghoul Serum, Sand People Clothing, Map of the Eastern Dune Sea, Bantha Fodder, Sith Medallion, Ajunta Pall's
+    Blade, Ancient Sith Tablet, Bacca's Sword Blade, Environment Suit and the Manaan Data Module. Finishing the quest by another route
+    also counts where the quest can be completed without the item (Bacca's blade, if Freyyr is killed).
+
+    On (default)."""
+    display_name = "Quest Item Checks"
+    default = True
+
+
+class Bazaar(Toggle):
+    """Turns on the Archipelago Bazaar, a Jawa trader on the Ebon Hawk next to the Archipelago Vendor. It adds two kinds of checks:
+    5 purchases you can buy for credits, each dearer than the last, and 20 Bazaar Token Exchange checks, bought with Bazaar tokens
+    found in containers throughout the game (100 in all) at 5 tokens per check. These checks never hold progression items; anything
+    else can be there.
+
+    Off (default)."""
+    display_name = "Archipelago Bazaar"
     default = False
 
 
@@ -458,7 +462,7 @@ class ExperienceMode(Choice):
 
     The clamp also caps your level, so the XP values below decide how far
     you can get. The defaults are set so that level 20 (190,000 XP) is
-    reached after about 80% of your checks (with Additional Enemies on);
+    reached after about 68% of your checks (with Additional Enemies on; about 80% without it);
     lowering experience_limiter or experience_item makes the Level 17-20
     checks and the max_level goal harder or impossible to complete.
     """
@@ -472,13 +476,14 @@ class ExperienceMode(Choice):
 class ExperienceLimiter(Range):
     """XP granted per YOUR OWN completed check, when experience_mode is
     "ap_limited". Total expected XP = (your own checks completed) x this
-    value, recalculated as you complete more checks. There are about 266
-    locations by default with additional_enemies on (about 226 without it,
-    about 216 without it and with companion_mode ap_limited). The default
-    of 1000 reaches level 20 (190,000 XP) after 190 checks, which is about
-    71% of the checks with additional_enemies on (about 84% without it,
-    about 88% in the smallest case), and a full-completion run ends around
-    266,000 XP with additional_enemies. Lower it to make leveling scarcer;
+    value, recalculated as you complete more checks. There are about 278
+    locations by default with additional_enemies on (238 without it, 222
+    without it and with companion_mode ap_limited; the Bazaar adds 25 and
+    the quest item checks are 13 of these). The default of 1000 reaches
+    level 20 (190,000 XP) after 190 checks, which is about 68% of the
+    checks with additional_enemies on (about 80% without it, about 86% in
+    the smallest case), and a full-completion run ends around 278,000 XP
+    with additional_enemies. Lower it to make leveling scarcer;
     level 20 and the max_level goal need your checks times this value to
     reach 190,000. The minimum is 500: lower values cannot reach level 20 and
     leave fights unwinnable well before the end of the story."""
@@ -495,11 +500,11 @@ class ExperienceItem(Range):
     level 20/cap = 190000). With every item category available and the
     default distribution (Weapon 30/Armor 20/Consumable 30/EXP 20/Credit
     10/Skill 5/Ability 5), a full playthrough with additional_enemies and
-    progression_system on contains 28 to 41 Experience Points items (about
-    36 on average; the 24 progression items take slots from the draw), and
+    progression_system on contains 28 to 58 Experience Points items (about
+    43 on average; the 24 progression items take slots from the draw), and
     the default of 8000 reaches level 20 after 24 of them: about 86% of the
-    items in the smallest case and about 67% on average. Without
-    additional_enemies there are 23 to 33 items and the smallest case
+    items in the smallest case and about 56% on average. Without
+    additional_enemies there are 23 to 48 items and the smallest case
     cannot quite reach level 20 (184,000 XP). With fewer item categories
     enabled the EXP share of the pool is larger, so level 20 comes sooner.
     Raise it for a faster power curve, lower it to make leveling scarcer.
@@ -829,10 +834,7 @@ class LootMode(Choice):
         that only wear gear drop nothing).
 
     Items an enemy's death script creates at runtime (for example the
-    Additional Enemies bounty cards) are not touched. With progression_system
-    on, the Sith Armor and Shield Codes are always removed from loot whatever
-    this option is set to, since they come through the Progression System.
-    With destroy, bonus or replace the Endar Spire starting locker is fixed
+    Additional Enemies bounty cards) are not touched. With destroy, bonus or replace the Endar Spire starting locker is fixed
     to clothing, a blaster pistol, a short sword and 10 computer spikes so
     you cannot be left without a weapon. Areas you have already visited in
     a save keep their old loot."""
@@ -980,7 +982,7 @@ class Goal(Choice):
     max_level: the game is won on reaching character level 20, KOTOR's
     real level cap. If experience_mode is not off, make
     sure experience_limiter/experience_item allow reaching 190,000 XP (the
-    defaults do, after about 80% of your checks with additional_enemies on).
+    defaults do, after about 68% of your checks with additional_enemies on).
 
     reach_leviathan: the game is won the moment you enter the first area
     of the Leviathan (the "Visited: Leviathan - Prison Block" check). A
@@ -1002,9 +1004,11 @@ class Goal(Choice):
 class KotorDeathLink(DeathLink):
     """When you die, everyone who enabled death link dies, and the other way
     round. Your death is reported within about 5 seconds.
-    An incoming death is applied the next time you enter an area; deaths
-    that arrive while the client is disconnected are discarded when it
-    connects again."""
+    An incoming death is held while you are in a conversation, a cutscene
+    or a fight and then applied once, within a few seconds of the game
+    being calm; loading an older save never repeats it, and a death an
+    incoming death caused is not sent on to the others. Deaths that arrive
+    while the client is disconnected are discarded when it connects again."""
 
 
 # arm_name -> (option field name, points-per-arm-firing) for translating a
@@ -1017,7 +1021,7 @@ STARTING_ABILITY_ARMS: typing.Dict[str, str] = {
     "ability_constitution": "starting_constitution",
     "ability_intelligence": "starting_intelligence",
     "ability_wisdom": "starting_wisdom",
-    "grant_test_ability": "starting_charisma",  # the only existing Charisma arm
+    "ability_charisma": "starting_charisma",
 }
 STARTING_SKILL_ARMS: typing.Dict[str, str] = {
     "computer_use": "starting_computer_use",
@@ -1047,6 +1051,8 @@ class KotorOptions(PerGameCommonOptions):
     trap_link: TrapLink
     galactic_shop: GalacticShop
     archipelago_vendor: ArchipelagoVendor
+    quest_item_checks: QuestItemChecks
+    bazaar: Bazaar
     additional_enemies: AdditionalEnemies
     experience_mode: ExperienceMode
     experience_limiter: ExperienceLimiter

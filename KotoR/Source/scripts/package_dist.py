@@ -235,6 +235,25 @@ HAND_WRITTEN_EXTRA = HAND_WRITTEN_EXTRA + _VENDOR_SCRIPTS
 EXTRA_RAW_FILES = EXTRA_RAW_FILES + _VENDOR_RAW_FILES
 
 
+def _feature_manifest(name, generator):
+    """The compiled scripts and raw files a 0.2.0 feature generator recorded in extender/scripts_src/_<name>_manifest.json (the Bazaar trader, the
+    companions' feat-training dialogs, the New Companion console). Shipped unconditionally for the same reason as the vendor's: the files must already be in
+    a player's Override when a seed turns the feature on. A missing manifest is a hard stop."""
+    path = os.path.join(REPO_ROOT, "extender", "scripts_src", f"_{name}_manifest.json")
+    if not os.path.exists(path):
+        sys.exit(f"{name} manifest missing: {path} -- run scripts/{generator} first.")
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    return data["scripts"], data["raw_files"]
+
+
+for _name, _generator in (("bazaar", "generate_bazaar_jawa.py --deploy"), ("feat_training", "generate_feat_training.py --deploy"),
+                          ("newcompanion_console", "generate_new_companion_console.py --deploy"), ("partycon", "generate_party_console.py")):
+    _scripts, _raw = _feature_manifest(_name, _generator)
+    HAND_WRITTEN_EXTRA = HAND_WRITTEN_EXTRA + _scripts
+    EXTRA_RAW_FILES = EXTRA_RAW_FILES + _raw
+
+
 def _location_manifest():
     """The 78 `ap_loc_<idx>.uti` visited-area marker items, as written by scripts/generate_location_items.py
     (extender/scripts_src/_location_manifest.json; the files themselves are in extender/raw_override_files).

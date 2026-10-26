@@ -56,6 +56,7 @@ Usage: python fix_malak_basic_attack_animations.py [--game-dir=<path>]
 """
 import glob
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -75,6 +76,12 @@ SOURCE_MODEL = "S_Male02"
 # correct one-handed-melee style, not group 1.
 _ANIMS_TO_SPLICE = (("g2a1", "g2a1"), ("g2a2", "g2a2"))
 
+# Every weapon-style animation the human rig has that Malak lacks (checked at build time, so a re-run never adds one twice): the ready, wound, guard, dodge and
+# attack animations of each weapon group (blaster pistol, rifle, repeating blaster, double blade: b5a1, g5r1, m2a1 ...; the extra attack and force variants are left out to keep the model small) and the walk/run styles
+# for carrying a rifle or a double blade. Without them he stands with the weapon at his side and does not fire.
+_WEAPON_ANIM = re.compile(r"^(b[5-9]a[12]|g[5-9][rgwd]1|g8a[12]|m2[agd][12])$")
+_WEAPON_MOVES = ("walkds", "runds", "walkrf", "runrf")
+
 
 def _arg_value(flag, default):
     for a in sys.argv[1:]:
@@ -90,11 +97,13 @@ def _clean_dir(path: str) -> None:
 
 
 def _decompile(work_dir: str, resource_name: str, game_dir: str) -> str:
-    from pykotor.extract.installation import Installation
+    from pykotor.extract.installation import Installation, SearchLocation
     from pykotor.resource.type import ResourceType
     inst = Installation(game_dir)
-    mdl_res = inst.resource(resource_name, ResourceType.MDL)
-    mdx_res = inst.resource(resource_name, ResourceType.MDX)
+    # Always the game's own file (chitin), never the copy already in Override: a model that went through MDLOps once and is decompiled
+    # and compiled again comes out in a shape other tools cannot read, so every build starts from the original.
+    mdl_res = inst.resource(resource_name, ResourceType.MDL, [SearchLocation.CHITIN])
+    mdx_res = inst.resource(resource_name, ResourceType.MDX, [SearchLocation.CHITIN])
     print(f"  source: {resource_name} <- {mdl_res.filepath}")
     work_mdl = os.path.join(work_dir, f"{resource_name}.mdl")
     with open(work_mdl, "wb") as f:
@@ -128,13 +137,22 @@ def build(game_dir: str) -> None:
     with open(source_ascii_path, "r", encoding="utf-8", errors="surrogateescape") as f:
         source_text = f.read()
 
+    with open(target_ascii_path, "r", encoding="utf-8", errors="surrogateescape") as f:
+        target_names = set(re.findall(r"^newanim (\S+) ", f.read(), re.M))
+    source_names = re.findall(r"^newanim (\S+) ", source_text, re.M)
+    wanted = [(n, n) for n in source_names if (_WEAPON_ANIM.match(n) or n in _WEAPON_MOVES) and n not in target_names]
+    to_splice = [pair for pair in list(_ANIMS_TO_SPLICE) + wanted if pair[0] not in target_names]
+    to_splice = list(dict.fromkeys(to_splice))
+    print(f"  {len(to_splice)} animation(s) to add; {len(target_names)} already there")
+
     new_blocks = []
-    for new_name, source_name in _ANIMS_TO_SPLICE:
+    for new_name, source_name in to_splice:
         block = _extract_anim_block(source_text, source_name, SOURCE_MODEL)
         occurrences = block.count(SOURCE_MODEL)
         if occurrences != 5:
-            raise RuntimeError(f"expected exactly 5 references to '{SOURCE_MODEL}' in its own "
-                                f"'{source_name}' block, found {occurrences} -- ascii format changed?")
+            # a block with a different shape (a node tree that does not match the others) is left out rather than spliced wrong
+            print(f"  skipped {source_name}: {occurrences} references to '{SOURCE_MODEL}' in its block, not the usual 5")
+            continue
         remapped = block.replace(SOURCE_MODEL, TARGET_MODEL)
         if new_name != source_name:
             remapped = remapped.replace(f"newanim {source_name} {TARGET_MODEL}",
@@ -144,6 +162,9 @@ def build(game_dir: str) -> None:
         new_blocks.append(remapped)
         print(f"  spliced {SOURCE_MODEL}:{source_name} -> {TARGET_MODEL}:{new_name} ({len(remapped)} chars)")
 
+    if not new_blocks:
+        print("  nothing to add: the model already has every one of them")
+        return
     with open(target_ascii_path, "r", encoding="utf-8", errors="surrogateescape") as f:
         text = f.read()
     insertion_point = text.index(f"doneanim g2w1 {TARGET_MODEL}") + len(f"doneanim g2w1 {TARGET_MODEL}")
@@ -161,6 +182,12 @@ def build(game_dir: str) -> None:
     bin_mdl = bin_candidates[0]
     bin_mdx = bin_mdl[:-4] + ".mdx"
 
+    backup_dir = os.path.join(RAW_OVERRIDE_DIR, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    for ext in ("mdl", "mdx"):
+        previous = os.path.join(RAW_OVERRIDE_DIR, f"{TARGET_MODEL}.{ext}")
+        if os.path.isfile(previous) and not os.path.isfile(os.path.join(backup_dir, f"{TARGET_MODEL}.{ext}")):
+            shutil.copy2(previous, os.path.join(backup_dir, f"{TARGET_MODEL}.{ext}"))     # the version before the weapon animations, kept once
     out_mdl_path = os.path.join(RAW_OVERRIDE_DIR, f"{TARGET_MODEL}.mdl")
     out_mdx_path = os.path.join(RAW_OVERRIDE_DIR, f"{TARGET_MODEL}.mdx")
     shutil.copy2(bin_mdl, out_mdl_path)

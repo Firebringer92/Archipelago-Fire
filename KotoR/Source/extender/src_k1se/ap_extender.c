@@ -106,6 +106,8 @@ static void ap_push_to_client(const char *line) {
  * here by the log-tail thread to detect area-change and delivery-confirmed
  * lines and drive the arm-batch orchestrator accordingly. */
 static void ap_run_orchestrator(const char *args);
+/* kse_hook.cpp: leaves a job in the one-slot mailbox the script VM's thread empties into the store (1 left, 0 busy, -1 bad). */
+extern int kse_inbox_put(const char *payload);
 static int ap_arm_id_for_name(const char *name);
 
 static int g_last_area_idx = -1;
@@ -458,7 +460,7 @@ static const char *AP_ARM_NAMES[] = {
      * (and every arm ID after this point) don't shift; the renamed strings
      * can never be matched by a real APPLY: command. */
     "_retired_companion_jedi", "_retired_companion_jedi_xp",
-    "credits", "grant_test_ability",
+    "credits", "ability_charisma",
     "companion_carth", "companion_hk47", "companion_jolee",
     "companion_juhani", "companion_mission", "companion_t3m4",
     "companion_zaalbar", "class_sentinel",
@@ -1355,6 +1357,29 @@ static void ap_dispatch_command(char *buf, char *reply, size_t reply_size) {
             _snprintf(reply, reply_size - 1, "ERROR:expected APPLYVALUE:set_xp|set_credits:<value>, give_item:<resref>:<count>, delevel:<level>:<xp>:<force>, or force_power:<spell_id>\n");
             reply[reply_size - 1] = '\0';
         }
+    } else if (_strnicmp(buf, "DISPATCH:", 9) == 0) {
+        /* DISPATCH:<seq 0-255>:<action>[:<args>] -- one job for the poll's dispatcher (generate_poll_shared.py
+         * DtTick). Not a staged-script grant: the job is left in the DLL's inbox mailbox (kse_inbox_put, kse_hook.cpp) and
+         * the running poll picks it up on its next beat, checks that the moment is calm, and applies it at most once. STAGED
+         * here only means "in the mailbox"; the game's own AP|DISPATCH|APPLIED line is the real confirmation. The whole text
+         * after "DISPATCH:" is passed through unchanged; the poll splits it at the first two colons. */
+        const char *rest = buf + 9;
+        int seq = -1;
+        int consumed = 0;
+        if (sscanf(rest, "%d:%n", &seq, &consumed) >= 1 && seq >= 0 && seq <= 255 && consumed > 0 && rest[consumed] != '\0') {
+            int put = kse_inbox_put(rest);
+            if (put == 1) {
+                ap_log("DISPATCH: job %d left in the inbox mailbox.", seq);
+                _snprintf(reply, reply_size - 1, "STAGED:dispatch:%d\n", seq);
+            } else if (put == 0) {
+                _snprintf(reply, reply_size - 1, "ERROR:dispatch busy:%d\n", seq);
+            } else {
+                _snprintf(reply, reply_size - 1, "ERROR:dispatch too long:%d\n", seq);
+            }
+        } else {
+            _snprintf(reply, reply_size - 1, "ERROR:expected DISPATCH:<seq 0-255>:<action>[:<args>]\n");
+        }
+        reply[reply_size - 1] = '\0';
     } else if (_strnicmp(buf, "SHOPSTOCK:", 10) == 0) {
         /* SHOPSTOCK:<resref1>,<resref2>,... -- one-time, set-once-at-Connect
          * universal shop catalog (see Options.py's ShopItemCount and

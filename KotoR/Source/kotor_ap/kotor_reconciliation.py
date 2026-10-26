@@ -110,17 +110,17 @@ ARM_EFFECT: typing.Dict[str, tuple] = {
     "companion_zaalbar": ("companion", 8),
     # con IS tracked (real AP item "Ability: Constitution Increase")
     # despite no reduce_con trap existing -- see _ability_baseline's own
-    # comment. cha has no AP item at all, so it's absent here entirely.
+    # comment. cha is tracked too ("Ability: Charisma Increase").
     "ability_strength": ("ability", "str", 1),
     "ability_dexterity": ("ability", "dex", 1),
     "ability_constitution": ("ability", "con", 1),
     "ability_intelligence": ("ability", "int", 1),
     "ability_wisdom": ("ability", "wis", 1),
+    "ability_charisma": ("ability", "cha", 1),
 }
-_ABILITY_KEYS = ["str", "dex", "con", "int", "wis"]
-# reduce_str/dex/int/wis/cha trap -> current_abilities/ARM_EFFECT's own
-# key spelling (cha excluded -- see _ability_baseline's own comment).
-_TRAP_ABILITY_TO_KEY = {"reduce_str": "str", "reduce_dex": "dex", "reduce_int": "int", "reduce_wis": "wis"}
+_ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha"]
+# reduce_str/dex/int/wis/cha trap -> current_abilities/ARM_EFFECT's own key spelling.
+_TRAP_ABILITY_TO_KEY = {"reduce_str": "str", "reduce_dex": "dex", "reduce_int": "int", "reduce_wis": "wis", "reduce_cha": "cha"}
 
 _SKILLREPORT_RE = re.compile(
     r"computeruse=(\d+)\|demolitions=(\d+)\|stealth=(\d+)\|awareness=(\d+)\|"
@@ -147,6 +147,10 @@ _CREDITS_RE = re.compile(r"AP\|CREDITSREPORT\|current=(\d+)")
 _XP_RE = re.compile(r"AP\|XPREPORT\|current=(\d+)")
 _COMPANION_RE = re.compile(r"AP\|CHECK\|COMPANION\|(\d+)")
 _AREA_RE = re.compile(r"AP\|CHECK\|AREA\|(\d+)")
+# The two Endar Spire areas (end_m01aa, end_m01ab; area indexes in generate_area_trampolines.py). The game will not let the player on until they
+# have reached level 2, which takes the vanilla XP of that ship, so the XP clamp of the XP-limited and XP-gated modes does not run when
+# either is entered. It runs again from the first area after them.
+_XP_CLAMP_EXEMPT_AREAS = (0, 1)
 _DEATH_RE = re.compile(r"AP\|CHECK\|DEATH")
 _CLASSREPORT_RE = re.compile(
     r"AP\|CLASSREPORT\|guardian=(\d+)\|consular=(\d+)\|sentinel=(\d+)"
@@ -192,8 +196,6 @@ _CREW_RE = re.compile(
     r"jolee=(\d+)\|juhani=(\d+)\|mission=(\d+)\|t3m4=(\d+)\|zaalbar=(\d+)"
 )
 _CREW_ENTITLED = 10
-# Most times the reconciler sends the same missing feat set for one character before it stops trying.
-_FEATS_MAX_SENDS = 3
 _CREW_TRAPPED = 20
 # Leak purge: a companion on the roster whose marker is not 10 (never granted, or trapped off) is purged only after it has been seen
 # across this many area entries (and a few settled reports) with nothing busy. Not applied once the Unknown World trip has begun
@@ -201,11 +203,11 @@ _CREW_TRAPPED = 20
 # pass cleans up after it.
 _LEAK_AREA_ENTRIES = 2
 _LEAK_STORY_STAGE_BLOCK = 40
-# A busy source other than the Leviathan sequence, a conversation or an Unknown World module (bits 2, 4, 8, 16 of bz=) that stays set
+# A busy source other than the Leviathan sequence, a conversation or an Unknown World module (bits 2, 4, 8, 16, 32 of bz=) that stays set
 # this long is almost certainly stuck (a dropped revert); it is logged, nothing is changed.
 _BUSY_STUCK_SECONDS = 600
 _BUSY_STUCK_BITS = {2: "PC boolean 78 (Jolee field scene)", 4: "forcefield Mission staging", 8: "Zaalbar Mission staging",
-                    16: "Bastila+Carth party gate"}
+                    16: "Bastila+Carth party gate", 32: "Taris Duel Ring flag (TAR_DUELINPROGRESS)"}
 # Star Forge pass: companions that nothing in the Star Forge needs (its Carth and
 # Bastila scenes use stand-in creatures with their own tags), purged on arrival if
 # the player is not entitled to them. Bastila is handled by path, see
@@ -220,28 +222,10 @@ _LEVIATHAN_DONE_ENTRY = 99
 # log must have had time to say who is entitled).
 _ROSTER_STABLE_REPORTS = 3
 _ROSTER_WARMUP_SECONDS = 45
-# Same shape as _COMPANION_CLASSREPORT_RE, for the feats poll
-# (CheckCompanionFeats(), generate_poll_shared.py) -- each segment is
-# either "NONE" (not currently recruited), empty (recruited, holds none of
-# ADDITIONAL_FEATS_POOL), or a comma-joined list of held feat.2da ids, so a
-# generic capture handles all three shapes uniformly. MUST exclude '"' too,
-# not just '|' -- confirmed: the raw kse.log line wraps the whole
-# message in msg="...", so the LAST group (zaalbar, nothing bounding it on
-# the right) greedily swallowed that trailing '"' (e.g. "NONE" arrived as
-# NONE", which then failed the plain == "NONE" check and crashed int() on
-# the comma-split). Same class of bug this project's own _CREDITS_RE/
-# _NAMEREPORT_RE comments already document for exactly this reason --
-# missed it here since this is the only OTHER variable-length-string
-# regex added this session.
-_COMPANION_FEATSREPORT_RE = re.compile(
-    r'AP\|COMPANIONFEATSREPORT\|bastila=([^|"]*)\|canderous=([^|"]*)\|carth=([^|"]*)\|'
-    r'jolee=([^|"]*)\|juhani=([^|"]*)\|mission=([^|"]*)\|zaalbar=([^|"]*)'
-)
 # CheckProgressionItems() (generate_poll_shared.py) -- 0/1 possession flag
 # per tracked resref, same key order as entitlement.py's
 # PROGRESSION_ITEM_RESREFS. A digit is self-terminating against the "|"
-# separator, unlike the free-form COMPANIONFEATSREPORT fields above, so no
-# quote-exclusion trick is needed here.
+# separator, so no quote-exclusion trick is needed here.
 _PROGRESSIONITEMSREPORT_RE = re.compile(
     r"AP\|PROGRESSIONITEMSREPORT" + "".join(rf"\|{_k}=(\d)" for _k in PROGRESSION_ITEM_RESREFS)
 )
@@ -323,7 +307,7 @@ _ABILITYBASE_RE = re.compile(
 )
 _FEATREPORT_RE = re.compile(r"AP\|FEATREPORT\|([\d,]*)")
 # The full held-feat list (CheckFeatsFull(), about once a minute). FEATREPORT above now carries only
-# the feats the reconciler and the Additional Feats picker care about; the Remove Half Known Feats
+# the feats the reconciler cares about; the Remove Half Known Feats
 # trap needs everything the character holds.
 _FEATFULL_RE = re.compile(r"AP\|FEATFULL\|([\d,]*)")
 _POWERREPORT_RE = re.compile(r"AP\|POWERREPORT\|([\d,]*)")
@@ -334,6 +318,8 @@ _POWERREPORT_RE = re.compile(r"AP\|POWERREPORT\|([\d,]*)")
 # loop below to "heal" back -- same "a real punishment is not exempt"
 # reasoning as Character Reset.
 _TRAP_REDUCE_SKILL_RE = re.compile(r"AP\|APPLIED\|trap\|type=reduce_skill\|skill=(\w+)\|before=(\d+)\|after=(\d+)")
+# The Cut Max HP trap halves max HP by lowering base Constitution, so it is a Constitution decrease like the reduce_* traps above.
+_TRAP_CUT_MAX_HP_RE = re.compile(r"AP\|APPLIED\|trap\|type=cut_max_hp\|.*conbefore=(\d+)\|conafter=(\d+)")
 _TRAP_REDUCE_ABILITY_RE = re.compile(
     r"AP\|APPLIED\|trap\|type=(reduce_str|reduce_dex|reduce_int|reduce_wis|reduce_cha)\|before=(\d+)\|after=(\d+)"
 )
@@ -382,10 +368,8 @@ _SKILL_INFLIGHT_TIMEOUT_SECONDS = 300
 _CREDITS_INFLIGHT_TIMEOUT_SECONDS = 30
 
 # Staged-arm corrections' own in-flight timeout -- NOT credits' 30s. Class
-# (PC and companion) and feats corrections are both staged through
-# area-transition-gated queues (class via _heavy_queue; feats via
-# arm_orchestrator.py's apply_armed_set, confirmed append-semantics same as
-# credits/class) the same way this session's real credit incident
+# (PC and companion) corrections are staged through
+# area-transition-gated queues (via _heavy_queue) the same way this session's real credit incident
 # confirmed set_credits is (see _credit_baseline's own comment) -- the
 # write can take a while to actually land, not just a poll cycle or two.
 # Matches _SKILL_INFLIGHT_TIMEOUT_SECONDS's own reasoning instead: a class
@@ -433,7 +417,6 @@ class ReconciliationTracker:
         send_apply_value: typing.Callable[[str, int], typing.Awaitable[bool]],
         send_delevel: typing.Optional[typing.Callable[[int, int, int], typing.Awaitable[bool]]] = None,
         send_heavy: typing.Optional[typing.Callable[[str], None]] = None,
-        send_feats: typing.Optional[typing.Callable[[str, typing.List[int]], typing.Awaitable[bool]]] = None,
         on_death: typing.Optional[typing.Callable[[], None]] = None,
         is_awaiting_confirmation: typing.Optional[typing.Callable[[str], bool]] = None,
         send_purge: typing.Optional[typing.Callable[[str], typing.Awaitable[bool]]] = None,
@@ -461,13 +444,6 @@ class ReconciliationTracker:
         # construction sites); falls back to a log-only no-op, same
         # tolerant shape.
         self._send_heavy = send_heavy
-        # Feats corrections are LIGHT (KSE_GrantFeatArrayA never touches
-        # multiclass/party/level-up), so this is its own callback, not
-        # routed through send_heavy -- always resends the exact
-        # already-decided missing subset (expected_feats - current), never
-        # a fresh random draw. Optional, same tolerant shape as
-        # send_delevel/send_heavy above.
-        self._send_feats = send_feats
         # Roster cleanup: send_purge(npc_key) removes a companion the player
         # is not entitled to (the purge_companion trap). Who is entitled comes only from the
         # entitlement markers in the save (current_crew, see _CREW_RE), never from the client's
@@ -642,9 +618,7 @@ class ReconciliationTracker:
         # directly, same "a real punishment/respec is not exempt" reasoning
         # as expected_feats/_skill_baseline). con is tracked (has a real AP item,
         # "Ability: Constitution Increase") even though no reduce_con trap
-        # exists to lower it; cha is NOT tracked -- no AP item grants it at
-        # all (Items.py has no "Ability: Charisma Increase"), so there is
-        # no entitlement to protect.
+        # exists to lower it; cha is tracked too (the item "Ability: Charisma Increase" and the reduce_cha trap).
         self._ability_baseline: typing.Dict[str, typing.Optional[int]] = {k: None for k in _ABILITY_KEYS}
         self._ability_inflight_count: typing.Dict[str, int] = {k: 0 for k in _ABILITY_KEYS}
         self._ability_inflight_since: typing.Dict[str, float] = {}
@@ -727,35 +701,13 @@ class ReconciliationTracker:
         self._pc_class_inflight_since: typing.Optional[float] = None
         self._companion_class_inflight: typing.Dict[str, int] = {}
         self._companion_class_inflight_since: typing.Dict[str, float] = {}
-        # Feats entitlement (see DEVELOPMENT_HISTORY.md section 13) -- "pc" plus each companion key -> every feat_id
-        # ever actually decided for them by a resolved Additional Feats
-        # item (KotorClient.py's _resolve_additional_feats). UNLIKE
-        # class/xp/credits, there is no formula to recompute this from
-        # slot_data -- the random choice made at resolve time IS the
-        # entitlement, so it's populated by note_feats_granted() below and
-        # (after a process restart) rebuilt from the delivery log via
-        # KotorClient.py's _load_granted_feats -- tied to AP progress, not
-        # to any one running game process, same reasoning as expected_
-        # scalar/expected_pc_class surviving a mere reconnect.
-        self.expected_feats: typing.Dict[str, typing.Set[int]] = {}
-        # Same in-flight shape as the class tracking above, keyed per
-        # character ("pc" or npc_key) -- tracks the exact missing-subset
-        # target last requested, so an unresolved gap doesn't re-send every
-        # poll while the (staged, not instant -- see
-        # _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS) grant is still landing.
-        self._feats_inflight: typing.Dict[str, typing.FrozenSet[int]] = {}
-        self._feats_inflight_since: typing.Dict[str, float] = {}
-        # How many times the same missing set has been sent without it ever landing, and who the retries were given up for.
-        self._feats_attempts: typing.Dict[str, typing.Tuple[typing.FrozenSet[int], int]] = {}
-        self._feats_gave_up: typing.Set[str] = set()
         # Progression-item entitlement (see PROGRESSION_ITEM_RESREFS's own
         # comment, entitlement.py) -- which of the 8 tracked keys have
         # actually been sent via give_item: (note_item_received below),
-        # same "no formula, just record what was decided" shape as
-        # expected_feats. Tied to AP progress, not to any one running game
+        # "no formula, just record what was decided". Tied to AP progress, not to any one running game
         # process, same reasoning as expected_scalar/expected_pc_class.
         self.expected_progression_items: typing.Set[str] = set()
-        # Same in-flight shape as skills/feats above, keyed per tracked key.
+        # Same in-flight shape as skills above, keyed per tracked key.
         self._progression_item_inflight_since: typing.Dict[str, float] = {}
         # "Archipelago Tracker" journal stage in-flight tracking -- a
         # single target (not per-key like feats/progression items, since
@@ -796,13 +748,6 @@ class ReconciliationTracker:
         # -1 until first report OR not currently recruited (see
         # _COMPANION_CLASSREPORT_RE's own comment).
         self.current_companion_classes: typing.Dict[str, int] = {k: -1 for k in _COMPANION_CLASS_KEYS}
-        # From COMPANIONFEATSREPORT -- real in-game state per companion,
-        # None = not currently recruited (same concept as
-        # current_companion_classes' -1, just typed for a set instead of
-        # an int). PC's own feats reuse current_feats below -- no separate
-        # PC entry needed here.
-        self.current_companion_feats: typing.Dict[str, typing.Optional[typing.Set[int]]] = \
-            {k: None for k in _COMPANION_CLASS_KEYS}
         # From PROGRESSIONITEMSREPORT -- real in-game possession, keyed the
         # same as expected_progression_items/PROGRESSION_ITEM_RESREFS.
         self.current_progression_items: typing.Dict[str, bool] = {k: False for k in PROGRESSION_ITEM_RESREFS}
@@ -847,7 +792,7 @@ class ReconciliationTracker:
         # numbered-arm queue skills/companions use has NO dedup, so without
         # this, _reconcile() re-requesting the same unresolved deficit every
         # ~5s poll while delivery is pending -- always true for a while,
-        # since delivery is gated on the next area transition -- compounds
+        # since a delivery waits for a calm moment -- compounds
         # into a real over-grant (e.g. a single starting_persuade
         # boost firing 9 times instead of once during a pre-transition
         # wait after connecting). Cleared whenever current_skill_bases/
@@ -896,7 +841,6 @@ class ReconciliationTracker:
         }
         self._classes_known = False
         self.current_companion_classes = {k: -1 for k in _COMPANION_CLASS_KEYS}
-        self.current_companion_feats = {k: None for k in _COMPANION_CLASS_KEYS}
         self.current_roster = None
         self.current_crew = None
         self.roster_busy_mask = None
@@ -950,10 +894,6 @@ class ReconciliationTracker:
         self._pc_class_inflight_since = None
         self._companion_class_inflight = {}
         self._companion_class_inflight_since = {}
-        self._feats_inflight = {}
-        self._feats_inflight_since = {}
-        self._feats_attempts = {}
-        self._feats_gave_up = set()
         self._progression_item_inflight_since = {}
         self._ap_tracker_inflight_target = None
         self._ap_tracker_inflight_since = None
@@ -980,18 +920,6 @@ class ReconciliationTracker:
         if key is None:
             return False
         return self.current_classes.get(key, 0) > 0
-
-    def note_feats_granted(self, character_key: str, feat_ids: typing.List[int]) -> None:
-        """Called by KotorClient.py's _resolve_additional_feats once a
-        random Additional Feats draw actually sends -- NOT from
-        note_item_received(), since the ids aren't known at raw-item-
-        receipt time (they're chosen later, once recruited+class-finalized
-        gates clear). character_key is "pc" or a companion npc_key.
-        Unions into expected_feats rather than replacing it -- each
-        resolve is a distinct, additive grant (a character can receive
-        multiple Additional Feats items over a playthrough), and this is
-        the one and only record of what was ever decided for them."""
-        self.expected_feats.setdefault(character_key, set()).update(feat_ids)
 
 #BK As noted elsewhere we should create native function to log the action taken by delivery arms.
     def note_item_received(self, arm_name: str) -> None:
@@ -1076,10 +1004,8 @@ class ReconciliationTracker:
                 # by the time this runs, so without marking it in-flight,
                 # the next reconciliation pass sees a deficit a real
                 # delivery already covers and sends a redundant
-                # correction for the same amount. Charisma has no
-                # ARM_EFFECT entry and therefore no reconciliation path at
-                # all, which is why this specific race can only double
-                # the 5 tracked abilities (str/dex/con/int/wis), never it.
+                # correction for the same amount. This applies to all six
+                # tracked abilities (str/dex/con/int/wis/cha).
                 if self._ability_inflight_since.get(key) is None:
                     self._ability_inflight_since[key] = time.time()
                 self._ability_inflight_count[key] += amount
@@ -1109,8 +1035,8 @@ class ReconciliationTracker:
             return
         if _VENDOR_RESET_RE.search(event):
             # Character Reset strips the PC's feats/skills/abilities in
-            # the game -- without this, expected_feats["pc"]/
-            # _skill_baseline/_ability_baseline (AP-side entitlement)
+            # the game -- without this, _skill_baseline/_ability_baseline
+            # (AP-side entitlement)
             # would see the very next poll as a deficit and silently
             # regrant everything back, undoing the respec within one
             # cycle. Explicit product decision: a respec is a real
@@ -1120,9 +1046,6 @@ class ReconciliationTracker:
             # for powers to reconcile against in the first place, unlike
             # feats/skills/abilities), so there's nothing to clear there
             # -- the vendor's own strip is all that ever touches them.
-            self.expected_feats["pc"] = set()
-            self._feats_inflight.pop("pc", None)
-            self._feats_inflight_since.pop("pc", None)
             # ap_vs_reset.nss zeroes every skill rank.
             self._skill_baseline = {f: 0 for f in _SKILL_FIELDS}
             self._inflight_skill_count = {f: 0 for f in _SKILL_FIELDS}
@@ -1147,12 +1070,19 @@ class ReconciliationTracker:
             if current_baseline is not None:
                 self._skill_baseline[skill_key] = max(0, current_baseline - drop)
             return
+        m = _TRAP_CUT_MAX_HP_RE.search(event)
+        if m:
+            # Same accounting as the reduce_* traps below: the effective scores read in one script run differ by exactly how far the base moved,
+            # and the baseline falls by that much. Without this the reconciler read the lost points as a deficit and granted them back.
+            drop = max(0, int(m.group(1)) - int(m.group(2)))
+            current_baseline = self._ability_baseline.get("con")
+            if current_baseline is not None:
+                self._ability_baseline["con"] = max(0, current_baseline - drop)
+            return
         m = _TRAP_REDUCE_ABILITY_RE.search(event)
         if m:
             key = _TRAP_ABILITY_TO_KEY.get(m.group(1))
             if key is None:
-                # reduce_cha: charisma has no AP grant, so there is no
-                # baseline for it to lower.
                 return
             # before/after are EFFECTIVE scores read in the same script run,
             # so their difference is exactly how far the trap moved the true
@@ -1283,11 +1213,6 @@ class ReconciliationTracker:
             for key, value in zip(_COMPANION_CLASS_KEYS, m.groups()):
                 self.current_companion_classes[key] = int(value)
             return
-        m = _COMPANION_FEATSREPORT_RE.search(event)
-        if m:
-            for key, value in zip(_COMPANION_CLASS_KEYS, m.groups()):
-                self.current_companion_feats[key] = None if value == "NONE" else {int(x) for x in value.split(",") if x}
-            return
         m = _PROGRESSIONITEMSREPORT_RE.search(event)
         if m:
             for key, value in zip(PROGRESSION_ITEM_RESREFS, m.groups()):
@@ -1343,8 +1268,7 @@ class ReconciliationTracker:
             return
         m = _ABILITYBASE_RE.search(event)
         if m:
-            # Groups 1-5 are str/dex/con/int/wis, matching _ABILITY_KEYS; the
-            # sixth (cha) isn't tracked, so zip drops it.
+            # The six groups are str/dex/con/int/wis/cha, matching _ABILITY_KEYS.
             for key, value in zip(_ABILITY_KEYS, m.groups()):
                 self.current_ability_bases[key] = int(value)
             return
@@ -1365,7 +1289,8 @@ class ReconciliationTracker:
         if m:
             self.current_powers = {int(x) for x in m.group(1).split(",") if x}
             return
-        if _AREA_RE.search(event):
+        area_match = _AREA_RE.search(event)
+        if area_match:
             # AP|CHECK|AREA|<idx> fires directly from the area's native
             # OnEnter handler (see generate_area_trampolines.py) -- a true
             # one-shot transition edge, not a poll-cycle repeat, so no extra
@@ -1382,6 +1307,8 @@ class ReconciliationTracker:
             # x experience_limiter) instead, independent of anyone's item
             # sends. off entirely means don't touch XP at all -- pure
             # vanilla.
+            if int(area_match.group(1)) in _XP_CLAMP_EXEMPT_AREAS:
+                return
             if self.experience_mode != 0 and self._xp_seen_since_reset:  # off, or no real report yet
                 if self.experience_mode == 2:  # ap_gated
                     expected = self.expected_scalar.get("xp", 0)
@@ -1588,7 +1515,7 @@ class ReconciliationTracker:
     def _staged_arm_stale(self, since: typing.Optional[float]) -> bool:
         """Replaces a pure time.time() - since > TIMEOUT check for every
         staged-arm correction type (ability, skill, PC class, companion
-        class, feats, progression items, AP tracker) -- see
+        class, progression items, AP tracker) -- see
         _AREA_CHECK_RE's own comment for why. `since` is None (never sent,
         nothing to go stale) returns False; otherwise a correction only
         counts as possibly lost once a covered area has actually been
@@ -1606,10 +1533,6 @@ class ReconciliationTracker:
         import asyncio
         corrections: typing.List[str] = []
         value_corrections: typing.List[typing.Tuple[str, int]] = []
-        # Separate from corrections -- a feats correction is a
-        # (character_key, feat_ids) pair dispatched via send_feats, not a
-        # bare arm_name string like every other correction here.
-        feats_corrections: typing.List[typing.Tuple[str, typing.List[int]]] = []
 
         # Credits (see CreditMode's docstring, and _credit_baseline's own
         # __init__ comment for the full incident writeup this replaced).
@@ -2050,68 +1973,6 @@ class ReconciliationTracker:
                 self._companion_class_inflight[npc_key] = expected_const
                 self._companion_class_inflight_since[npc_key] = time.time()
 
-            # Feats self-healing -- PC and companions (DEVELOPMENT_HISTORY.md section 13).
-            # Two independent sources
-            # feed "expected" here: expected_feats (recorded, randomized
-            # Additional Feats draws -- see note_feats_granted, no formula,
-            # it's just the union of every id ever actually decided) and,
-            # for anyone CONFIRMED to already be a Jedi class,
-            # entitlement.py's JEDI_CLASS_FEATS -- the bundle a class
-            # conversion is SUPPOSED to grant alongside the class write
-            # itself. Real incident this second source exists for: a
-            # companion's class-conversion feat grant is DelayCommand-based
-            # (see build_companion_class_block) and can be lost to a crash
-            # in that 1s window, and once the class FIELD itself already
-            # reads correct, nothing else would ever notice or retry the
-            # missing feats -- this closes that gap. Gated on the
-            # character's CURRENT class already matching their target (not
-            # just classes_known) -- granting Jedi feats to someone who
-            # hasn't actually converted yet would be premature.
-            for character_key in ["pc"] + _COMPANION_CLASS_KEYS:
-                if character_key == "pc":
-                    current = self.current_feats
-                    confirmed_class = self.current_classes.get("baseclass", -1)
-                    target_class = snapshot.pc_class
-                else:
-                    current = self.current_companion_feats.get(character_key)
-                    if current is None:
-                        continue  # not currently recruited -- nothing to correct yet
-                    confirmed_class = self.current_companion_classes.get(character_key, -1)
-                    target_class = snapshot.companion_classes.get(character_key)
-                expected = set(self.expected_feats.get(character_key, ()))
-                if target_class is not None and target_class != -1 and confirmed_class == target_class:
-                    expected |= JEDI_CLASS_FEATS.get(target_class, set())
-                if not expected:
-                    continue
-                missing = expected - current
-                if not missing:
-                    self._feats_inflight.pop(character_key, None)
-                    self._feats_inflight_since.pop(character_key, None)
-                    self._feats_attempts.pop(character_key, None)
-                    self._feats_gave_up.discard(character_key)
-                    continue
-                target = frozenset(missing)
-                since = self._feats_inflight_since.get(character_key)
-                stale = self._staged_arm_stale(since)
-                if self._feats_inflight.get(character_key) == target and not stale:
-                    continue
-                # A grant that never changes what the character holds (the companion is not really there when it runs) would be
-                # re-sent on every area load for good. Stop after a few sends of the same set; a different missing set starts over.
-                tried, sends = self._feats_attempts.get(character_key, (None, 0))
-                if tried != target:
-                    sends = 0
-                    self._feats_gave_up.discard(character_key)
-                if sends >= _FEATS_MAX_SENDS:
-                    if character_key not in self._feats_gave_up:
-                        self._feats_gave_up.add(character_key)
-                        logger.warning(f"[reconcile] {character_key} is still missing feats {sorted(target)} after {sends} sends; "
-                                       f"not sending them again unless the missing set changes or the client reconnects")
-                    continue
-                feats_corrections.append((character_key, sorted(missing)))
-                self._feats_attempts[character_key] = (target, sends + 1)
-                self._feats_inflight[character_key] = target
-                self._feats_inflight_since[character_key] = time.time()
-
         # Progression-item possession self-healing (see PROGRESSION_ITEM_
         # RESREFS's own comment, entitlement.py) -- narrow, deficit-only:
         # a tracked key is only ever re-granted once it's been sent at
@@ -2152,11 +2013,9 @@ class ReconciliationTracker:
                 self._ap_tracker_inflight_target = None
                 self._ap_tracker_inflight_since = None
 
-        if corrections or value_corrections or feats_corrections:
-            logger.info(f"[reconcile] deficit found -- grants: {corrections}, exact-value: {value_corrections}, "
-                        f"feats: {feats_corrections}")
-            self.last_corrections = (corrections + [f"{a}={v}" for a, v in value_corrections]
-                                      + [f"additional_feats:{k}={ids}" for k, ids in feats_corrections])
+        if corrections or value_corrections:
+            logger.info(f"[reconcile] deficit found -- grants: {corrections}, exact-value: {value_corrections}")
+            self.last_corrections = corrections + [f"{a}={v}" for a, v in value_corrections]
             for arm_name in corrections:
                 # HEAVY_ARMS/companion_class: corrections (companion
                 # recruit, companion class, PC class) MUST go through
@@ -2174,11 +2033,3 @@ class ReconciliationTracker:
                     asyncio.create_task(self._send_apply(arm_name))
             for action, value in value_corrections:
                 asyncio.create_task(self._send_apply_value(action, value))
-            for character_key, feat_ids in feats_corrections:
-                # Light, not heavy -- see send_feats's own __init__
-                # comment. Always the exact already-decided missing subset
-                # computed above, never a fresh random draw.
-                if self._send_feats is not None:
-                    asyncio.create_task(self._send_feats(character_key, feat_ids))
-                else:
-                    logger.warning(f"[reconcile] feats correction needed ({character_key}:{feat_ids}) but no send_feats callback wired up")

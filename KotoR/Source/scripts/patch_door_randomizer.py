@@ -95,10 +95,21 @@ def _connected_door_mapping():
         return None
 
 
+def _area_randomizer_is_off() -> bool:
+    """True when the connected seed's slot data says the area randomizer is off (so there is no door mapping on purpose)."""
+    try:
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            return not json.load(f).get("area_randomizer", 0)
+    except Exception:
+        return False
+
+
 def main():
     mapping = _connected_door_mapping()
     if mapping is None:
-        if "--force" not in sys.argv:
+        if "--force" not in sys.argv and _area_randomizer_is_off():
+            print("The area randomizer is off for this seed: no door changes to make.")
+        elif "--force" not in sys.argv:
             print(f"No usable door_mapping at {SLOT_DATA_PATH} -- connect once with KotorClient.py "
                   "first (see README.md Step 6), which writes your seed's real door_mapping there on "
                   "every successful Connect (only present at all if area_randomizer is actually on for "
@@ -172,9 +183,11 @@ def main():
         doors_unlocked += _unlock_door_templates(module, door_templates)
 
     doors_unlocked += _unlock_known_local_doors()
+    kill_zone = _remove_sand_people_kill_zone()
+    dantooine = _free_dantooine_west_trigger()
 
     print(f"\nDone. modules patched: {changed}, modules with no real change: {unchanged_modules}, "
-          f"doors unlocked: {doors_unlocked}")
+          f"doors unlocked: {doors_unlocked}, Sand People kill zone parts removed: {kill_zone}, Dantooine trigger scripts cleared: {dantooine}")
 
 
 def _unlock_door_templates(module: str, templates: set) -> int:
@@ -243,6 +256,8 @@ DOORS_NEEDING_CONVERSATION_CLEARED = {
     ("korr_m33ab", "k33b_dor_academy"),
     ("korr_m39aa", "kor39_kor36"),
     ("manm26ad", "man26ad_door02"),
+    ("korr_m33aa", "k33a_dor_port"),    # Dreshdae port gate: a one-line "pay the docking fee" denial
+    ("tar_m11aa", "tar11_lockdoo001"),  # Hidden Bek control room door: plays the Gadon assassin conversation instead of opening
     ("manm26ae", "man26ac_door03"),
     ("manm26ae", "man26ac_door05"),
     ("tar_m03aa", "tar03_blkdoor"),
@@ -301,7 +316,23 @@ KNOWN_LOCAL_LOCKED_DOORS = [
     ("manm26ae", "man26ac_door05"),  # Manaan Ahto East -- door to the submersible
     ("manm26ad", "man26ad_door02"),  # Manaan docking bay -- door into the Sith hangar
     ("tar_m03aa", "tar03_underdoor"),  # Taris Lower City -- door down to the Undercity
+    # Found by tracing the shuffle's dead ends (not in the Kotor-Randomizer list):
+    ("manm26ac", "man28ac_door02"),    # Manaan Ahto West Central -- the port gate. The area's own entry script locks it again on every entry
+                                       # (MAN_PORT_ZONE); generate_trampoline_batch.py's ENTRY_UNLOCKS undoes that on randomized seeds.
+    ("korr_m33aa", "k33a_dor_port"),   # Korriban Dreshdae -- the port gate, locked again by the area's entry script the same way
+    ("manm26ab", "man26a_door02"),     # Manaan Ahto East -- the Sith embassy door (key w_sithkey); the Sith base trigger is behind it
+    ("tar_m11aa", "tar11_lockdoor"),   # Taris Hidden Bek Base -- opens only through the Kandon mission
+    ("tar_m11aa", "tar11_lockdoo001"),
 ]
+
+# Sand People Enclave (tat_m18ab): the trigger tat18_sanddeath (script k_ptat_sanddeath) kills the whole party unless the Tusken are friendly, and
+# eight turrets stand outside. The enclave's exit can land a shuffled arrival right next to them with no way past, so a randomized seed has neither.
+SAND_PEOPLE_MODULE = "tat_m18ab"
+SAND_PEOPLE_REMOVE = (("TriggerList", {"tat18_sanddeath"}), ("Creature List", {"tat18_turret", "tat18_turret2"}))
+# Dantooine (danm14ab): the west trigger to14cw runs temp_transition2, which starts danm14ac at from14bw whatever the shuffle says. Without that
+# script it follows its own link (rewritten above), like the east trigger to14ce, which has no script.
+DANTOOINE_TRIGGER_MODULE = "danm14ab"
+DANTOOINE_TRIGGER = "to14cw"
 
 
 def _unlock_known_local_doors() -> int:
@@ -338,6 +369,77 @@ def _unlock_known_local_doors() -> int:
         unlocked += module_unlocked
 
     return unlocked
+
+
+def _backup_once(path: str, name: str) -> None:
+    backup_path = os.path.join(BACKUP_DIR, name)
+    if not os.path.exists(backup_path):
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        shutil.copy2(path, backup_path)
+
+
+def _remove_sand_people_kill_zone() -> int:
+    """Drops the kill trigger and the turrets from the Sand People Enclave's area data. Returns how many were removed (0 when already gone)."""
+    path = os.path.join(MOD_DIR, f"{SAND_PEOPLE_MODULE}.rim")
+    if not os.path.exists(path):
+        return 0
+    try:
+        r = read_rim(path)
+    except Exception as e:
+        print(f"  {SAND_PEOPLE_MODULE}: could not read RIM ({e}), skipping the kill-zone pass")
+        return 0
+    git_res = next((res for res in r if res.restype == ResourceType.GIT), None)
+    if git_res is None:
+        return 0
+    gff = read_gff(git_res.data)
+    removed = 0
+    for list_name, templates in SAND_PEOPLE_REMOVE:
+        if not gff.root.exists(list_name):
+            continue
+        lst = gff.root.get_list(list_name)
+        drop = [i for i in range(len(lst))
+                if lst.at(i).exists("TemplateResRef") and lst.at(i).get_resref("TemplateResRef").get().lower() in templates]
+        for i in reversed(drop):
+            lst.remove(i)
+        if drop:
+            gff.root.set_list(list_name, lst)
+            removed += len(drop)
+    if not removed:
+        return 0
+    _backup_once(path, f"{SAND_PEOPLE_MODULE}.rim")
+    data = bytearray()
+    write_gff(gff, data)
+    r.set_data(git_res.resref, ResourceType.GIT, bytes(data))
+    write_rim(r, path)
+    print(f"  {SAND_PEOPLE_MODULE}: removed the kill trigger and {removed - 1} turret(s)")
+    return removed
+
+
+def _free_dantooine_west_trigger() -> int:
+    """Clears the OnEnter script of the Dantooine trigger that hard-codes its destination. Returns 1 when it changed something."""
+    path = os.path.join(MOD_DIR, f"{DANTOOINE_TRIGGER_MODULE}_s.rim")
+    if not os.path.exists(path):
+        return 0
+    try:
+        rs = read_rim(path)
+    except Exception as e:
+        print(f"  {DANTOOINE_TRIGGER_MODULE}_s.rim: could not read ({e}), skipping the trigger pass")
+        return 0
+    for res in rs:
+        if res.restype != ResourceType.UTT or res.resref.get().lower() != DANTOOINE_TRIGGER:
+            continue
+        utt = read_gff(res.data)
+        if not utt.root.exists("ScriptOnEnter") or not utt.root.get_resref("ScriptOnEnter").get():
+            return 0
+        utt.root.set_resref("ScriptOnEnter", ResRef.from_blank())
+        data = bytearray()
+        write_gff(utt, data)
+        rs.set_data(res.resref, ResourceType.UTT, bytes(data))
+        _backup_once(path, f"{DANTOOINE_TRIGGER_MODULE}_s.rim")
+        write_rim(rs, path)
+        print(f"  {DANTOOINE_TRIGGER_MODULE}_s.rim: {DANTOOINE_TRIGGER} follows its link now")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -1,0 +1,29 @@
+{
+ "scripts": [
+  "ap_jw_buy",
+  "ap_jw_canbuy",
+  "ap_jw_cantrd",
+  "ap_jw_gold",
+  "ap_jw_greet",
+  "ap_jw_nogold",
+  "ap_jw_notok",
+  "ap_jw_swap",
+  "ap_jw_tok"
+ ],
+ "raw_files": [
+  "ap_bz_buy.uti",
+  "ap_bz_swap.uti",
+  "ap_bz_token.uti",
+  "ap_jawa_dlg.dlg",
+  "ap_jawa_npc.utc",
+  "ap_jw_buy.ncs",
+  "ap_jw_canbuy.ncs",
+  "ap_jw_cantrd.ncs",
+  "ap_jw_gold.ncs",
+  "ap_jw_greet.ncs",
+  "ap_jw_nogold.ncs",
+  "ap_jw_notok.ncs",
+  "ap_jw_swap.ncs",
+  "ap_jw_tok.ncs"
+ ]
+}

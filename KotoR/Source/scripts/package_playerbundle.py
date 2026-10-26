@@ -34,7 +34,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # on the client or game side (this bundle) is a hotfix: only this version moves (0.1.9 -> 0.1.9.1) and the world zip keeps its version. The
 # bundle works with any world of the same x.y.z, so a hotfix is published as a bundle alone. No shared constant between the two scripts on
 # purpose; each script's default is updated by hand when its own version changes.
-BUNDLE_VERSION = "0.1.9.1"
+BUNDLE_VERSION = "0.2.0"
 
 # REMINDER: this list does not update itself. Every time a NEW file (not
 # just an edit to an existing one) becomes something a tester needs to run
@@ -108,6 +108,10 @@ FILES = [
     # hit an ImportError on the very first run without it. Same class of
     # gap as the other files in this list, just never caught until now.
     (("Archipelago", "entitlement.py"), "entitlement.py"),
+    # 0.2.0: the job dispatcher the client delivers everything through (KotorClient.py imports it), and the dispatcher action builders
+    # generate_poll_shared.py imports. Found missing by checking every local import of the shipped client and scripts.
+    (("Archipelago", "kotor_dispatcher.py"), "kotor_dispatcher.py"),
+    (("scripts", "dispatch_actions.py"), "scripts/dispatch_actions.py"),
     # Double-clickable installer -- testers don't run command
     # prompt commands. Ships at the Client folder root (sibling of
     # CommonClient.py, same level as scripts\) so `cd /d "%~dp0"` inside it
@@ -193,6 +197,10 @@ FILES = [
     # extender/scripts_src copy below -- only this script itself needed
     # adding.
     (("scripts", "generate_new_companion_assets.py"), "scripts/generate_new_companion_assets.py"),
+    # Bazaar tokens: run from KotorClient.py on Connect (and named by install_playerbundle.py).
+    (("scripts", "patch_bazaar_tokens.py"), "scripts/patch_bazaar_tokens.py"),
+    # Party Console: adds the spells.2da row its item needs, on every Connect (apply_party_console()); Uninstall runs its --restore.
+    (("scripts", "patch_party_console.py"), "scripts/patch_party_console.py"),
     # Droid options: run on every Connect from KotorClient.py (apply_droid_assets()). Installs or removes the droid models,
     # appearance rows, Battle Droid class tables and companion templates; its models live in extender/raw_override_files.
     (("scripts", "generate_droid_assets.py"), "scripts/generate_droid_assets.py"),
@@ -200,16 +208,55 @@ FILES = [
     (("extender", "area_trampolines", "_enemy_cr_bands.json"), "extender/area_trampolines/_enemy_cr_bands.json"),
     (("extender", "area_trampolines", "_enemy_category_pools.json"), "extender/area_trampolines/_enemy_category_pools.json"),
     (("extender", "area_trampolines", "_enemy_safe_pool.json"), "extender/area_trampolines/_enemy_safe_pool.json"),
-    # patch_item_suppression.py's item whitelist -- a real tester's
-    # checkout only ever has kotor.apworld as a zip in
-    # custom_worlds/, never an extracted worlds/kotor/gear_items.json file
-    # on disk, so this can't be read from the Archipelago checkout at all.
-    # This is a fixed classification tied to the apworld's own version, not
-    # per-seed data, so shipping a static copy here (kept in sync with
-    # worlds/kotor/gear_items.json whenever that changes, same as any other
-    # release-versioned artifact) is safe.
-    (("Archipelago", "worlds", "kotor", "gear_items.json"), "worlds/kotor/gear_items.json"),
+    # patch_item_suppression.py's item whitelist (worlds/kotor/gear_items.json) ships inside the world folder, see CORE_TREE below.
+    (("scripts", "Start_KOTOR_Client.bat"), "Start KOTOR Client.bat"),
 ]
+
+# 0.2.0: the bundle is self-contained: the Archipelago core the client runs on ships with it, so a player does not download Archipelago's source.
+# Archipelago is MIT licensed (its LICENSE ships with these files, see THIRD_PARTY_NOTICES.txt). Only what the client needs is taken from the tree,
+# found by starting the client from a folder holding exactly this set (Archipelago 0.6.8): other games' worlds, sprites, tiles and Lua are left out.
+ARCHIPELAGO_TREE = os.path.join(REPO_ROOT, "Archipelago")
+CORE_FILES = ["CommonClient.py", "NetUtils.py", "Utils.py", "settings.py", "ModuleUpdate.py", "kvui.py", "BaseClasses.py", "Fill.py", "Options.py",
+              "entrance_rando.py", "MultiServer.py", "Launcher.py", "LICENSE",
+              "worlds/__init__.py", "worlds/AutoWorld.py", "worlds/LauncherComponents.py", "worlds/Files.py",
+              "data/client.kv", "data/launcher.kv", "data/icon.png", "data/icon.ico", "data/discord-mark-blue.png", "data/options.yaml", "data/GLOBAL.apignore"]
+CORE_TREE = ["rule_builder", "worlds/generic", "worlds/kotor"]      # folders, copied whole
+CORE_TREE_SKIP = ("__pycache__", "logs", "test")                      # the world's tests stay in the repo
+# The packages the client imports (from Archipelago's own requirements.txt, kept at its pins; the KivyMD lines need Git, see Install.bat).
+REQUIREMENT_NAMES = {"colorama", "websockets", "pyyaml", "jellyfish", "jinja2", "schema", "kivy", "bsdiff4", "platformdirs", "certifi",
+                     "typing_extensions", "pathspec", "kivymd"}
+
+
+def _slim_requirements() -> str:
+    out = []
+    with open(os.path.join(ARCHIPELAGO_TREE, "requirements.txt"), encoding="utf-8") as f:
+        for line in f.read().replace("\r", "").split("\n"):
+            m = re.match(r"\s*([A-Za-z0-9_.-]+)", line)
+            if m and m.group(1).lower() in REQUIREMENT_NAMES:
+                out.append(line.rstrip())
+    return "\n".join(out) + "\n"
+
+
+def _third_party_notices() -> str:
+    parts = ["""THIRD-PARTY NOTICES
+
+This download contains software from other projects, under their own licenses. Their notices are reproduced below.
+Libraries that Install.bat downloads (kivy, kivymd, websockets, PyYAML, pykotor and the others it installs with pip) are not part of this download
+and keep their own licenses.
+
+================================================================================
+Archipelago (core files in this folder: CommonClient.py, NetUtils.py, Utils.py, BaseClasses.py and the others from the Archipelago source)
+================================================================================
+"""]
+    for title, path in (("", os.path.join(ARCHIPELAGO_TREE, "LICENSE")),
+                        ("K1SE (KOTOR Script Extender) -- its source is merged into binkw32.dll", os.path.join(REPO_ROOT, "extender", "src_k1se", "K1SE_LICENSE.txt")),
+                        ("MinHook, with the Hacker Disassembler Engine -- linked into binkw32.dll", os.path.join(REPO_ROOT, "extender", "third_party", "minhook", "LICENSE.txt"))):
+        if title:
+            parts.append("\n\n" + "=" * 80 + "\n" + title + "\n" + "=" * 80 + "\n")
+        with open(path, encoding="utf-8-sig") as f:
+            parts.append(f.read().replace("\r", "").rstrip() + "\n")
+    return "".join(parts)
+
 
 # Whole directories, copied recursively.
 DIRS = [
@@ -223,7 +270,7 @@ DIRS = [
     # Found missing entirely: generate_new_companion_assets.py reads
     # p_malakh.mdl/.mdx, n_darthmalak_ap.mdl/.mdx, and po_malak.tpc
     # straight from this folder (RAW_OVERRIDE_DIR) at Connect time when
-    # new_companion=malak -- but nothing shipped it, so a real tester
+    # new_companion is on -- but nothing shipped it, so a real tester
     # selecting that option would hit FileNotFoundError on Connect. Ship
     # the whole folder rather than hand-picking filenames, same reasoning
     # as scripts_src above -- it's the same checked-in-source-of-truth
@@ -301,12 +348,34 @@ def main():
             zf.write(full, arcname)
             included += 1
 
+        for rel in CORE_FILES:
+            full = os.path.join(ARCHIPELAGO_TREE, *rel.split("/"))
+            if not os.path.isfile(full):
+                raise SystemExit(f"Missing Archipelago core file: {full}")
+            zf.write(full, rel)
+            included += 1
+        for rel in CORE_TREE:
+            root_dir = os.path.join(ARCHIPELAGO_TREE, *rel.split("/"))
+            if not os.path.isdir(root_dir):
+                raise SystemExit(f"Missing Archipelago core folder: {root_dir}")
+            for root, dirs, files in os.walk(root_dir):
+                dirs[:] = [d for d in dirs if d not in CORE_TREE_SKIP]
+                for fname in files:
+                    if fname.endswith((".pyc", ".pyo")):
+                        continue
+                    full = os.path.join(root, fname)
+                    zf.write(full, rel + "/" + os.path.relpath(full, root_dir).replace(os.sep, "/"))
+                    included += 1
+        zf.writestr("requirements.txt", _slim_requirements())
+        zf.writestr("THIRD_PARTY_NOTICES.txt", _third_party_notices())
+        included += 2
+
         for parts, arc_root in DIRS:
             full_root = os.path.join(REPO_ROOT, *parts)
             if not os.path.isdir(full_root):
                 raise SystemExit(f"Missing expected folder: {full_root}")
             for root, dirs, files in os.walk(full_root):
-                dirs[:] = [d for d in dirs if d not in ("__pycache__", "logs")]
+                dirs[:] = [d for d in dirs if d not in ("__pycache__", "logs", "backups")]   # backups: old copies of generated files, not part of a release
                 for fname in files:
                     if arc_root == "extender/scripts_src" and is_dev_only(os.path.splitext(fname)[0]):
                         left_out += 1

@@ -409,7 +409,7 @@ int KSE_FIELD_XP()                 { return 8; }  // raw XP, 4-byte int, same
 // engine's own SetSTRBase/SetDEXBase/SetINTBase/SetWISBase/SetCHABase member
 // functions, NOT a relative Effect (EffectAbilityIncrease/Decrease stacks a
 // new effect object on every call and has no ceiling on how many can
-// accumulate -- confirmed to permanently cap a character's Dexterity
+// accumulate -- confirmed live to permanently cap a character's Dexterity
 // after enough stacked calls). nValue = the new base score, 0-255.
 int KSE_FIELD_SET_STR_BASE() { return 9; }
 int KSE_FIELD_SET_DEX_BASE() { return 10; }
@@ -470,6 +470,12 @@ int KSE_FIELD_REPORT_SKILL_RANKS() { return 30; }
 // nValue = the skill index (SKILL_*). Call as
 //   KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_STEALTH);
 int KSE_FIELD_HALVE_SKILL_RANK() { return 31; }
+// Read-only: logs the creature's race, subrace and gender and a raw byte window as one AP|RACEREPORT line.
+// Call as KSE_SetCreatureField(oCreature, KSE_FIELD_REPORT_RACE(), 0);
+int KSE_FIELD_REPORT_RACE() { return 32; }
+// Sets the creature's race byte. Only 5 (droid) or 6 (human) is accepted; anything else is refused.
+// Call as KSE_SetCreatureField(oCreature, KSE_FIELD_SET_RACE(), 5);
+int KSE_FIELD_SET_RACE() { return 33; }
 
 // TEMPORARY RESEARCH DIAGNOSTIC -- see offsets.h's own comment. Retire
 // once the client-stats offset is confirmed and wired into a real fix.

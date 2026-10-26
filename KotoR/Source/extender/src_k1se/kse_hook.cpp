@@ -770,6 +770,49 @@ static int ds_slot_for(const char* key)
     return idx;
 }
 
+// ---- inbox: the one way a job from the client gets into the store -----------------------------------------------
+// The store above is touched only by the script VM's thread. The socket thread (ap_extender.c) must not write into it, so it
+// leaves the job in this one-slot mailbox instead; the VM thread moves it into the store key "dt_job" at the start of its next
+// store operation (the poll reads that key every few seconds). A newer job replaces one that has not been moved yet. The
+// mailbox lock is held only for a short copy; a side that finds it held gives up and tries again at its next call.
+static const char*     KSE_INBOX_KEY = "dt_job";
+static volatile LONG   g_inboxLock = 0;
+static volatile LONG   g_inboxPending = 0;
+static char            g_inboxBuf[KSE_DS_VALBUF];
+
+// Socket thread. Returns 1 if the job was left in the mailbox, 0 if the mailbox was busy at that moment (try again),
+// -1 if the job is empty or longer than a store value.
+extern "C" int kse_inbox_put(const char* payload)
+{
+    if (!payload) return -1;
+    size_t n = ds_len(payload);
+    if (n == 0 || n >= (size_t)KSE_DS_VALBUF) return -1;
+    if (InterlockedCompareExchange(&g_inboxLock, 1, 0) != 0) return 0;
+    ds_copy(g_inboxBuf, sizeof(g_inboxBuf), payload);
+    InterlockedExchange(&g_inboxPending, 1);
+    InterlockedExchange(&g_inboxLock, 0);
+    Log("K1SE inbox: job left in the mailbox (%d chars)", (int)n);
+    return 1;
+}
+
+// VM thread, first thing in every store operation.
+static void ds_drain_inbox()
+{
+    if (!g_inboxPending) return;
+    if (InterlockedCompareExchange(&g_inboxLock, 1, 0) != 0) return;     // the socket thread is writing; next call
+    if (g_inboxPending) {
+        int idx = ds_slot_for(KSE_INBOX_KEY);
+        if (idx >= 0) {
+            g_store[idx].type = KSE_T_STR;
+            ds_copy(g_store[idx].sval, KSE_DS_VALBUF, g_inboxBuf);
+            InterlockedExchange(&g_inboxPending, 0);
+            Log("K1SE inbox: job moved into the store key \"%s\"", KSE_INBOX_KEY);
+        }
+        // store full: the job stays in the mailbox and is retried at the next call
+    }
+    InterlockedExchange(&g_inboxLock, 0);
+}
+
 
 
 static bool ds_read_object_discard()
@@ -837,6 +880,7 @@ static void ds_push_int(int v)
 static int Kse8_Core(int op, int* ok)
 {
     *ok = 1;
+    ds_drain_inbox();
     switch (op) {
     case DSOP_SETDATA: {
         const char* key = g_dsOps[0].sval; const char* val = g_dsOps[1].sval;
@@ -956,6 +1000,7 @@ extern "C" int __stdcall KseDsGetData(int argCount)  // host 584: string()->stri
 {
     if (argCount != 0) { Log("K1SE ANOMALY ds getdata: argCount=%d (declared 0)", argCount); return -1; }
     if (!ds_check(DSOP_GETDATA)) { g_dsDepth = 0; ds_return_string(""); return 0; }
+    ds_drain_inbox();
     const char* key = g_dsOps[0].sval;
     int idx = ds_find(key);
     const char* val = (idx >= 0 && g_store[idx].type == KSE_T_STR) ? g_store[idx].sval : "";

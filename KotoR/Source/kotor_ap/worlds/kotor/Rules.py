@@ -2,8 +2,8 @@ from BaseClasses import MultiWorld
 from worlds.generic.Rules import set_rule, add_rule, add_item_rule
 
 from .Options import Goal
-from .Locations import COMPANION_SUBPLOT_LOCATIONS
-from .StoryGates import apply_story_gate_rules
+from .Locations import COMPANION_SUBPLOT_LOCATIONS, SUNRY_CHAIN_LOCATIONS
+from .StoryGates import apply_story_gate_rules, location_planet, ONE_WAY_PLANETS
 
 # The Progression System's access rules live in StoryGates.py (story-beat gates, see
 # DEVELOPMENT_HISTORY.md section 17). This module keeps the rules that apply to every seed.
@@ -57,13 +57,12 @@ def set_rules(multiworld: MultiWorld, player: int) -> None:
     # `if loc_name in active` guard is required here: without it, this
     # loop iterates the raw dict directly, which is only safe as long as
     # nothing that removes a subplot location can coexist with
-    # companion_mode==0 above. new_companion=on removes "Ebon
-    # Hawk: HK-47" from _active_locations() independently of companion_mode
-    # (see __init__.py), so companion_mode=ap_gated + new_companion=on
-    # would call multiworld.get_location() on a location that was never
-    # created and crash generation outright -- the same bug class
-    # world._active_locations() (vs. raw location_table) already guards
-    # against elsewhere for companion_mode=none.
+    # companion_mode==0 above. _active_locations() (see __init__.py) can
+    # drop a subplot location independently of companion_mode, and a raw
+    # loop over this dict would then call multiworld.get_location() on a
+    # location that was never created and crash generation outright -- the
+    # same bug class world._active_locations() (vs. raw location_table)
+    # already guards against elsewhere for companion_mode=none.
     if world.options.companion_mode == 0:  # ap_gated
         active = world._active_locations()
         for loc_name, item_name in COMPANION_SUBPLOT_LOCATIONS.items():
@@ -108,8 +107,34 @@ def set_rules(multiworld: MultiWorld, player: int) -> None:
     # "datapad" (the boss datapad checks): depends on killing and looting that boss, which a route can
     # miss or a bug can swallow, so a required item must never be placed there.
     NON_PROGRESSION_LOCATION_TYPES = {"alignment", "alignment_bonus", "level", "bounty", "datapad"}
-    for name, data in world._active_locations().items():
+    active = world._active_locations()
+    for name, data in active.items():
         if data.location_type in NON_PROGRESSION_LOCATION_TYPES:
+            # Calo Nord's datapad may hold progression (0.2.0): his ambush is armed by the Hawk galaxy map once the Dantooine council
+            # has sent the player on and fires on the first of four planets, so Taris 3 and Dantooine 3 reach him. Only provable with area
+            # randomization off, because it breaks that arming.
+            if name == "Boss: Calo Nord" and world.options.area_randomizer.value == 0:
+                continue
+            add_item_rule(multiworld.get_location(name, player),
+                           lambda item: not item.advancement)
+
+    # The late game (Leviathan, Unknown World, Star Forge and the final checks): planets the player cannot return to, so a check
+    # missed there would strand the item. Nothing that matters is placed on them, whatever its game.
+    for name, data in active.items():
+        if location_planet(name, data) in ONE_WAY_PLANETS:
+            add_item_rule(multiworld.get_location(name, player),
+                           lambda item: not item.advancement)
+
+    # The Ebon Hawk quests finish on other planets or late in the story, and the Sunry chain depends on the order things are done in
+    # (and on Jolee): no progression item, so no companion either, is placed on them.
+    for name, data in active.items():
+        if (data.location_type == "journal" and data.region == "Ebon Hawk") or name in SUNRY_CHAIN_LOCATIONS:
+            add_item_rule(multiworld.get_location(name, player),
+                           lambda item: not item.advancement)
+
+    # The Archipelago Bazaar's purchases and the Loot Exchange hold anything except progression items.
+    for name, data in active.items():
+        if data.location_type in ("bazaar_purchase", "loot_exchange"):
             add_item_rule(multiworld.get_location(name, player),
                            lambda item: not item.advancement)
 

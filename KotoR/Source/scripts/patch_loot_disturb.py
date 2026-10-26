@@ -53,16 +53,9 @@ other vanilla placement, no event, no cache, no relaunch.
     per-5-real-pickups milestone design -- simplicity is favored over
     matching the exact old cadence.)
 
-Progression System's Sith Armor/Shield Codes (the 2 items whose real
-acquisition is a corpse/container, not dialogue -- see
-DEVELOPMENT_HISTORY.md's "researching the Progression System's
-checkpoint wrappers" section) are handled the same way now: an
-unconditional removal
-from any template carrying them, independent of loot_mode, whenever
-progression_system is on. Sith Papers/Enviro Suit/the 4 Star Maps remain
-entirely on patch_item_suppression.py's separate
-apply_progression_checkpoint_wrappers() mechanism (dialogue/module-
-transition gated, not inventory-based) -- untouched by this file.
+The Progression System no longer removes the Sith Armor or the Shield Codes from loot: they are ordinary quest items again (the story gates
+use tokens instead), and the quest item checks fire when you pick them up. The only template items removed unconditionally are those the gear
+data marks with progression_suppression "1", which is none today.
 
 granted_exempt_ bookkeeping (needed by the old runtime designs to protect
 an AP-granted item from being immediately re-suppressed) is GONE, not

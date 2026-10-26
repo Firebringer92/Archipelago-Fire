@@ -2,28 +2,24 @@
 setlocal
 cd /d "%~dp0"
 
-rem The client runs on Archipelago's own files and the pip step below reads Archipelago's requirements.txt from this folder, so this
-rem folder has to be the Archipelago source folder with the bundle extracted into it.
+rem The bundle carries everything the client runs on, including CommonClient.py and requirements.txt. If they are missing, the zip was not
+rem extracted completely (or this was started from inside the zip).
 if exist "requirements.txt" if exist "CommonClient.py" goto FOLDER_OK
 echo.
-echo ERROR: this is not an Archipelago folder, so the installer cannot continue.
+echo ERROR: this folder is incomplete, so the installer cannot continue.
 echo.
-echo Install.bat has to sit inside the Archipelago SOURCE folder, next to CommonClient.py
-echo and requirements.txt. The randomizer's client runs on those Archipelago files, and
-echo this installer installs Archipelago's libraries from that requirements.txt.
+echo Install.bat has to run from the folder you extracted the WHOLE KOTOR PlayerBundle zip
+echo into. CommonClient.py and requirements.txt are part of that zip and have to sit
+echo next to this file.
 echo.
 echo Folder checked: %CD%
 if not exist "requirements.txt" echo   Missing here: requirements.txt
 if not exist "CommonClient.py" echo   Missing here: CommonClient.py
 echo.
 echo What to do:
-echo   1. Download Archipelago's source code: on the Archipelago releases page on GitHub,
-echo      pick the version the KOTOR randomizer asks for and download "Source code (zip)".
-echo      This is not the Windows installer.
-echo   2. Extract it. The folder you get contains CommonClient.py and requirements.txt.
-echo   3. Extract the KOTOR PlayerBundle zip INTO that same folder, so Install.bat ends up
-echo      next to those two files. Choose to merge or replace if Windows asks.
-echo   4. Run Install.bat again from that folder.
+echo   1. Right-click the PlayerBundle zip and choose Extract All, into a new folder.
+echo      Do not run Install.bat from inside the zip.
+echo   2. Run Install.bat from that new folder.
 echo.
 pause
 exit /b 1

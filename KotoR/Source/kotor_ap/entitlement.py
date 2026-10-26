@@ -135,6 +135,12 @@ PROGRESSION_ITEM_RESREFS: typing.Dict[str, str] = {
     "vendor_feat": "ap_vtok_feat",
     "vendor_power": "ap_vtok_power",
     "vendor_align": "ap_vtok_align",
+    # 0.2.0 plot items delivered by a plain give_item: the companion feat-training unlocks (one per companion), the New Companion
+    # console unlock and the Party Console (Items.py's Additional Feats Character items, "Ebon Hawk: New Companion Selection" and
+    # "Party Console"). Same order as generate_poll_shared.py's list.
+    **{f"ft_{_k}": f"ap_ft_{_k}" for _k in ("bastila", "canderous", "carth", "jolee", "juhani", "mission", "zaalbar")},
+    "nc_console": "ap_nc_console",
+    "party_console": "ap_partycon_a",
 }
 
 

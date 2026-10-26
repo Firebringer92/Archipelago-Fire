@@ -367,8 +367,8 @@ void KSE_RemoveFeatArrayA(int nFeat, object oCreature = OBJECT_SELF) { _kse_remo
 // KOTOR AP ADDITION (not part of upstream K1SE) -- SetCreatureField.
 //
 // A generic fixed-slot writer for class type, class level, and Force points --
-// the class/level/Force offsets this project's own live testing confirmed
-// (confirmed: a companion converted to a working Level 20 Guardian
+// the class/level/Force offsets this project's own testing confirmed
+// (a companion converted to a working Level 20 Guardian
 // with 76 Force Points). Same one-write-per-call discipline as KSE_AdjustCreatureSkills
 // above: no lists, no counts, no capacity, just a value written to a slot
 // the engine's own reader already reads.
@@ -391,14 +391,25 @@ int KSE_FIELD_ADD_FORCE_POWER()    { return 6; }  // nValue = spells.2da row id.
                                                    // No-ops if already known.
 int KSE_FIELD_REMOVE_FORCE_POWER() { return 7; }  // nValue = spells.2da row id.
                                                    // No-ops if not known.
-// KSE_FIELD_XP() intentionally not exposed here as a routine-level constant --
-// see offsets.h's KSE_FIELD_XP comment; not currently called from NWScript.
+int KSE_FIELD_XP()                 { return 8; }  // raw XP, 4-byte int, same
+                                                   // statBlock as CLASS0_LEVEL/
+                                                   // FORCE. Added to
+                                                   // bypass native SetXP()'s
+                                                   // refusal to lower XP below
+                                                   // the current level's banked
+                                                   // threshold -- see offsets.h's
+                                                   // KSE_STATS_XP_OFF comment.
+                                                   // Used by the delevel
+                                                   // reconciler fix -- pair
+                                                   // with a KSE_FIELD_CLASS0_LEVEL
+                                                   // write so level and XP never
+                                                   // go out of sync.
 
 // Absolute base-ability-score setters -- writes the real base score via the
 // engine's own SetSTRBase/SetDEXBase/SetINTBase/SetWISBase/SetCHABase member
 // functions, NOT a relative Effect (EffectAbilityIncrease/Decrease stacks a
 // new effect object on every call and has no ceiling on how many can
-// accumulate -- confirmed to permanently cap a character's Dexterity
+// accumulate -- confirmed live to permanently cap a character's Dexterity
 // after enough stacked calls). nValue = the new base score, 0-255.
 int KSE_FIELD_SET_STR_BASE() { return 9; }
 int KSE_FIELD_SET_DEX_BASE() { return 10; }
@@ -503,6 +514,23 @@ int KSE_GetCurrentHP(object oCreature)
 // Archived at extender/research_archive/kse_hook_temp_natives_2026-09-06.cpp.txt.
 // Both underlying ACTION ids are unclaimed again -- do not reuse without
 // re-running scan_opcode_usage.py fresh.
+
+// KOTOR AP ADDITION (TEMPORARY research wrapper -- loot-window
+// memory-hunting research): reuses ACTION 638, freed above.
+// oPC is unused/discarded (kept only because it's part of the hijacked
+// host's real signature); nObjectId is the raw script object id to
+// resolve (found via a container's item-reference-list-shaped record);
+// nUnused is reserved. Resolves the id through the same object-table
+// chain KSE_SetCreatureField/KSE_GetFeatAcquired use, stopping at the raw
+// pointer (skips their creature-specific vtable step, since an item isn't
+// a creature), then logs its type/quantity fields to
+// kse.log. One-shot verification tool, not a shipping feature -- retire
+// (leave the ACTION id gap, don't renumber) once this research concludes,
+// same convention as every other retired KSE host in this project.
+void KSE_ResolveItemId(object oPC, int nObjectId, int nUnused)
+{
+    SWMG_SetGunBankTarget(oPC, nObjectId, nUnused);
+}
 
 // -----------------------------------------------------------------------------
 // KOTOR AP ADDITION (not part of upstream K1SE): SetCredits -- the real,

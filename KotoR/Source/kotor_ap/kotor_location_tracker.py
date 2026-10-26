@@ -17,6 +17,8 @@ not two that could drift out of sync.
              recruitment point reached, independent of whether AP has
              actually granted access to them yet)
   area: fires the first time the player enters that specific covered area
+  quest_item: fires once the player holds the quest item (matched by tag), or once the alternate journal value is reached
+  bazaar_purchase / loot_exchange: fire by count, like the bounty cards (receipt items the Archipelago Bazaar's Jawa gives)
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ import re
 import typing
 
 from worlds.kotor.Locations import COMPANION_SUBPLOT_LOCATIONS, location_table
+from worlds.kotor.StoryGates import location_planet
 
 _JOURNAL_RE = re.compile(r"AP\|CHECK\|JOURNAL\|([^|]+)\|value=(-?\d+)")
 _COMPANION_RE = re.compile(r"AP\|CHECK\|COMPANION\|(\d+)")
@@ -33,12 +36,23 @@ _SITH_ARMOR_RE = re.compile(r"AP\|SITHARMOR\|1")
 # 2 when she died in the Dantooine confrontation; Vandar's recruit line (the only thing that reports her recruit check) never plays then.
 JUHANI_KILLED_RE = re.compile(r"AP\|CHECK\|PLOT\|DAN_JUHANI_PLOT\|value=2(?!\d)")
 
+# Leaving Taris: stage 99 of the journal quest of the Ebon Hawk's escape ("You've managed to escape Taris just in time") is written when the
+# Hawk takes off, and the player can never come back to Taris or the Endar Spire. Every check there that has not been reached by then is
+# completed (the world lets those checks hold any progression item because of this). It is read from the journal, which lives in the save,
+# so a client that was not connected at takeoff still releases them when it next sees the quest.
+_TARIS_LEAVE_LOCATION = "Taris: Escaping Taris"
+_RELEASED_PLANETS = ("Taris", "Endar Spire")
+
 # Companion key -> the item name COMPANION_SUBPLOT_LOCATIONS lists their personal Ebon Hawk checks under.
 _COMPANION_SUBPLOT_ITEM = {
     "bastila": "Companion: Bastila Shan", "canderous": "Companion: Canderous Ordo", "carth": "Companion: Carth Onasi",
     "hk47": "Companion: HK-47", "jolee": "Companion: Jolee Bindo", "juhani": "Companion: Juhani", "mission": "Companion: Mission Vao",
 }
 _AREA_RE = re.compile(r"AP\|CHECK\|AREA\|(\d+)")
+# CheckQuestItems() (generate_poll_shared.py): one line per quest item the player holds, keyed by the item's tag.
+_QUESTITEM_RE = re.compile(r"AP\|QUESTITEM\|(\w+)")
+# CheckBazaar() (generate_poll_shared.py): the purchase receipts and the exchange receipts the player holds.
+_BAZAAR_RE = re.compile(r"AP\|BAZAAR\|(\d+)\|(\d+)")
 
 # Visited-area checks for a module the game never lets a player walk into. The second Black Vulkar Base module has no way in
 # (no door or trigger leads to it), so its check is completed once the other two modules of that base have been visited.
@@ -108,6 +122,21 @@ class LocationTracker:
         self._malak_location_name: typing.Optional[str] = None
         self._bounty_index: typing.Dict[int, str] = {}
         self._datapad_index: typing.Dict[str, str] = {}
+        self._quest_item_index: typing.Dict[str, str] = {}
+        self._alt_journal_index: typing.Dict[str, typing.List[typing.Tuple[int, str]]] = {}
+        self._bazaar_purchase_index: typing.Dict[int, str] = {}
+        self._loot_exchange_index: typing.Dict[int, str] = {}
+        # Alternate completions: another journal value that also completes a check (quests the player can make impossible to finish,
+        # and the quest item checks whose quest can end without the item).
+        for name, data in location_table.items():
+            if data.alt_journal_tag:
+                self._alt_journal_index.setdefault(data.alt_journal_tag, []).append((data.alt_journal_target, name))
+        leave = location_table.get(_TARIS_LEAVE_LOCATION)
+        self._taris_leave: typing.Optional[typing.Tuple[str, int]] = (leave.journal_tag, leave.journal_target) if leave else None
+        self._taris_release_ids = [data.id for name, data in location_table.items()
+                                   if location_planet(name, data) in _RELEASED_PLANETS]
+        # The checks the last check_event call added because the player left Taris (not the quest's own check).
+        self.last_release_ids: typing.Set[int] = set()
         for name, data in location_table.items():
             if data.location_type == "journal":
                 self._journal_index[data.journal_tag] = (data.journal_target, name)
@@ -127,6 +156,13 @@ class LocationTracker:
                 self._bounty_index[data.bounty_value] = name
             elif data.location_type == "datapad":
                 self._datapad_index[data.datapad_key] = name
+            elif data.location_type == "quest_item":
+                for tag in data.quest_item_tags:
+                    self._quest_item_index[tag] = name
+            elif data.location_type == "bazaar_purchase":
+                self._bazaar_purchase_index[data.count_value] = name
+            elif data.location_type == "loot_exchange":
+                self._loot_exchange_index[data.count_value] = name
 
         # Alignment crossing state -- unlike the other three location types
         # above (which are pure functions of one event line), this needs
@@ -156,6 +192,10 @@ class LocationTracker:
         # _bounty_card_count).
         self._last_bounty_count: typing.Optional[int] = None
 
+        # Bazaar receipt counts: the same high-water-mark shape (a receipt is a plot item, so the count only goes up).
+        self._last_purchase_count: typing.Optional[int] = None
+        self._last_exchange_count: typing.Optional[int] = None
+
         # BK Notes -- Need to adjust this so that this is updated based on checks noted on completion
         #If server says has the 80 and 20 checks then this should fire. It shouldn't be in same client session due to disconnects
         #Suggest we log alignment changes in cahracter log same we do with what they have in checks. Our log file needs to help reconcile us
@@ -163,18 +203,6 @@ class LocationTracker:
         # Confirmed real bug, not persisted across reconnects -- see
         # docs/MODE_DEPENDENCIES.md's "true_balance Goal option" open item
         # for the full failure mode and the fix direction.
-
-    def set_new_companion(self, on: bool) -> None:
-        """"Companion Recruited: HK-47" and "Companion Recruited: New
-        Companion" both carry companion_idx=3 (same underlying
-        IsAvailableCreature(3) signal, see Locations.py) -- __init__ above
-        picked whichever one is LAST in location_table's dict order by
-        default, independent of any real seed's option. Called once
-        slot_data's new_companion value is actually known (KotorClient.py's
-        Connected handler), before any CHECK|COMPANION|3 event can arrive,
-        to correct index 3 to the name this seed actually placed."""
-        self._companion_index[3] = ("Companion Recruited: New Companion" if on
-                                     else "Companion Recruited: HK-47")
 
     def alignment_state(self) -> dict:
         """What must survive a client restart: the last alignment value seen."""
@@ -259,6 +287,7 @@ class LocationTracker:
         lines in one poll). already_checked_ids should be
         ctx.checked_locations (or ctx.locations_checked, for locally-
         queued-but-unconfirmed too)."""
+        self.last_release_ids = set()
         if JUHANI_KILLED_RE.search(event):
             # She can never be recruited, so her recruit check and her personal Ebon Hawk checks are completed instead of holding their items.
             out = []
@@ -280,14 +309,25 @@ class LocationTracker:
         m = _JOURNAL_RE.search(event)
         if m:
             tag, value = m.group(1), int(m.group(2))
+            out = []
             entry = self._journal_index.get(tag)
             if entry is not None:
                 target, name = entry
                 if value >= target:
                     loc_id = location_table[name].id
                     if loc_id not in already_checked_ids:
-                        return [loc_id]
-            return []
+                        out.append(loc_id)
+            for target, name in self._alt_journal_index.get(tag, ()):
+                if value >= target:
+                    loc_id = location_table[name].id
+                    if loc_id not in already_checked_ids and loc_id not in out:
+                        out.append(loc_id)
+            if self._taris_leave is not None and tag == self._taris_leave[0] and value >= self._taris_leave[1]:
+                for loc_id in self._taris_release_ids:
+                    if loc_id not in already_checked_ids and loc_id not in out:
+                        out.append(loc_id)
+                        self.last_release_ids.add(loc_id)
+            return out
 
         m = _COMPANION_RE.search(event)
         if m:
@@ -348,11 +388,45 @@ class LocationTracker:
                     return [loc_id]
             return []
 
+        m = _QUESTITEM_RE.search(event)
+        if m:
+            name = self._quest_item_index.get(m.group(1))
+            if name is not None:
+                loc_id = location_table[name].id
+                if loc_id not in already_checked_ids:
+                    return [loc_id]
+            return []
+
+        m = _BAZAAR_RE.search(event)
+        if m:
+            return (self._handle_receipt_count("_last_purchase_count", self._bazaar_purchase_index, int(m.group(1)), already_checked_ids)
+                    + self._handle_receipt_count("_last_exchange_count", self._loot_exchange_index, int(m.group(2)), already_checked_ids))
+
         count = _bounty_card_count(event)
         if count is not None:
             return self._handle_bounty_count(count, already_checked_ids)
 
         return []
+
+    def _handle_receipt_count(self, last_attr: str, index: typing.Dict[int, str], value: int,
+                              already_checked_ids: typing.Set[int]) -> typing.List[int]:
+        """The Bazaar receipts are plot items, so each count only goes up: the same high-water mark as the bounty cards. A
+        reconnect mid-playthrough credits every number up to the current count; the mark never moves down when an earlier save
+        is loaded (a reloaded save simply holds fewer receipts)."""
+        old = getattr(self, last_attr)
+        if old is None:
+            crossed = [n for n in index if n <= value]
+            setattr(self, last_attr, value)
+        else:
+            crossed = [n for n in index if old < n <= value] if value > old else []
+            if value > old:
+                setattr(self, last_attr, value)
+        out = []
+        for n in sorted(crossed):
+            loc_id = location_table[index[n]].id
+            if loc_id not in already_checked_ids:
+                out.append(loc_id)
+        return out
 
     def _handle_level(self, value: int, already_checked_ids: typing.Set[int]) -> typing.List[int]:
         if self._last_level is None:

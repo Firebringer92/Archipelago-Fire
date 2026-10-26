@@ -1,0 +1,11 @@
+{
+ "scripts": [
+  "ap_party_console",
+  "ap_pc_done",
+  "ap_pc_open"
+ ],
+ "raw_files": [
+  "ap_party_con.dlg",
+  "ap_partycon_a.uti"
+ ]
+}

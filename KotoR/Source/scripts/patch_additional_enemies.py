@@ -126,6 +126,14 @@ CR_TOLERANCE = 2.0
 # never awarding its card is a strong, hard indicator that this script's
 # placement failed for that module specifically, not just a missed check.
 BOUNTY_CARD_RESREF = "ap_bounty_card"
+
+# Modules that get no additional enemies and no bounty carrier: tar_m10ab is the unused Black Vulkar level (no door
+# leads into it) and tar_m11aa is the Hidden Bek Base (reached only on one story path), so a carrier there could
+# never, or only sometimes, be killed. Filtered here so a regenerated spawn table cannot bring them back.
+NO_ENEMY_MODULES = frozenset({"tar_m10ab", "tar_m11aa"})
+# Always-reachable modules whose second newly-placed enemy also carries a bounty card, which keeps the total at
+# BOUNTY_CARD_COUNT (40) with the two modules above removed.
+SECOND_CARRIER_MODULES = frozenset({"tar_m08aa", "manm27aa"})
 # Was g_i_asthitem001 (the Galactic Coin's own base, BaseItem 65 Aesthetic
 # Item) -- that base renders as a blank white icon for this item (the
 # Coin's own icon apparently isn't just "whatever
@@ -283,14 +291,14 @@ void main()
 """
 
 
-def _clone_bounty_carrier(resref: str, module_index: int, installation: Installation, override_dir: str) -> str:
+def _clone_bounty_carrier(resref: str, carrier_index: int, installation: Installation, override_dir: str) -> str:
     """Clones `resref`'s real .utc into a brand-new, module-unique
     template that behaves identically except for also dropping the
     bounty card on death -- see build_bounty_death_wrapper's own comment
     for why this can't just override the shared template in place.
     Returns the new resref to place instead of the original."""
-    utc_resref = f"apbnty{module_index:02d}"
-    wrapper_resref = f"apbntyd{module_index:02d}"
+    utc_resref = f"apbnty{carrier_index:02d}"
+    wrapper_resref = f"apbntyd{carrier_index:02d}"
 
     src = installation.resource(resref, ResourceType.UTC)
     if src is None:
@@ -309,7 +317,7 @@ def _clone_bounty_carrier(resref: str, module_index: int, installation: Installa
     shutil.copy2(ncs_path, os.path.join(override_dir, f"{wrapper_resref}.ncs"))
 
     utc.resref = ResRef(utc_resref)
-    utc.tag = f"{utc.tag}_apbnty{module_index:02d}"
+    utc.tag = f"{utc.tag}_apbnty{carrier_index:02d}"
     utc.on_death = ResRef(wrapper_resref)
     data = bytearray()
     write_gff(dismantle_utc(utc), data)
@@ -320,7 +328,9 @@ def _clone_bounty_carrier(resref: str, module_index: int, installation: Installa
 
 def apply_module(module: str, points: list, band: dict, mode: int, category_pools: dict,
                   safe_pool: list, installation: Installation, cr_cache: dict,
-                  rng: random.Random, game_dir: str, module_index: int) -> int:
+                  rng: random.Random, game_dir: str, carrier_indexes: list) -> int:
+    """`carrier_indexes`: one number per bounty carrier this module places (1, or 2 for SECOND_CARRIER_MODULES); each is the
+    unique suffix of that carrier's apbnty/apbntyd resrefs."""
     mod_dir = os.path.join(game_dir, "modules")
     path = os.path.join(mod_dir, f"{module}.rim")
     if not os.path.exists(path):
@@ -350,7 +360,7 @@ def apply_module(module: str, points: list, band: dict, mode: int, category_pool
     # replacing -- confirmed across all 39 affected modules, each at
     # EXACTLY 2x its real target_new_enemies, with duplicate creatures
     # stacked at IDENTICAL coordinates (the same fixed spawn_points list,
-    # reused a second time). `apbnty{module_index:02d}` (the bounty-card
+    # reused a second time). `apbnty{carrier_index:02d}` (the bounty-card
     # carrier's own resref, unique to THIS script and never a name that
     # exists in vanilla or gets reused any other way) already being
     # present in the module's CURRENT live creature list is reliable
@@ -360,7 +370,7 @@ def apply_module(module: str, points: list, band: dict, mode: int, category_pool
     # cycle and would wrongly block that normal workflow), this checks
     # the module's actual CURRENT state, so a real restore (which puts
     # vanilla data back, removing this marker) correctly clears it.
-    marker_resref = f"apbnty{module_index:02d}"
+    marker_resref = f"apbnty{carrier_indexes[0]:02d}"
     if any(str(c.resref).lower() == marker_resref for c in git.creatures):
         print(f"  {module}: already has Additional Enemies placements ({marker_resref} marker found) -- "
               f"skipping to avoid doubling up. Run --restore first if you actually want to re-roll this module.")
@@ -372,7 +382,7 @@ def apply_module(module: str, points: list, band: dict, mode: int, category_pool
         shutil.copy2(path, backup_path)
 
     override_dir = os.path.join(game_dir, "Override")
-    bounty_assigned = False
+    carriers_assigned = 0
     placed = 0
     for point in points:
         if mode == 3:
@@ -381,9 +391,10 @@ def apply_module(module: str, points: list, band: dict, mode: int, category_pool
             resref = _pick_creature(pool, cr_min, cr_max, installation, cr_cache, rng)
         if resref is None:
             continue
-        if not bounty_assigned:
-            # Exactly one enemy per module carries the bounty card -- the
-            # FIRST one successfully picked, deterministic given the same
+        if carriers_assigned < len(carrier_indexes):
+            # One enemy per carrier index carries a bounty card -- the
+            # FIRST ones successfully picked (one, or two for
+            # SECOND_CARRIER_MODULES), deterministic given the same
             # seed/rng state as everything else here. Clone rather than
             # edit the shared vanilla template directly: that template is
             # very likely reused by ordinary enemies elsewhere in the
@@ -391,8 +402,8 @@ def apply_module(module: str, points: list, band: dict, mode: int, category_pool
             # would fire for every one of those instances, not just this
             # one placement (same risk already flagged for the original
             # "unique enemy kill location" idea this feature grew out of).
-            resref = _clone_bounty_carrier(resref, module_index, installation, override_dir)
-            bounty_assigned = True
+            resref = _clone_bounty_carrier(resref, carrier_indexes[carriers_assigned], installation, override_dir)
+            carriers_assigned += 1
         c = GITCreature(point["x"], point["y"], point["z"])
         c.resref = ResRef(resref)
         c.bearing = rng.uniform(0, 2 * math.pi)
@@ -443,6 +454,7 @@ def main():
     rng = random.Random(seed_name)
 
     spawn_points, cr_bands, category_pools, safe_pool = _load_tables()
+    spawn_points = {m: pts for m, pts in spawn_points.items() if m not in NO_ENEMY_MODULES}
     installation = Installation(game_dir)
     cr_cache = {}
 
@@ -451,14 +463,19 @@ def main():
     write_bounty_card_template(installation, override_dir)
 
     total_placed = 0
+    next_carrier = 1
     print(f"Placing additional enemies across {len(spawn_points)} module(s)...")
-    for module_index, (module, points) in enumerate(spawn_points.items(), start=1):
+    for module, points in spawn_points.items():
         band = cr_bands.get(module, {})
+        count = 2 if module in SECOND_CARRIER_MODULES else 1
+        carrier_indexes = list(range(next_carrier, next_carrier + count))
+        next_carrier += count
         total_placed += apply_module(module, points, band, mode, category_pools, safe_pool,
-                                      installation, cr_cache, rng, game_dir, module_index)
+                                      installation, cr_cache, rng, game_dir, carrier_indexes)
 
+    cards = next_carrier - 1
     print(f"\nDone. Placed {total_placed} new creature(s) across {len(spawn_points)} module(s), "
-          f"one bounty card each (see Bounty Card #1-{len(spawn_points)} in Locations.py).")
+          f"{cards} bounty cards (see Bounty Card #1-{cards} in Locations.py).")
     print(f"Backup at {BACKUP_DIR} -- restore via `python patch_additional_enemies.py --restore`.")
 
 

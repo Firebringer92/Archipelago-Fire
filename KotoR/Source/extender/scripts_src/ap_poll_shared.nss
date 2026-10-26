@@ -792,6 +792,15 @@ void CheckJournal()
     sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_mission")), 3);
     sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_t3m4")), 3);
     sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_recruit_zaalbar")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_ent_bastila")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_ent_canderous")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_ent_carth")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_ent_hk47")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_ent_jolee")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_ent_juhani")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_ent_mission")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_ent_t3m4")), 3);
+    sNow = sNow + GetStringRight(IntToString(1000 + GetJournalEntry("ap_ent_zaalbar")), 3);
     string sLast = "";
     if (KSE_HasData("j_vals")) sLast = KSE_GetData("j_vals");
     if (sNow == sLast && !bFull) return;
@@ -1018,6 +1027,24 @@ void CheckJournal()
         KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_t3m4|value=" + IntToString(StringToInt(GetSubString(sNow, 327, 3))));
     if (GetSubString(sNow, 330, 3) != "000" && (bFull || GetSubString(sNow, 330, 3) != GetSubString(sLast, 330, 3)))
         KSE_Diag(30, "AP|CHECK|JOURNAL|ap_recruit_zaalbar|value=" + IntToString(StringToInt(GetSubString(sNow, 330, 3))));
+    if (GetSubString(sNow, 333, 3) != "000" && (bFull || GetSubString(sNow, 333, 3) != GetSubString(sLast, 333, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_ent_bastila|value=" + IntToString(StringToInt(GetSubString(sNow, 333, 3))));
+    if (GetSubString(sNow, 336, 3) != "000" && (bFull || GetSubString(sNow, 336, 3) != GetSubString(sLast, 336, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_ent_canderous|value=" + IntToString(StringToInt(GetSubString(sNow, 336, 3))));
+    if (GetSubString(sNow, 339, 3) != "000" && (bFull || GetSubString(sNow, 339, 3) != GetSubString(sLast, 339, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_ent_carth|value=" + IntToString(StringToInt(GetSubString(sNow, 339, 3))));
+    if (GetSubString(sNow, 342, 3) != "000" && (bFull || GetSubString(sNow, 342, 3) != GetSubString(sLast, 342, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_ent_hk47|value=" + IntToString(StringToInt(GetSubString(sNow, 342, 3))));
+    if (GetSubString(sNow, 345, 3) != "000" && (bFull || GetSubString(sNow, 345, 3) != GetSubString(sLast, 345, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_ent_jolee|value=" + IntToString(StringToInt(GetSubString(sNow, 345, 3))));
+    if (GetSubString(sNow, 348, 3) != "000" && (bFull || GetSubString(sNow, 348, 3) != GetSubString(sLast, 348, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_ent_juhani|value=" + IntToString(StringToInt(GetSubString(sNow, 348, 3))));
+    if (GetSubString(sNow, 351, 3) != "000" && (bFull || GetSubString(sNow, 351, 3) != GetSubString(sLast, 351, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_ent_mission|value=" + IntToString(StringToInt(GetSubString(sNow, 351, 3))));
+    if (GetSubString(sNow, 354, 3) != "000" && (bFull || GetSubString(sNow, 354, 3) != GetSubString(sLast, 354, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_ent_t3m4|value=" + IntToString(StringToInt(GetSubString(sNow, 354, 3))));
+    if (GetSubString(sNow, 357, 3) != "000" && (bFull || GetSubString(sNow, 357, 3) != GetSubString(sLast, 357, 3)))
+        KSE_Diag(30, "AP|CHECK|JOURNAL|ap_ent_zaalbar|value=" + IntToString(StringToInt(GetSubString(sNow, 357, 3))));
 }
 
 // Persistent companion-recruit markers. The recruit scripts report
@@ -1114,6 +1141,10 @@ int ApSceneBusyMask()
     if (KSE_GetData("ff_mission_staged") == "1") nMask = nMask + 4;
     if (KSE_GetData("zaal_mission_staged") == "1") nMask = nMask + 8;
     if (GetLocalBoolean(GetModule(), 50)) nMask = nMask + 16;
+    // The Taris Duel Ring: the organizer's dialog (k_ptar_duelring) sets TAR_DUELINPROGRESS, takes the party out and jumps the player to the arena; the
+    // end scripts (k_ptar_duelend, k_ptar_duelend2, k_ptar_dlcutend, k_ptar_dueply_ex) clear it and restore the party by index from stored globals, so no companion or
+    // class job may run meanwhile. Only counted inside the cantina module, so a flag left set by a crash cannot hold deliveries elsewhere.
+    if (GetGlobalBoolean("TAR_DUELINPROGRESS") && GetStringLowerCase(GetModuleFileName()) == "tar_m02ae") nMask = nMask + 32;
     return nMask;
 }
 
@@ -1395,222 +1426,6 @@ void CheckCompanionClasses()
     KSE_Diag(138, sReport);
 }
 
-// Reports which of the tracked feat ids (Additional Feats pool +
-// Jedi class-conversion bundle) each of the 7 non-droid companions
-// currently holds, so the reconciler can self-heal a companion's feats the
-// same way CheckCompanionClasses() does for class -- companion feats
-// previously had NO live polling at all. "NONE" means not currently
-// recruited (IsNPCPartyMember false) -- distinct from a real but empty held
-// list (recruited, holds none of the tracked ids).
-void CheckCompanionFeats()
-{
-    string sReport = "AP|COMPANIONFEATSREPORT";
-    object oFBastila = GetObjectByTag("Bastila");
-    int bFBastilaRecruited = IsNPCPartyMember(NPC_BASTILA) && GetIsObjectValid(oFBastila);
-    string sFBastila = "NONE";
-    if (bFBastilaRecruited)
-    {
-        sFBastila = "";
-        if (KSE_GetFeatAcquired(4, oFBastila)) sFBastila += "4,";
-        if (KSE_GetFeatAcquired(5, oFBastila)) sFBastila += "5,";
-        if (KSE_GetFeatAcquired(6, oFBastila)) sFBastila += "6,";
-        if (KSE_GetFeatAcquired(8, oFBastila)) sFBastila += "8,";
-        if (KSE_GetFeatAcquired(11, oFBastila)) sFBastila += "11,";
-        if (KSE_GetFeatAcquired(14, oFBastila)) sFBastila += "14,";
-        if (KSE_GetFeatAcquired(28, oFBastila)) sFBastila += "28,";
-        if (KSE_GetFeatAcquired(29, oFBastila)) sFBastila += "29,";
-        if (KSE_GetFeatAcquired(30, oFBastila)) sFBastila += "30,";
-        if (KSE_GetFeatAcquired(31, oFBastila)) sFBastila += "31,";
-        if (KSE_GetFeatAcquired(40, oFBastila)) sFBastila += "40,";
-        if (KSE_GetFeatAcquired(42, oFBastila)) sFBastila += "42,";
-        if (KSE_GetFeatAcquired(43, oFBastila)) sFBastila += "43,";
-        if (KSE_GetFeatAcquired(55, oFBastila)) sFBastila += "55,";
-        if (KSE_GetFeatAcquired(60, oFBastila)) sFBastila += "60,";
-        if (KSE_GetFeatAcquired(88, oFBastila)) sFBastila += "88,";
-        if (KSE_GetFeatAcquired(98, oFBastila)) sFBastila += "98,";
-        if (KSE_GetFeatAcquired(101, oFBastila)) sFBastila += "101,";
-        if (KSE_GetFeatAcquired(104, oFBastila)) sFBastila += "104,";
-        if (KSE_GetFeatAcquired(107, oFBastila)) sFBastila += "107,";
-        if (KSE_GetFeatAcquired(116, oFBastila)) sFBastila += "116,";
-    }
-    sReport = sReport + "|bastila=" + sFBastila;
-    object oFCanderous = GetObjectByTag("Cand");
-    int bFCanderousRecruited = IsNPCPartyMember(NPC_CANDEROUS) && GetIsObjectValid(oFCanderous);
-    string sFCanderous = "NONE";
-    if (bFCanderousRecruited)
-    {
-        sFCanderous = "";
-        if (KSE_GetFeatAcquired(4, oFCanderous)) sFCanderous += "4,";
-        if (KSE_GetFeatAcquired(5, oFCanderous)) sFCanderous += "5,";
-        if (KSE_GetFeatAcquired(6, oFCanderous)) sFCanderous += "6,";
-        if (KSE_GetFeatAcquired(8, oFCanderous)) sFCanderous += "8,";
-        if (KSE_GetFeatAcquired(11, oFCanderous)) sFCanderous += "11,";
-        if (KSE_GetFeatAcquired(14, oFCanderous)) sFCanderous += "14,";
-        if (KSE_GetFeatAcquired(28, oFCanderous)) sFCanderous += "28,";
-        if (KSE_GetFeatAcquired(29, oFCanderous)) sFCanderous += "29,";
-        if (KSE_GetFeatAcquired(30, oFCanderous)) sFCanderous += "30,";
-        if (KSE_GetFeatAcquired(31, oFCanderous)) sFCanderous += "31,";
-        if (KSE_GetFeatAcquired(40, oFCanderous)) sFCanderous += "40,";
-        if (KSE_GetFeatAcquired(42, oFCanderous)) sFCanderous += "42,";
-        if (KSE_GetFeatAcquired(43, oFCanderous)) sFCanderous += "43,";
-        if (KSE_GetFeatAcquired(55, oFCanderous)) sFCanderous += "55,";
-        if (KSE_GetFeatAcquired(60, oFCanderous)) sFCanderous += "60,";
-        if (KSE_GetFeatAcquired(88, oFCanderous)) sFCanderous += "88,";
-        if (KSE_GetFeatAcquired(98, oFCanderous)) sFCanderous += "98,";
-        if (KSE_GetFeatAcquired(101, oFCanderous)) sFCanderous += "101,";
-        if (KSE_GetFeatAcquired(104, oFCanderous)) sFCanderous += "104,";
-        if (KSE_GetFeatAcquired(107, oFCanderous)) sFCanderous += "107,";
-        if (KSE_GetFeatAcquired(116, oFCanderous)) sFCanderous += "116,";
-    }
-    sReport = sReport + "|canderous=" + sFCanderous;
-    object oFCarth = GetObjectByTag("Carth");
-    int bFCarthRecruited = IsNPCPartyMember(NPC_CARTH) && GetIsObjectValid(oFCarth);
-    string sFCarth = "NONE";
-    if (bFCarthRecruited)
-    {
-        sFCarth = "";
-        if (KSE_GetFeatAcquired(4, oFCarth)) sFCarth += "4,";
-        if (KSE_GetFeatAcquired(5, oFCarth)) sFCarth += "5,";
-        if (KSE_GetFeatAcquired(6, oFCarth)) sFCarth += "6,";
-        if (KSE_GetFeatAcquired(8, oFCarth)) sFCarth += "8,";
-        if (KSE_GetFeatAcquired(11, oFCarth)) sFCarth += "11,";
-        if (KSE_GetFeatAcquired(14, oFCarth)) sFCarth += "14,";
-        if (KSE_GetFeatAcquired(28, oFCarth)) sFCarth += "28,";
-        if (KSE_GetFeatAcquired(29, oFCarth)) sFCarth += "29,";
-        if (KSE_GetFeatAcquired(30, oFCarth)) sFCarth += "30,";
-        if (KSE_GetFeatAcquired(31, oFCarth)) sFCarth += "31,";
-        if (KSE_GetFeatAcquired(40, oFCarth)) sFCarth += "40,";
-        if (KSE_GetFeatAcquired(42, oFCarth)) sFCarth += "42,";
-        if (KSE_GetFeatAcquired(43, oFCarth)) sFCarth += "43,";
-        if (KSE_GetFeatAcquired(55, oFCarth)) sFCarth += "55,";
-        if (KSE_GetFeatAcquired(60, oFCarth)) sFCarth += "60,";
-        if (KSE_GetFeatAcquired(88, oFCarth)) sFCarth += "88,";
-        if (KSE_GetFeatAcquired(98, oFCarth)) sFCarth += "98,";
-        if (KSE_GetFeatAcquired(101, oFCarth)) sFCarth += "101,";
-        if (KSE_GetFeatAcquired(104, oFCarth)) sFCarth += "104,";
-        if (KSE_GetFeatAcquired(107, oFCarth)) sFCarth += "107,";
-        if (KSE_GetFeatAcquired(116, oFCarth)) sFCarth += "116,";
-    }
-    sReport = sReport + "|carth=" + sFCarth;
-    object oFJolee = GetObjectByTag("Jolee");
-    int bFJoleeRecruited = IsNPCPartyMember(NPC_JOLEE) && GetIsObjectValid(oFJolee);
-    string sFJolee = "NONE";
-    if (bFJoleeRecruited)
-    {
-        sFJolee = "";
-        if (KSE_GetFeatAcquired(4, oFJolee)) sFJolee += "4,";
-        if (KSE_GetFeatAcquired(5, oFJolee)) sFJolee += "5,";
-        if (KSE_GetFeatAcquired(6, oFJolee)) sFJolee += "6,";
-        if (KSE_GetFeatAcquired(8, oFJolee)) sFJolee += "8,";
-        if (KSE_GetFeatAcquired(11, oFJolee)) sFJolee += "11,";
-        if (KSE_GetFeatAcquired(14, oFJolee)) sFJolee += "14,";
-        if (KSE_GetFeatAcquired(28, oFJolee)) sFJolee += "28,";
-        if (KSE_GetFeatAcquired(29, oFJolee)) sFJolee += "29,";
-        if (KSE_GetFeatAcquired(30, oFJolee)) sFJolee += "30,";
-        if (KSE_GetFeatAcquired(31, oFJolee)) sFJolee += "31,";
-        if (KSE_GetFeatAcquired(40, oFJolee)) sFJolee += "40,";
-        if (KSE_GetFeatAcquired(42, oFJolee)) sFJolee += "42,";
-        if (KSE_GetFeatAcquired(43, oFJolee)) sFJolee += "43,";
-        if (KSE_GetFeatAcquired(55, oFJolee)) sFJolee += "55,";
-        if (KSE_GetFeatAcquired(60, oFJolee)) sFJolee += "60,";
-        if (KSE_GetFeatAcquired(88, oFJolee)) sFJolee += "88,";
-        if (KSE_GetFeatAcquired(98, oFJolee)) sFJolee += "98,";
-        if (KSE_GetFeatAcquired(101, oFJolee)) sFJolee += "101,";
-        if (KSE_GetFeatAcquired(104, oFJolee)) sFJolee += "104,";
-        if (KSE_GetFeatAcquired(107, oFJolee)) sFJolee += "107,";
-        if (KSE_GetFeatAcquired(116, oFJolee)) sFJolee += "116,";
-    }
-    sReport = sReport + "|jolee=" + sFJolee;
-    object oFJuhani = GetObjectByTag("Juhani");
-    int bFJuhaniRecruited = IsNPCPartyMember(NPC_JUHANI) && GetIsObjectValid(oFJuhani);
-    string sFJuhani = "NONE";
-    if (bFJuhaniRecruited)
-    {
-        sFJuhani = "";
-        if (KSE_GetFeatAcquired(4, oFJuhani)) sFJuhani += "4,";
-        if (KSE_GetFeatAcquired(5, oFJuhani)) sFJuhani += "5,";
-        if (KSE_GetFeatAcquired(6, oFJuhani)) sFJuhani += "6,";
-        if (KSE_GetFeatAcquired(8, oFJuhani)) sFJuhani += "8,";
-        if (KSE_GetFeatAcquired(11, oFJuhani)) sFJuhani += "11,";
-        if (KSE_GetFeatAcquired(14, oFJuhani)) sFJuhani += "14,";
-        if (KSE_GetFeatAcquired(28, oFJuhani)) sFJuhani += "28,";
-        if (KSE_GetFeatAcquired(29, oFJuhani)) sFJuhani += "29,";
-        if (KSE_GetFeatAcquired(30, oFJuhani)) sFJuhani += "30,";
-        if (KSE_GetFeatAcquired(31, oFJuhani)) sFJuhani += "31,";
-        if (KSE_GetFeatAcquired(40, oFJuhani)) sFJuhani += "40,";
-        if (KSE_GetFeatAcquired(42, oFJuhani)) sFJuhani += "42,";
-        if (KSE_GetFeatAcquired(43, oFJuhani)) sFJuhani += "43,";
-        if (KSE_GetFeatAcquired(55, oFJuhani)) sFJuhani += "55,";
-        if (KSE_GetFeatAcquired(60, oFJuhani)) sFJuhani += "60,";
-        if (KSE_GetFeatAcquired(88, oFJuhani)) sFJuhani += "88,";
-        if (KSE_GetFeatAcquired(98, oFJuhani)) sFJuhani += "98,";
-        if (KSE_GetFeatAcquired(101, oFJuhani)) sFJuhani += "101,";
-        if (KSE_GetFeatAcquired(104, oFJuhani)) sFJuhani += "104,";
-        if (KSE_GetFeatAcquired(107, oFJuhani)) sFJuhani += "107,";
-        if (KSE_GetFeatAcquired(116, oFJuhani)) sFJuhani += "116,";
-    }
-    sReport = sReport + "|juhani=" + sFJuhani;
-    object oFMission = GetObjectByTag("Mission");
-    int bFMissionRecruited = IsNPCPartyMember(NPC_MISSION) && GetIsObjectValid(oFMission);
-    string sFMission = "NONE";
-    if (bFMissionRecruited)
-    {
-        sFMission = "";
-        if (KSE_GetFeatAcquired(4, oFMission)) sFMission += "4,";
-        if (KSE_GetFeatAcquired(5, oFMission)) sFMission += "5,";
-        if (KSE_GetFeatAcquired(6, oFMission)) sFMission += "6,";
-        if (KSE_GetFeatAcquired(8, oFMission)) sFMission += "8,";
-        if (KSE_GetFeatAcquired(11, oFMission)) sFMission += "11,";
-        if (KSE_GetFeatAcquired(14, oFMission)) sFMission += "14,";
-        if (KSE_GetFeatAcquired(28, oFMission)) sFMission += "28,";
-        if (KSE_GetFeatAcquired(29, oFMission)) sFMission += "29,";
-        if (KSE_GetFeatAcquired(30, oFMission)) sFMission += "30,";
-        if (KSE_GetFeatAcquired(31, oFMission)) sFMission += "31,";
-        if (KSE_GetFeatAcquired(40, oFMission)) sFMission += "40,";
-        if (KSE_GetFeatAcquired(42, oFMission)) sFMission += "42,";
-        if (KSE_GetFeatAcquired(43, oFMission)) sFMission += "43,";
-        if (KSE_GetFeatAcquired(55, oFMission)) sFMission += "55,";
-        if (KSE_GetFeatAcquired(60, oFMission)) sFMission += "60,";
-        if (KSE_GetFeatAcquired(88, oFMission)) sFMission += "88,";
-        if (KSE_GetFeatAcquired(98, oFMission)) sFMission += "98,";
-        if (KSE_GetFeatAcquired(101, oFMission)) sFMission += "101,";
-        if (KSE_GetFeatAcquired(104, oFMission)) sFMission += "104,";
-        if (KSE_GetFeatAcquired(107, oFMission)) sFMission += "107,";
-        if (KSE_GetFeatAcquired(116, oFMission)) sFMission += "116,";
-    }
-    sReport = sReport + "|mission=" + sFMission;
-    object oFZaalbar = GetObjectByTag("Zaalbar");
-    int bFZaalbarRecruited = IsNPCPartyMember(NPC_ZAALBAR) && GetIsObjectValid(oFZaalbar);
-    string sFZaalbar = "NONE";
-    if (bFZaalbarRecruited)
-    {
-        sFZaalbar = "";
-        if (KSE_GetFeatAcquired(4, oFZaalbar)) sFZaalbar += "4,";
-        if (KSE_GetFeatAcquired(5, oFZaalbar)) sFZaalbar += "5,";
-        if (KSE_GetFeatAcquired(6, oFZaalbar)) sFZaalbar += "6,";
-        if (KSE_GetFeatAcquired(8, oFZaalbar)) sFZaalbar += "8,";
-        if (KSE_GetFeatAcquired(11, oFZaalbar)) sFZaalbar += "11,";
-        if (KSE_GetFeatAcquired(14, oFZaalbar)) sFZaalbar += "14,";
-        if (KSE_GetFeatAcquired(28, oFZaalbar)) sFZaalbar += "28,";
-        if (KSE_GetFeatAcquired(29, oFZaalbar)) sFZaalbar += "29,";
-        if (KSE_GetFeatAcquired(30, oFZaalbar)) sFZaalbar += "30,";
-        if (KSE_GetFeatAcquired(31, oFZaalbar)) sFZaalbar += "31,";
-        if (KSE_GetFeatAcquired(40, oFZaalbar)) sFZaalbar += "40,";
-        if (KSE_GetFeatAcquired(42, oFZaalbar)) sFZaalbar += "42,";
-        if (KSE_GetFeatAcquired(43, oFZaalbar)) sFZaalbar += "43,";
-        if (KSE_GetFeatAcquired(55, oFZaalbar)) sFZaalbar += "55,";
-        if (KSE_GetFeatAcquired(60, oFZaalbar)) sFZaalbar += "60,";
-        if (KSE_GetFeatAcquired(88, oFZaalbar)) sFZaalbar += "88,";
-        if (KSE_GetFeatAcquired(98, oFZaalbar)) sFZaalbar += "98,";
-        if (KSE_GetFeatAcquired(101, oFZaalbar)) sFZaalbar += "101,";
-        if (KSE_GetFeatAcquired(104, oFZaalbar)) sFZaalbar += "104,";
-        if (KSE_GetFeatAcquired(107, oFZaalbar)) sFZaalbar += "107,";
-        if (KSE_GetFeatAcquired(116, oFZaalbar)) sFZaalbar += "116,";
-    }
-    sReport = sReport + "|zaalbar=" + sFZaalbar;
-    KSE_Diag(139, sReport);
-}
-
 // Roster report for the reconciler's stray-companion cleanup (kotor_
 // reconciliation.py). Reports which of the 9 companions are AVAILABLE (on the
 // roster, whether or not they are in the active party) and whether a scripted
@@ -1740,7 +1555,33 @@ void CheckProgressionItems()
     sReport = sReport + "|vendor_power=" + IntToString(bVendorPower);
     int bVendorAlign = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_vtok_align"));
     sReport = sReport + "|vendor_align=" + IntToString(bVendorAlign);
+    int bFtBastila = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_ft_bastila"));
+    sReport = sReport + "|ft_bastila=" + IntToString(bFtBastila);
+    int bFtCanderous = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_ft_canderous"));
+    sReport = sReport + "|ft_canderous=" + IntToString(bFtCanderous);
+    int bFtCarth = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_ft_carth"));
+    sReport = sReport + "|ft_carth=" + IntToString(bFtCarth);
+    int bFtJolee = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_ft_jolee"));
+    sReport = sReport + "|ft_jolee=" + IntToString(bFtJolee);
+    int bFtJuhani = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_ft_juhani"));
+    sReport = sReport + "|ft_juhani=" + IntToString(bFtJuhani);
+    int bFtMission = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_ft_mission"));
+    sReport = sReport + "|ft_mission=" + IntToString(bFtMission);
+    int bFtZaalbar = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_ft_zaalbar"));
+    sReport = sReport + "|ft_zaalbar=" + IntToString(bFtZaalbar);
+    int bNcConsole = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_nc_console"));
+    sReport = sReport + "|nc_console=" + IntToString(bNcConsole);
+    int bPartyConsole = GetIsObjectValid(GetItemPossessedBy(oPC, "ap_partycon_a"));
+    sReport = sReport + "|party_console=" + IntToString(bPartyConsole);
     KSE_Diag(140, sReport);
+}
+void CheckSithArmor()
+{
+    object oPC = GetFirstPC();
+    if (GetJournalEntry("tar_party") < 1 && GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_sitharmor")))
+    {
+        KSE_Diag(193, "AP|SITHARMOR|1");
+    }
 }
 
 void CheckBossDatapads()
@@ -1761,6 +1602,88 @@ void CheckBossDatapads()
     if (GetSubString(sNow, 0, 1) == "1") KSE_Diag(178, "AP|DATAPAD|calo");
     if (GetSubString(sNow, 1, 1) == "1") KSE_Diag(178, "AP|DATAPAD|bandon");
     if (GetSubString(sNow, 2, 1) == "1") KSE_Diag(178, "AP|DATAPAD|karath");
+}
+
+void CheckQuestItems()
+{
+    object oPC = GetFirstPC();
+    int nQ = 0;
+    if (KSE_HasData("qi_n")) nQ = StringToInt(KSE_GetData("qi_n"));
+    KSE_SetData("qi_n", IntToString(nQ + 1));
+    int bFull = (nQ % 12 == 0);
+    string sNow = "";
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_sitharmor")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_sithpapers")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "ptar_shieldcodes")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "rakghoulserum")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "tat17_sandperdis")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "tat20aa_westmap")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "tat20_banthafod")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "k33_itm_sithmdln")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "k37_itm_freedont")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "kor_itm_sithtabl")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "kas25_swordblade")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "man28_envirosuit")));
+    sNow = sNow + IntToString(GetIsObjectValid(GetItemPossessedBy(oPC, "w_ddata")));
+    string sLast = "";
+    if (KSE_HasData("qi_vals")) sLast = KSE_GetData("qi_vals");
+    if (sNow == sLast && !bFull) return;
+    KSE_SetData("qi_vals", sNow);
+    if (GetSubString(sNow, 0, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|ptar_sitharmor");
+    if (GetSubString(sNow, 1, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|ptar_sithpapers");
+    if (GetSubString(sNow, 2, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|ptar_shieldcodes");
+    if (GetSubString(sNow, 3, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|rakghoulserum");
+    if (GetSubString(sNow, 4, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|tat17_sandperdis");
+    if (GetSubString(sNow, 5, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|tat20aa_westmap");
+    if (GetSubString(sNow, 6, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|tat20_banthafod");
+    if (GetSubString(sNow, 7, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|k33_itm_sithmdln");
+    if (GetSubString(sNow, 8, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|k37_itm_freedont");
+    if (GetSubString(sNow, 9, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|kor_itm_sithtabl");
+    if (GetSubString(sNow, 10, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|kas25_swordblade");
+    if (GetSubString(sNow, 11, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|man28_envirosuit");
+    if (GetSubString(sNow, 12, 1) == "1") KSE_Diag(202, "AP|QUESTITEM|w_ddata");
+}
+
+void CheckBazaar()
+{
+    object oPC = GetFirstPC();
+    int nB = 0;
+    if (KSE_HasData("bz_n")) nB = StringToInt(KSE_GetData("bz_n"));
+    KSE_SetData("bz_n", IntToString(nB + 1));
+    int bFull = (nB % 12 == 0);
+    int nBuy = 0;
+    int nSwap = 0;
+    object oBuy = GetItemPossessedBy(oPC, "ap_bz_buy");
+    if (GetIsObjectValid(oBuy)) nBuy = GetItemStackSize(oBuy);
+    object oSwap = GetItemPossessedBy(oPC, "ap_bz_swap");
+    if (GetIsObjectValid(oSwap)) nSwap = GetItemStackSize(oSwap);
+    string sNow = IntToString(nBuy) + "|" + IntToString(nSwap);
+    string sLast = "";
+    if (KSE_HasData("bz_vals")) sLast = KSE_GetData("bz_vals");
+    if (sNow == sLast && !bFull) return;
+    KSE_SetData("bz_vals", sNow);
+    if (nBuy > 0 || nSwap > 0) KSE_Diag(203, "AP|BAZAAR|" + sNow);
+}
+
+void CheckTombDoors()
+{
+    if (GetStringLowerCase(GetModuleFileName()) != "korr_m39aa") return;
+    object oUthar = GetObjectByTag("kor39_utharwynn");
+    object oYuthura = GetObjectByTag("kor39_yuthura");
+    if (!GetIsObjectValid(oUthar) || !GetIsDead(oUthar)) return;
+    if (!GetIsObjectValid(oYuthura) || !GetIsDead(oYuthura)) return;
+    object oMap = GetObjectByTag("k39_door_starmap");
+    object oExit = GetObjectByTag("kor39_kor36");
+    if (GetIsObjectValid(oMap) && GetLocked(oMap))
+    {
+        SetLocked(oMap, FALSE);
+        KSE_Diag(205, "AP|TOMB|unlocked|k39_door_starmap");
+    }
+    if (GetIsObjectValid(oExit) && GetLocked(oExit))
+    {
+        SetLocked(oExit, FALSE);
+        KSE_Diag(205, "AP|TOMB|unlocked|kor39_kor36");
+    }
 }
 
 void CheckVisitedMarkers()
@@ -1836,8 +1759,7 @@ void CheckAPTrackerStage()
 // no 'list all feats' native), so the client can pick half at random for
 // the Remove Half Known Feats trap without guessing at what's held.
 //
-// Every poll this checks ONLY the feats the reconciler and the Additional Feats picker use
-// (the Additional Feats pool plus the Jedi class feats, the same ids as the companion scan)
+// Every poll this checks ONLY a short list of feats (the ones feat training offers plus the Jedi class feats)
 // -- each KSE_GetFeatAcquired call writes a native log line, and scanning all of them every
 // 5 s was most of kse.log. The full list the Remove Half Known Feats trap needs is reported by
 // CheckFeatsFull() below, about once a minute.
@@ -2239,7 +2161,7 @@ void CheckForce()
 
 // Restarts the heartbeat when it is dead (see the comment below). Called FIRST in
 // main(), and again at the end: it used to run only at the end, so a poll that
-// stopped partway on an area entry (seen live, 2026-10-04: polling and the
+// stopped partway on an area entry (seen in play: polling and the
 // heartbeat stayed dead for almost three minutes until the area was reloaded)
 // never got to restart it.
 void EnsureHeartbeat()
@@ -2278,23 +2200,2785 @@ void EnsureHeartbeat()
     }
 }
 
-// starting_class=droid: the PC's HK-47 variant look is a permanent EffectDisguise (the pc_droid arm applies it).
-// Vanilla scripts that end a disguise remove EVERY disguise effect on the party -- the Manaan underwater
-// level's RemoveSuits(), the Tatooine sand-person and Leviathan disguises -- which would silently drop that
-// look. This puts it back whenever the PC is a Battle Droid (race 5, class 9) with no disguise at all;
-// while a vanilla disguise is active it does nothing, so it never fights the suit or the sand-person robe.
-void CheckDroidLook()
+
+// ---- the job dispatcher (generate_poll_shared.py; every delivery goes through it) -----------------------------------
+// A job from the client arrives in the in-DLL inbox, KSE data "dt_job" = "<seq>:<action>:<args>[^^<message>]" (the extender writes it for the
+// client's DISPATCH: command). seq is a number 0-255 kept in the PC's local booleans 48-55, which are saved with the game, so a
+// reloaded save brings back the number that matches its own state. A job fires only when the saved number is seq - 1; the number is
+// advanced and the inbox cleared BEFORE the action runs, so a job can be lost but never run twice. A job already applied
+// (saved number = seq) is dropped as a duplicate; any other number is reported so the client can resync. A job also waits for a
+// calm moment (see DtGateBits). The optional message after ^^ is shown to the player in the same apply, once the action has run.
+// Every decision is logged as AP|DISPATCH|... (KSE_Diag 199).
+void DtMarkReady()
+{
+    KSE_SetData("dt_ready", "1");
+}
+
+void DtLog(string sMsg)
+{
+    KSE_Diag(199, "AP|DISPATCH|" + sMsg + "|mod=" + GetModuleFileName());
+}
+
+int DtGetSeq(object oPC)
+{
+    int nSeq = 0;
+    int nMul = 1;
+    int i = 0;
+    while (i < 8)
+    {
+        if (GetLocalBoolean(oPC, 48 + i) != 0) nSeq = nSeq + nMul;
+        nMul = nMul * 2;
+        i = i + 1;
+    }
+    return nSeq;
+}
+
+void DtSetSeq(object oPC, int nSeq)
+{
+    int nRest = nSeq;
+    int i = 0;
+    while (i < 8)
+    {
+        SetLocalBoolean(oPC, 48 + i, nRest % 2);
+        nRest = nRest / 2;
+        i = i + 1;
+    }
+}
+
+// Which scene-like states are on right now, as bits: 1 scripted scene flag (ApSceneBusyMask), 2 conversation, 4 STUNT cutscene module,
+// 8 PC not commandable, 16 combat, 128 player restrict mode, 256 PC dead. Logged on every change as PROBE, whether or not a
+// job is waiting, so a real cutscene shows which of them it actually sets.
+int DtProbeMask(object oPC)
+{
+    int nBits = 0;
+    if (ApSceneBusyMask() != 0) nBits = nBits + 1;
+    if (GetIsInConversation(oPC)) nBits = nBits + 2;
+    if (GetStringLeft(GetStringLowerCase(GetModuleFileName()), 5) == "stunt") nBits = nBits + 4;
+    if (!GetCommandable(oPC)) nBits = nBits + 8;
+    if (GetIsInCombat(oPC)) nBits = nBits + 16;
+    if (GetPlayerRestrictMode(oPC)) nBits = nBits + 128;
+    if (GetIsDead(oPC)) nBits = nBits + 256;
+    return nBits;
+}
+
+// A job fires only when this is 0: the probe bits plus 32 settling after an area change (3 s) and 64 no party.
+int DtGateBits(object oPC)
+{
+    int nBits = DtProbeMask(oPC);
+    if (GetPartyMemberCount() < 1) nBits = nBits + 64;
+    return nBits;
+}
+
+// ---- fixed arms (generated from APPLIES) ----
+void DtArm_class_guardian()
 {
     object oPC = GetFirstPC();
-    if (GetRacialType(oPC) != 5 || GetClassByPosition(1, oPC) != 9) return;
-    effect eFx = GetFirstEffect(oPC);
-    while (GetIsEffectValid(eFx))
+    int nOldClass = GetClassByPosition(1, oPC);
+        if (nOldClass == CLASS_TYPE_SOLDIER)
+        {
+            KSE_RemoveFeatArrayA(4, oPC);
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(40, oPC);
+            KSE_RemoveFeatArrayA(42, oPC);
+            KSE_RemoveFeatArrayA(28, oPC);
+            KSE_RemoveFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(101, oPC);
+            KSE_GrantFeatArrayA(107, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(116, oPC);
+            KSE_GrantFeatArrayA(55, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUT)
+        {
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(40, oPC);
+            KSE_RemoveFeatArrayA(11, oPC);
+            KSE_RemoveFeatArrayA(14, oPC);
+            KSE_RemoveFeatArrayA(30, oPC);
+            KSE_GrantFeatArrayA(101, oPC);
+            KSE_GrantFeatArrayA(107, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(116, oPC);
+            KSE_GrantFeatArrayA(55, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+        {
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(8, oPC);
+            KSE_RemoveFeatArrayA(40, oPC);
+            KSE_RemoveFeatArrayA(104, oPC);
+            KSE_RemoveFeatArrayA(60, oPC);
+            KSE_RemoveFeatArrayA(31, oPC);
+            KSE_GrantFeatArrayA(101, oPC);
+            KSE_GrantFeatArrayA(107, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(116, oPC);
+            KSE_GrantFeatArrayA(55, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+        {
+            KSE_RemoveFeatArrayA(88, oPC);
+            KSE_GrantFeatArrayA(101, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+        {
+            KSE_RemoveFeatArrayA(98, oPC);
+            KSE_GrantFeatArrayA(101, oPC);
+        }
+    if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
     {
-        if (GetEffectType(eFx) == EFFECT_TYPE_DISGUISE) return;
-        eFx = GetNextEffect(oPC);
+        // already this class -- no-op, see comment above.
     }
-    ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectDisguise(1), oPC);
-    KSE_Diag(188, "AP|DROIDLOOK|restored");
+    else
+    {
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDIGUARDIAN);
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);
+    }
+    KSE_Diag(9, "AP|APPLIED|class_guardian|ok=1");
+}
+
+void DtArm_class_consular()
+{
+    object oPC = GetFirstPC();
+    int nOldClass = GetClassByPosition(1, oPC);
+        if (nOldClass == CLASS_TYPE_SOLDIER)
+        {
+            KSE_RemoveFeatArrayA(4, oPC);
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(40, oPC);
+            KSE_RemoveFeatArrayA(42, oPC);
+            KSE_RemoveFeatArrayA(28, oPC);
+            KSE_RemoveFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(107, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(116, oPC);
+            KSE_GrantFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(88, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUT)
+        {
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(40, oPC);
+            KSE_RemoveFeatArrayA(11, oPC);
+            KSE_RemoveFeatArrayA(14, oPC);
+            KSE_RemoveFeatArrayA(30, oPC);
+            KSE_GrantFeatArrayA(107, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(116, oPC);
+            KSE_GrantFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(88, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+        {
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(8, oPC);
+            KSE_RemoveFeatArrayA(40, oPC);
+            KSE_RemoveFeatArrayA(104, oPC);
+            KSE_RemoveFeatArrayA(60, oPC);
+            KSE_RemoveFeatArrayA(31, oPC);
+            KSE_GrantFeatArrayA(107, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(116, oPC);
+            KSE_GrantFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(88, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+        {
+            KSE_RemoveFeatArrayA(101, oPC);
+            KSE_GrantFeatArrayA(88, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+        {
+            KSE_RemoveFeatArrayA(98, oPC);
+            KSE_GrantFeatArrayA(88, oPC);
+        }
+    if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+    {
+        // already this class -- no-op.
+    }
+    else
+    {
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDICONSULAR);
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);
+    }
+    KSE_Diag(9, "AP|APPLIED|class_consular|ok=1");
+}
+
+void DtArm_class_sentinel()
+{
+    object oPC = GetFirstPC();
+    int nOldClass = GetClassByPosition(1, oPC);
+        if (nOldClass == CLASS_TYPE_SOLDIER)
+        {
+            KSE_RemoveFeatArrayA(4, oPC);
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(40, oPC);
+            KSE_RemoveFeatArrayA(42, oPC);
+            KSE_RemoveFeatArrayA(28, oPC);
+            KSE_RemoveFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(98, oPC);
+            KSE_GrantFeatArrayA(107, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(116, oPC);
+            KSE_GrantFeatArrayA(55, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUT)
+        {
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(40, oPC);
+            KSE_RemoveFeatArrayA(11, oPC);
+            KSE_RemoveFeatArrayA(14, oPC);
+            KSE_RemoveFeatArrayA(30, oPC);
+            KSE_GrantFeatArrayA(98, oPC);
+            KSE_GrantFeatArrayA(107, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(116, oPC);
+            KSE_GrantFeatArrayA(55, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+        {
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(8, oPC);
+            KSE_RemoveFeatArrayA(40, oPC);
+            KSE_RemoveFeatArrayA(104, oPC);
+            KSE_RemoveFeatArrayA(60, oPC);
+            KSE_RemoveFeatArrayA(31, oPC);
+            KSE_GrantFeatArrayA(98, oPC);
+            KSE_GrantFeatArrayA(107, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(116, oPC);
+            KSE_GrantFeatArrayA(55, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+        {
+            KSE_RemoveFeatArrayA(101, oPC);
+            KSE_GrantFeatArrayA(98, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+        {
+            KSE_RemoveFeatArrayA(88, oPC);
+            KSE_GrantFeatArrayA(98, oPC);
+        }
+    if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+    {
+        // already this class -- no-op.
+    }
+    else
+    {
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_JEDISENTINEL);
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), 1);
+    }
+    KSE_Diag(9, "AP|APPLIED|class_sentinel|ok=1");
+}
+
+void DtArm_pc_class_soldier()
+{
+    object oPC = GetFirstPC();
+    int nOldClass = GetClassByPosition(1, oPC);
+        if (nOldClass == CLASS_TYPE_SCOUT)
+        {
+            KSE_RemoveFeatArrayA(11, oPC);
+            KSE_RemoveFeatArrayA(14, oPC);
+            KSE_RemoveFeatArrayA(30, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(28, oPC);
+            KSE_GrantFeatArrayA(4, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+        {
+            KSE_RemoveFeatArrayA(8, oPC);
+            KSE_RemoveFeatArrayA(104, oPC);
+            KSE_RemoveFeatArrayA(60, oPC);
+            KSE_RemoveFeatArrayA(31, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(28, oPC);
+            KSE_GrantFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(6, oPC);
+            KSE_GrantFeatArrayA(4, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+        {
+            KSE_RemoveFeatArrayA(101, oPC);
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(43, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(28, oPC);
+            KSE_GrantFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(5, oPC);
+            KSE_GrantFeatArrayA(6, oPC);
+            KSE_GrantFeatArrayA(4, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+        {
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(43, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_RemoveFeatArrayA(88, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(28, oPC);
+            KSE_GrantFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(5, oPC);
+            KSE_GrantFeatArrayA(6, oPC);
+            KSE_GrantFeatArrayA(4, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+        {
+            KSE_RemoveFeatArrayA(98, oPC);
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(43, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(28, oPC);
+            KSE_GrantFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(5, oPC);
+            KSE_GrantFeatArrayA(6, oPC);
+            KSE_GrantFeatArrayA(4, oPC);
+        }
+    if (nOldClass != CLASS_TYPE_SOLDIER)
+    {
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SOLDIER);
+    }
+    KSE_Diag(9, "AP|APPLIED|pc_class_soldier|ok=1");
+}
+
+void DtArm_pc_class_scout()
+{
+    object oPC = GetFirstPC();
+    int nOldClass = GetClassByPosition(1, oPC);
+        if (nOldClass == CLASS_TYPE_SOLDIER)
+        {
+            KSE_RemoveFeatArrayA(4, oPC);
+            KSE_RemoveFeatArrayA(42, oPC);
+            KSE_RemoveFeatArrayA(29, oPC);
+            KSE_RemoveFeatArrayA(28, oPC);
+            KSE_GrantFeatArrayA(11, oPC);
+            KSE_GrantFeatArrayA(14, oPC);
+            KSE_GrantFeatArrayA(30, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+        {
+            KSE_RemoveFeatArrayA(8, oPC);
+            KSE_RemoveFeatArrayA(104, oPC);
+            KSE_RemoveFeatArrayA(60, oPC);
+            KSE_RemoveFeatArrayA(31, oPC);
+            KSE_GrantFeatArrayA(11, oPC);
+            KSE_GrantFeatArrayA(30, oPC);
+            KSE_GrantFeatArrayA(14, oPC);
+            KSE_GrantFeatArrayA(6, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+        {
+            KSE_RemoveFeatArrayA(101, oPC);
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(43, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(11, oPC);
+            KSE_GrantFeatArrayA(14, oPC);
+            KSE_GrantFeatArrayA(30, oPC);
+            KSE_GrantFeatArrayA(5, oPC);
+            KSE_GrantFeatArrayA(6, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+        {
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(43, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_RemoveFeatArrayA(88, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(11, oPC);
+            KSE_GrantFeatArrayA(14, oPC);
+            KSE_GrantFeatArrayA(30, oPC);
+            KSE_GrantFeatArrayA(5, oPC);
+            KSE_GrantFeatArrayA(6, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+        {
+            KSE_RemoveFeatArrayA(98, oPC);
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(43, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(11, oPC);
+            KSE_GrantFeatArrayA(14, oPC);
+            KSE_GrantFeatArrayA(30, oPC);
+            KSE_GrantFeatArrayA(5, oPC);
+            KSE_GrantFeatArrayA(6, oPC);
+        }
+    if (nOldClass != CLASS_TYPE_SCOUT)
+    {
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SCOUT);
+    }
+    KSE_Diag(9, "AP|APPLIED|pc_class_scout|ok=1");
+}
+
+void DtArm_pc_class_scoundrel()
+{
+    object oPC = GetFirstPC();
+    int nOldClass = GetClassByPosition(1, oPC);
+        if (nOldClass == CLASS_TYPE_SOLDIER)
+        {
+            KSE_RemoveFeatArrayA(4, oPC);
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(42, oPC);
+            KSE_RemoveFeatArrayA(28, oPC);
+            KSE_RemoveFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(8, oPC);
+            KSE_GrantFeatArrayA(104, oPC);
+            KSE_GrantFeatArrayA(60, oPC);
+            KSE_GrantFeatArrayA(31, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUT)
+        {
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(11, oPC);
+            KSE_RemoveFeatArrayA(30, oPC);
+            KSE_RemoveFeatArrayA(14, oPC);
+            KSE_GrantFeatArrayA(8, oPC);
+            KSE_GrantFeatArrayA(104, oPC);
+            KSE_GrantFeatArrayA(60, oPC);
+            KSE_GrantFeatArrayA(31, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+        {
+            KSE_RemoveFeatArrayA(101, oPC);
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(43, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(8, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(104, oPC);
+            KSE_GrantFeatArrayA(60, oPC);
+            KSE_GrantFeatArrayA(31, oPC);
+            KSE_GrantFeatArrayA(5, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+        {
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(43, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_RemoveFeatArrayA(88, oPC);
+            KSE_GrantFeatArrayA(8, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(104, oPC);
+            KSE_GrantFeatArrayA(60, oPC);
+            KSE_GrantFeatArrayA(31, oPC);
+            KSE_GrantFeatArrayA(5, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+        {
+            KSE_RemoveFeatArrayA(98, oPC);
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(43, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(8, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(104, oPC);
+            KSE_GrantFeatArrayA(60, oPC);
+            KSE_GrantFeatArrayA(31, oPC);
+            KSE_GrantFeatArrayA(5, oPC);
+        }
+    if (nOldClass != CLASS_TYPE_SCOUNDREL)
+    {
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), CLASS_TYPE_SCOUNDREL);
+    }
+    KSE_Diag(9, "AP|APPLIED|pc_class_scoundrel|ok=1");
+}
+
+void DtArm_companion_bastila()
+{
+    int nNPC = NPC_BASTILA;
+    string sTemplate = "p_bastilla";
+    int nWasAvailable = IsAvailableCreature(nNPC);
+    // Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.
+    int nCrew = GetJournalEntry("ap_ent_bastila");
+    int nMayGrant = (nCrew < 20);
+    if (nCrew < 10) AddJournalQuestEntry("ap_ent_bastila", 10);
+    int nAdded = FALSE;
+    if (!nWasAvailable && nMayGrant)
+    {
+        AddAvailableNPCByTemplate(nNPC, sTemplate);
+        object oPC = GetFirstPC();
+        object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));
+        nAdded = AddPartyMember(nNPC, oNPC);
+    }
+    SetNPCSelectability(nNPC, TRUE);
+    KSE_Diag(4, "AP|APPLIED|companion_bastila|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_bastila")));
+}
+
+void DtArm_companion_canderous()
+{
+    int nNPC = NPC_CANDEROUS;
+    string sTemplate = "p_cand";
+    int nWasAvailable = IsAvailableCreature(nNPC);
+    // Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.
+    int nCrew = GetJournalEntry("ap_ent_canderous");
+    int nMayGrant = (nCrew < 20);
+    if (nCrew < 10) AddJournalQuestEntry("ap_ent_canderous", 10);
+    int nAdded = FALSE;
+    if (!nWasAvailable && nMayGrant)
+    {
+        AddAvailableNPCByTemplate(nNPC, sTemplate);
+        object oPC = GetFirstPC();
+        object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));
+        nAdded = AddPartyMember(nNPC, oNPC);
+    }
+    KSE_SetData("ap_canderous_legit", "1");
+    SetNPCSelectability(nNPC, TRUE);
+    KSE_Diag(4, "AP|APPLIED|companion_canderous|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_canderous")));
+}
+
+void DtArm_companion_carth()
+{
+    int nNPC = NPC_CARTH;
+    string sTemplate = "p_carth";
+    int nWasAvailable = IsAvailableCreature(nNPC);
+    // Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.
+    int nCrew = GetJournalEntry("ap_ent_carth");
+    int nMayGrant = (nCrew < 20);
+    if (nCrew < 10) AddJournalQuestEntry("ap_ent_carth", 10);
+    int nAdded = FALSE;
+    if (!nWasAvailable && nMayGrant)
+    {
+        AddAvailableNPCByTemplate(nNPC, sTemplate);
+        object oPC = GetFirstPC();
+        object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));
+        nAdded = AddPartyMember(nNPC, oNPC);
+    }
+    SetNPCSelectability(nNPC, TRUE);
+    KSE_Diag(50, "AP|APPLIED|companion_carth|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_carth")));
+}
+
+void DtArm_companion_hk47()
+{
+    int nNPC = NPC_HK_47;
+    string sTemplate = "p_hk47";
+    int nWasAvailable = IsAvailableCreature(nNPC);
+    // Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.
+    int nCrew = GetJournalEntry("ap_ent_hk47");
+    int nMayGrant = (nCrew < 20);
+    if (nCrew < 10) AddJournalQuestEntry("ap_ent_hk47", 10);
+    int nAdded = FALSE;
+    if (!nWasAvailable && nMayGrant)
+    {
+        AddAvailableNPCByTemplate(nNPC, sTemplate);
+        object oPC = GetFirstPC();
+        object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));
+        nAdded = AddPartyMember(nNPC, oNPC);
+    }
+    SetNPCSelectability(nNPC, TRUE);
+    KSE_Diag(51, "AP|APPLIED|companion_hk47|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_hk47")));
+}
+
+void DtArm_companion_jolee()
+{
+    int nNPC = NPC_JOLEE;
+    string sTemplate = "p_jolee";
+    int nWasAvailable = IsAvailableCreature(nNPC);
+    // Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.
+    int nCrew = GetJournalEntry("ap_ent_jolee");
+    int nMayGrant = (nCrew < 20);
+    if (nCrew < 10) AddJournalQuestEntry("ap_ent_jolee", 10);
+    int nAdded = FALSE;
+    if (!nWasAvailable && nMayGrant)
+    {
+        AddAvailableNPCByTemplate(nNPC, sTemplate);
+        object oPC = GetFirstPC();
+        object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));
+        nAdded = AddPartyMember(nNPC, oNPC);
+    }
+    SetNPCSelectability(nNPC, TRUE);
+    KSE_Diag(52, "AP|APPLIED|companion_jolee|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_jolee")));
+}
+
+void DtArm_companion_juhani()
+{
+    int nNPC = NPC_JUHANI;
+    string sTemplate = "p_juhani";
+    int nWasAvailable = IsAvailableCreature(nNPC);
+    // Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.
+    int nCrew = GetJournalEntry("ap_ent_juhani");
+    int nMayGrant = (nCrew < 20);
+    if (nCrew < 10) AddJournalQuestEntry("ap_ent_juhani", 10);
+    int nAdded = FALSE;
+    if (!nWasAvailable && nMayGrant)
+    {
+        AddAvailableNPCByTemplate(nNPC, sTemplate);
+        object oPC = GetFirstPC();
+        object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));
+        nAdded = AddPartyMember(nNPC, oNPC);
+    }
+    SetNPCSelectability(nNPC, TRUE);
+    KSE_Diag(53, "AP|APPLIED|companion_juhani|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_juhani")));
+}
+
+void DtArm_companion_mission()
+{
+    int nNPC = NPC_MISSION;
+    string sTemplate = "p_mission";
+    int nWasAvailable = IsAvailableCreature(nNPC);
+    // Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.
+    int nCrew = GetJournalEntry("ap_ent_mission");
+    int nMayGrant = (nCrew < 20);
+    if (nCrew < 10) AddJournalQuestEntry("ap_ent_mission", 10);
+    int nAdded = FALSE;
+    if (!nWasAvailable && nMayGrant)
+    {
+        AddAvailableNPCByTemplate(nNPC, sTemplate);
+        object oPC = GetFirstPC();
+        object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));
+        nAdded = AddPartyMember(nNPC, oNPC);
+    }
+    SetNPCSelectability(nNPC, TRUE);
+    KSE_Diag(54, "AP|APPLIED|companion_mission|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_mission")));
+}
+
+void DtArm_companion_t3m4()
+{
+    int nNPC = NPC_T3_M4;
+    string sTemplate = "p_t3m4";
+    int nWasAvailable = IsAvailableCreature(nNPC);
+    // Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.
+    int nCrew = GetJournalEntry("ap_ent_t3m4");
+    int nMayGrant = (nCrew < 20);
+    if (nCrew < 10) AddJournalQuestEntry("ap_ent_t3m4", 10);
+    int nAdded = FALSE;
+    if (!nWasAvailable && nMayGrant)
+    {
+        AddAvailableNPCByTemplate(nNPC, sTemplate);
+        object oPC = GetFirstPC();
+        object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));
+        nAdded = AddPartyMember(nNPC, oNPC);
+    }
+    SetNPCSelectability(nNPC, TRUE);
+    KSE_Diag(55, "AP|APPLIED|companion_t3m4|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_t3m4")));
+}
+
+void DtArm_companion_zaalbar()
+{
+    int nNPC = NPC_ZAALBAR;
+    string sTemplate = "p_zaalbar";
+    int nWasAvailable = IsAvailableCreature(nNPC);
+    // Entitlement marker (build_ap_tracker_quest.py): written here, in the same script that adds the companion; refused for good once the Remove a Companion trap wrote 20.
+    int nCrew = GetJournalEntry("ap_ent_zaalbar");
+    int nMayGrant = (nCrew < 20);
+    if (nCrew < 10) AddJournalQuestEntry("ap_ent_zaalbar", 10);
+    int nAdded = FALSE;
+    if (!nWasAvailable && nMayGrant)
+    {
+        AddAvailableNPCByTemplate(nNPC, sTemplate);
+        object oPC = GetFirstPC();
+        object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));
+        nAdded = AddPartyMember(nNPC, oNPC);
+    }
+    SetNPCSelectability(nNPC, TRUE);
+    KSE_Diag(56, "AP|APPLIED|companion_zaalbar|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_zaalbar")));
+}
+
+void DtArm_xp()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetXP(oPC);
+    SetXP(oPC, nBefore + 500);
+    int nAfter = GetXP(oPC);
+    object oXpC0 = GetObjectByTag("Bastila");
+    if (IsNPCPartyMember(NPC_BASTILA) && GetIsObjectValid(oXpC0) && GetXP(oXpC0) < nAfter)
+        KSE_SetCreatureField(oXpC0, KSE_FIELD_XP(), nAfter);
+    object oXpC1 = GetObjectByTag("Cand");
+    if (IsNPCPartyMember(NPC_CANDEROUS) && GetIsObjectValid(oXpC1) && GetXP(oXpC1) < nAfter)
+        KSE_SetCreatureField(oXpC1, KSE_FIELD_XP(), nAfter);
+    object oXpC2 = GetObjectByTag("Carth");
+    if (IsNPCPartyMember(NPC_CARTH) && GetIsObjectValid(oXpC2) && GetXP(oXpC2) < nAfter)
+        KSE_SetCreatureField(oXpC2, KSE_FIELD_XP(), nAfter);
+    object oXpC3 = GetObjectByTag("HK47");
+    if (IsNPCPartyMember(NPC_HK_47) && GetIsObjectValid(oXpC3) && GetXP(oXpC3) < nAfter)
+        KSE_SetCreatureField(oXpC3, KSE_FIELD_XP(), nAfter);
+    object oXpC4 = GetObjectByTag("Jolee");
+    if (IsNPCPartyMember(NPC_JOLEE) && GetIsObjectValid(oXpC4) && GetXP(oXpC4) < nAfter)
+        KSE_SetCreatureField(oXpC4, KSE_FIELD_XP(), nAfter);
+    object oXpC5 = GetObjectByTag("Juhani");
+    if (IsNPCPartyMember(NPC_JUHANI) && GetIsObjectValid(oXpC5) && GetXP(oXpC5) < nAfter)
+        KSE_SetCreatureField(oXpC5, KSE_FIELD_XP(), nAfter);
+    object oXpC6 = GetObjectByTag("Mission");
+    if (IsNPCPartyMember(NPC_MISSION) && GetIsObjectValid(oXpC6) && GetXP(oXpC6) < nAfter)
+        KSE_SetCreatureField(oXpC6, KSE_FIELD_XP(), nAfter);
+    object oXpC7 = GetObjectByTag("t3m4");
+    if (IsNPCPartyMember(NPC_T3_M4) && GetIsObjectValid(oXpC7) && GetXP(oXpC7) < nAfter)
+        KSE_SetCreatureField(oXpC7, KSE_FIELD_XP(), nAfter);
+    object oXpC8 = GetObjectByTag("Zaalbar");
+    if (IsNPCPartyMember(NPC_ZAALBAR) && GetIsObjectValid(oXpC8) && GetXP(oXpC8) < nAfter)
+        KSE_SetCreatureField(oXpC8, KSE_FIELD_XP(), nAfter);
+    KSE_Diag(5, "AP|APPLIED|xp|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_credits()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetGold(oPC);
+    GiveGoldToCreature(oPC, 5000);
+    int nAfter = GetGold(oPC);
+    KSE_Diag(39, "AP|APPLIED|credits|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_force_death()
+{
+    object oPC = GetFirstPC();
+    int nWasDead = GetIsDead(oPC);
+    int nPlot = GetPlotFlag(oPC);
+    int nMin1 = GetMinOneHP(oPC);
+    int nHp = GetCurrentHitPoints(oPC);
+    if (nPlot) SetPlotFlag(oPC, FALSE);
+    if (nMin1) SetMinOneHP(oPC, FALSE);
+    ApplyEffectToObject(DURATION_TYPE_INSTANT, EffectDeath(), oPC);
+    if (nPlot) SetPlotFlag(oPC, TRUE);
+    if (nMin1) SetMinOneHP(oPC, TRUE);
+    KSE_Diag(63, "AP|APPLIED|force_death|wasDead=" + IntToString(nWasDead) + "|plot=" + IntToString(nPlot) + "|min1=" + IntToString(nMin1) + "|hp=" + IntToString(nHp) + "|nowDead=" + IntToString(GetIsDead(oPC)));
+}
+
+void DtArm_computer_use()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetSkillRank(SKILL_COMPUTER_USE, oPC);
+    KSE_AdjustCreatureSkills(oPC, SKILL_COMPUTER_USE, 2);
+    int nAfter = GetSkillRank(SKILL_COMPUTER_USE, oPC);
+    KSE_Diag(2, "AP|APPLIED|computer_use|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_demolitions()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetSkillRank(SKILL_DEMOLITIONS, oPC);
+    KSE_AdjustCreatureSkills(oPC, SKILL_DEMOLITIONS, 2);
+    int nAfter = GetSkillRank(SKILL_DEMOLITIONS, oPC);
+    KSE_Diag(2, "AP|APPLIED|demolitions|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_stealth()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetSkillRank(SKILL_STEALTH, oPC);
+    KSE_AdjustCreatureSkills(oPC, SKILL_STEALTH, 2);
+    int nAfter = GetSkillRank(SKILL_STEALTH, oPC);
+    KSE_Diag(2, "AP|APPLIED|stealth|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_awareness()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetSkillRank(SKILL_AWARENESS, oPC);
+    KSE_AdjustCreatureSkills(oPC, SKILL_AWARENESS, 2);
+    int nAfter = GetSkillRank(SKILL_AWARENESS, oPC);
+    KSE_Diag(2, "AP|APPLIED|awareness|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_persuade()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetSkillRank(SKILL_PERSUADE, oPC);
+    KSE_AdjustCreatureSkills(oPC, SKILL_PERSUADE, 2);
+    int nAfter = GetSkillRank(SKILL_PERSUADE, oPC);
+    KSE_Diag(2, "AP|APPLIED|persuade|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_repair()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetSkillRank(SKILL_REPAIR, oPC);
+    KSE_AdjustCreatureSkills(oPC, SKILL_REPAIR, 2);
+    int nAfter = GetSkillRank(SKILL_REPAIR, oPC);
+    KSE_Diag(2, "AP|APPLIED|repair|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_security()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetSkillRank(SKILL_SECURITY, oPC);
+    KSE_AdjustCreatureSkills(oPC, SKILL_SECURITY, 2);
+    int nAfter = GetSkillRank(SKILL_SECURITY, oPC);
+    KSE_Diag(2, "AP|APPLIED|security|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_treat_injury()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetSkillRank(SKILL_TREAT_INJURY, oPC);
+    KSE_AdjustCreatureSkills(oPC, SKILL_TREAT_INJURY, 2);
+    int nAfter = GetSkillRank(SKILL_TREAT_INJURY, oPC);
+    KSE_Diag(2, "AP|APPLIED|treat_injury|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_ability_strength()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetAbilityScore(oPC, ABILITY_STRENGTH);
+    KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_STR_BASE(), 1);
+    int nAfter = GetAbilityScore(oPC, ABILITY_STRENGTH);
+    KSE_Diag(58, "AP|APPLIED|ability_strength|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_ability_dexterity()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetAbilityScore(oPC, ABILITY_DEXTERITY);
+    KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_DEX_BASE(), 1);
+    int nAfter = GetAbilityScore(oPC, ABILITY_DEXTERITY);
+    KSE_Diag(59, "AP|APPLIED|ability_dexterity|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_ability_constitution()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetAbilityScore(oPC, ABILITY_CONSTITUTION);
+    KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_CON_BASE(), 1);
+    int nAfter = GetAbilityScore(oPC, ABILITY_CONSTITUTION);
+    KSE_Diag(60, "AP|APPLIED|ability_constitution|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_ability_intelligence()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetAbilityScore(oPC, ABILITY_INTELLIGENCE);
+    KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_INT_BASE(), 1);
+    int nAfter = GetAbilityScore(oPC, ABILITY_INTELLIGENCE);
+    KSE_Diag(61, "AP|APPLIED|ability_intelligence|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_ability_wisdom()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetAbilityScore(oPC, ABILITY_WISDOM);
+    KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_WIS_BASE(), 1);
+    int nAfter = GetAbilityScore(oPC, ABILITY_WISDOM);
+    KSE_Diag(62, "AP|APPLIED|ability_wisdom|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_ability_charisma()
+{
+    object oPC = GetFirstPC();
+    int nBefore = GetAbilityScore(oPC, ABILITY_CHARISMA);
+    KSE_SetCreatureField(oPC, KSE_FIELD_INCREMENT_CHA_BASE(), 1);
+    int nAfter = GetAbilityScore(oPC, ABILITY_CHARISMA);
+    KSE_Diag(92, "AP|APPLIED|ability_charisma|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+}
+
+void DtArm_pc_droid()
+{
+    object oPC = GetFirstPC();
+    int nOldClass = GetClassByPosition(1, oPC);
+    if (nOldClass != 9)
+    {
+        object oIt;
+        object oRW = GetItemInSlot(INVENTORY_SLOT_RIGHTWEAPON, oPC);
+        object oLW = GetItemInSlot(INVENTORY_SLOT_LEFTWEAPON, oPC);
+        oIt = GetItemInSlot(INVENTORY_SLOT_HEAD, oPC);
+        if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));
+        oIt = GetItemInSlot(INVENTORY_SLOT_BODY, oPC);
+        if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));
+        oIt = GetItemInSlot(INVENTORY_SLOT_HANDS, oPC);
+        if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));
+        oIt = GetItemInSlot(INVENTORY_SLOT_RIGHTWEAPON, oPC);
+        if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));
+        oIt = GetItemInSlot(INVENTORY_SLOT_LEFTWEAPON, oPC);
+        if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));
+        oIt = GetItemInSlot(INVENTORY_SLOT_LEFTARM, oPC);
+        if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));
+        oIt = GetItemInSlot(INVENTORY_SLOT_RIGHTARM, oPC);
+        if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));
+        oIt = GetItemInSlot(INVENTORY_SLOT_IMPLANT, oPC);
+        if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));
+        oIt = GetItemInSlot(INVENTORY_SLOT_BELT, oPC);
+        if (GetIsObjectValid(oIt)) AssignCommand(oPC, ActionUnequipItem(oIt, TRUE));
+        if (nOldClass == CLASS_TYPE_SOLDIER)
+        {
+            KSE_RemoveFeatArrayA(4, oPC);
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(28, oPC);
+            KSE_RemoveFeatArrayA(29, oPC);
+            KSE_GrantFeatArrayA(110, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(78, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUT)
+        {
+            KSE_RemoveFeatArrayA(6, oPC);
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(11, oPC);
+            KSE_RemoveFeatArrayA(14, oPC);
+            KSE_RemoveFeatArrayA(30, oPC);
+            KSE_GrantFeatArrayA(110, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(78, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+        {
+            KSE_RemoveFeatArrayA(5, oPC);
+            KSE_RemoveFeatArrayA(8, oPC);
+            KSE_RemoveFeatArrayA(104, oPC);
+            KSE_RemoveFeatArrayA(60, oPC);
+            KSE_RemoveFeatArrayA(31, oPC);
+            KSE_GrantFeatArrayA(110, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(43, oPC);
+            KSE_GrantFeatArrayA(78, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+        {
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(101, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(110, oPC);
+            KSE_GrantFeatArrayA(78, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+        {
+            KSE_RemoveFeatArrayA(88, oPC);
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(110, oPC);
+            KSE_GrantFeatArrayA(78, oPC);
+        }
+        else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+        {
+            KSE_RemoveFeatArrayA(98, oPC);
+            KSE_RemoveFeatArrayA(107, oPC);
+            KSE_RemoveFeatArrayA(116, oPC);
+            KSE_RemoveFeatArrayA(55, oPC);
+            KSE_GrantFeatArrayA(40, oPC);
+            KSE_GrantFeatArrayA(42, oPC);
+            KSE_GrantFeatArrayA(110, oPC);
+            KSE_GrantFeatArrayA(78, oPC);
+        }
+        KSE_SetCreatureField(oPC, KSE_FIELD_SET_RACE(), 5);
+        KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_TYPE(), 9);
+        if (!GetIsObjectValid(GetItemInSlot(INVENTORY_SLOT_CARMOUR, oPC)))
+        {
+            object oHide = CreateItemOnObject("g_i_crhide013", oPC, 1);
+            AssignCommand(oPC, ActionEquipItem(oHide, INVENTORY_SLOT_CARMOUR, TRUE));
+        }
+        effect eOld = GetFirstEffect(oPC);
+        while (GetIsEffectValid(eOld))
+        {
+            if (GetEffectType(eOld) == EFFECT_TYPE_DISGUISE) RemoveEffect(oPC, eOld);
+            eOld = GetNextEffect(oPC);
+        }
+        ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectDisguise(1), oPC);
+        if (GetIsObjectValid(oRW)) AssignCommand(oPC, ActionEquipItem(oRW, INVENTORY_SLOT_RIGHTWEAPON, TRUE));
+        if (GetIsObjectValid(oLW)) AssignCommand(oPC, ActionEquipItem(oLW, INVENTORY_SLOT_LEFTWEAPON, TRUE));
+        CreateItemOnObject("g_i_drdrepeqp001", oPC, 3);
+    }
+    KSE_Diag(9, "AP|APPLIED|pc_droid|ok=1");
+}
+
+void DtArm_journal_tracker_20()
+{
+    AddJournalQuestEntry("ap_tracker", 20);
+    KSE_Diag(166, "AP|APPLIED|journal_tracker_20|ok=1");
+}
+
+void DtArm_journal_tracker_40()
+{
+    AddJournalQuestEntry("ap_tracker", 40);
+    KSE_Diag(166, "AP|APPLIED|journal_tracker_40|ok=1");
+}
+
+void DtArm_journal_tracker_60()
+{
+    AddJournalQuestEntry("ap_tracker", 60);
+    KSE_Diag(166, "AP|APPLIED|journal_tracker_60|ok=1");
+}
+
+void DtArm_journal_tracker_80()
+{
+    AddJournalQuestEntry("ap_tracker", 80);
+    KSE_Diag(166, "AP|APPLIED|journal_tracker_80|ok=1");
+}
+
+void DtArm_journal_tracker_100()
+{
+    AddJournalQuestEntry("ap_tracker", 100);
+    KSE_Diag(166, "AP|APPLIED|journal_tracker_100|ok=1");
+}
+
+void DtArm_journal_tracker_1()
+{
+    AddJournalQuestEntry("ap_tracker", 1);
+    KSE_Diag(166, "AP|APPLIED|journal_tracker_1|ok=1");
+}
+
+int DtArmValue(object oPC, string sName)
+{
+    if (sName == "xp") return GetXP(oPC);
+    if (sName == "credits") return GetGold(oPC);
+    if (sName == "computer_use") return GetSkillRank(SKILL_COMPUTER_USE, oPC);
+    if (sName == "demolitions") return GetSkillRank(SKILL_DEMOLITIONS, oPC);
+    if (sName == "stealth") return GetSkillRank(SKILL_STEALTH, oPC);
+    if (sName == "awareness") return GetSkillRank(SKILL_AWARENESS, oPC);
+    if (sName == "persuade") return GetSkillRank(SKILL_PERSUADE, oPC);
+    if (sName == "repair") return GetSkillRank(SKILL_REPAIR, oPC);
+    if (sName == "security") return GetSkillRank(SKILL_SECURITY, oPC);
+    if (sName == "treat_injury") return GetSkillRank(SKILL_TREAT_INJURY, oPC);
+    if (sName == "ability_strength") return GetAbilityScore(oPC, ABILITY_STRENGTH);
+    if (sName == "ability_dexterity") return GetAbilityScore(oPC, ABILITY_DEXTERITY);
+    if (sName == "ability_constitution") return GetAbilityScore(oPC, ABILITY_CONSTITUTION);
+    if (sName == "ability_intelligence") return GetAbilityScore(oPC, ABILITY_INTELLIGENCE);
+    if (sName == "ability_wisdom") return GetAbilityScore(oPC, ABILITY_WISDOM);
+    if (sName == "ability_charisma") return GetAbilityScore(oPC, ABILITY_CHARISMA);
+    if (sName == "class_guardian") return (GetClassByPosition(1, oPC) == CLASS_TYPE_JEDIGUARDIAN);
+    if (sName == "class_consular") return (GetClassByPosition(1, oPC) == CLASS_TYPE_JEDICONSULAR);
+    if (sName == "class_sentinel") return (GetClassByPosition(1, oPC) == CLASS_TYPE_JEDISENTINEL);
+    if (sName == "pc_class_soldier") return (GetClassByPosition(1, oPC) == CLASS_TYPE_SOLDIER);
+    if (sName == "pc_class_scout") return (GetClassByPosition(1, oPC) == CLASS_TYPE_SCOUT);
+    if (sName == "pc_class_scoundrel") return (GetClassByPosition(1, oPC) == CLASS_TYPE_SCOUNDREL);
+    if (sName == "companion_bastila") return IsAvailableCreature(NPC_BASTILA);
+    if (sName == "companion_canderous") return IsAvailableCreature(NPC_CANDEROUS);
+    if (sName == "companion_carth") return IsAvailableCreature(NPC_CARTH);
+    if (sName == "companion_hk47") return IsAvailableCreature(NPC_HK_47);
+    if (sName == "companion_jolee") return IsAvailableCreature(NPC_JOLEE);
+    if (sName == "companion_juhani") return IsAvailableCreature(NPC_JUHANI);
+    if (sName == "companion_mission") return IsAvailableCreature(NPC_MISSION);
+    if (sName == "companion_t3m4") return IsAvailableCreature(NPC_T3_M4);
+    if (sName == "companion_zaalbar") return IsAvailableCreature(NPC_ZAALBAR);
+    if (sName == "pc_droid") return (GetClassByPosition(1, oPC) == 9);
+    return -999;
+}
+
+int DtArmCheck(string sName, int nBefore, int nAfter)
+{
+    if (nBefore == -999) return 1;
+    if (sName == "class_guardian" || sName == "class_consular" || sName == "class_sentinel" || sName == "pc_class_soldier" || sName == "pc_class_scout" || sName == "pc_class_scoundrel" || sName == "companion_bastila" || sName == "companion_canderous" || sName == "companion_carth" || sName == "companion_hk47" || sName == "companion_jolee" || sName == "companion_juhani" || sName == "companion_mission" || sName == "companion_t3m4" || sName == "companion_zaalbar" || sName == "pc_droid")
+    {
+        if (nAfter == 1) return 1;
+        return 2;
+    }
+    if (nAfter > nBefore) return 1;
+    return 2;
+}
+
+// 0 = no such arm, 1 = it ran and did its job, 2 = it ran but the result is not there (see dispatch_actions.build_arm_checks)
+int DtArm(string sName)
+{
+    object oPC = GetFirstPC();
+    int nBefore = DtArmValue(oPC, sName);
+    if (sName == "class_guardian") { DtArm_class_guardian(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "class_consular") { DtArm_class_consular(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "class_sentinel") { DtArm_class_sentinel(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "pc_class_soldier") { DtArm_pc_class_soldier(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "pc_class_scout") { DtArm_pc_class_scout(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "pc_class_scoundrel") { DtArm_pc_class_scoundrel(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "companion_bastila") { DtArm_companion_bastila(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "companion_canderous") { DtArm_companion_canderous(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "companion_carth") { DtArm_companion_carth(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "companion_hk47") { DtArm_companion_hk47(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "companion_jolee") { DtArm_companion_jolee(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "companion_juhani") { DtArm_companion_juhani(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "companion_mission") { DtArm_companion_mission(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "companion_t3m4") { DtArm_companion_t3m4(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "companion_zaalbar") { DtArm_companion_zaalbar(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "xp") { DtArm_xp(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "credits") { DtArm_credits(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "force_death") { DtArm_force_death(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "computer_use") { DtArm_computer_use(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "demolitions") { DtArm_demolitions(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "stealth") { DtArm_stealth(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "awareness") { DtArm_awareness(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "persuade") { DtArm_persuade(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "repair") { DtArm_repair(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "security") { DtArm_security(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "treat_injury") { DtArm_treat_injury(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "ability_strength") { DtArm_ability_strength(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "ability_dexterity") { DtArm_ability_dexterity(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "ability_constitution") { DtArm_ability_constitution(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "ability_intelligence") { DtArm_ability_intelligence(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "ability_wisdom") { DtArm_ability_wisdom(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "ability_charisma") { DtArm_ability_charisma(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "pc_droid") { DtArm_pc_droid(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "journal_tracker_20") { DtArm_journal_tracker_20(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "journal_tracker_40") { DtArm_journal_tracker_40(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "journal_tracker_60") { DtArm_journal_tracker_60(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "journal_tracker_80") { DtArm_journal_tracker_80(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "journal_tracker_100") { DtArm_journal_tracker_100(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    if (sName == "journal_tracker_1") { DtArm_journal_tracker_1(); return DtArmCheck(sName, nBefore, DtArmValue(oPC, sName)); }
+    return 0;
+}
+
+// ---- parameterized actions (dispatch_actions.py) ----
+int DtNthInt(string sList, int nIndex, int nDefault)
+{
+    // the nIndex-th number of a list separated by commas or colons
+    int i = 0;
+    while (i < nIndex)
+    {
+        int nA = FindSubString(sList, ",");
+        int nB = FindSubString(sList, ":");
+        if (nA < 0 || (nB >= 0 && nB < nA)) nA = nB;
+        if (nA < 0) return nDefault;
+        sList = GetSubString(sList, nA + 1, GetStringLength(sList));
+        i = i + 1;
+    }
+    int nEndA = FindSubString(sList, ",");
+    int nEndB = FindSubString(sList, ":");
+    if (nEndA < 0 || (nEndB >= 0 && nEndB < nEndA)) nEndA = nEndB;
+    if (nEndA >= 0) sList = GetSubString(sList, 0, nEndA);
+    if (sList == "" || sList == "-") return nDefault;
+    return StringToInt(sList);
+}
+
+int DtListCount(string sList)
+{
+    int n = 0;
+    while (DtNthInt(sList, n, -9999) != -9999) n = n + 1;
+    return n;
+}
+
+int DtSetXp(string sArgs)
+{
+    int nValue = StringToInt(sArgs);
+    object oPC = GetFirstPC();
+    int nBefore = GetXP(oPC);
+    SetXP(oPC, nValue);
+    int nAfter = GetXP(oPC);
+    object oXpC0 = GetObjectByTag("Bastila");
+    if (IsNPCPartyMember(NPC_BASTILA) && GetIsObjectValid(oXpC0) && GetXP(oXpC0) < nAfter)
+        KSE_SetCreatureField(oXpC0, KSE_FIELD_XP(), nAfter);
+    object oXpC1 = GetObjectByTag("Cand");
+    if (IsNPCPartyMember(NPC_CANDEROUS) && GetIsObjectValid(oXpC1) && GetXP(oXpC1) < nAfter)
+        KSE_SetCreatureField(oXpC1, KSE_FIELD_XP(), nAfter);
+    object oXpC2 = GetObjectByTag("Carth");
+    if (IsNPCPartyMember(NPC_CARTH) && GetIsObjectValid(oXpC2) && GetXP(oXpC2) < nAfter)
+        KSE_SetCreatureField(oXpC2, KSE_FIELD_XP(), nAfter);
+    object oXpC3 = GetObjectByTag("HK47");
+    if (IsNPCPartyMember(NPC_HK_47) && GetIsObjectValid(oXpC3) && GetXP(oXpC3) < nAfter)
+        KSE_SetCreatureField(oXpC3, KSE_FIELD_XP(), nAfter);
+    object oXpC4 = GetObjectByTag("Jolee");
+    if (IsNPCPartyMember(NPC_JOLEE) && GetIsObjectValid(oXpC4) && GetXP(oXpC4) < nAfter)
+        KSE_SetCreatureField(oXpC4, KSE_FIELD_XP(), nAfter);
+    object oXpC5 = GetObjectByTag("Juhani");
+    if (IsNPCPartyMember(NPC_JUHANI) && GetIsObjectValid(oXpC5) && GetXP(oXpC5) < nAfter)
+        KSE_SetCreatureField(oXpC5, KSE_FIELD_XP(), nAfter);
+    object oXpC6 = GetObjectByTag("Mission");
+    if (IsNPCPartyMember(NPC_MISSION) && GetIsObjectValid(oXpC6) && GetXP(oXpC6) < nAfter)
+        KSE_SetCreatureField(oXpC6, KSE_FIELD_XP(), nAfter);
+    object oXpC7 = GetObjectByTag("t3m4");
+    if (IsNPCPartyMember(NPC_T3_M4) && GetIsObjectValid(oXpC7) && GetXP(oXpC7) < nAfter)
+        KSE_SetCreatureField(oXpC7, KSE_FIELD_XP(), nAfter);
+    object oXpC8 = GetObjectByTag("Zaalbar");
+    if (IsNPCPartyMember(NPC_ZAALBAR) && GetIsObjectValid(oXpC8) && GetXP(oXpC8) < nAfter)
+        KSE_SetCreatureField(oXpC8, KSE_FIELD_XP(), nAfter);
+    KSE_Diag(5, "AP|APPLIED|set_xp|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+    if (GetXP(GetFirstPC()) < nValue) return 2;
+    return 1;
+}
+
+int DtDelevel(string sArgs)
+{
+    int nLevel = DtNthInt(sArgs, 0, -1);
+    int nXp = DtNthInt(sArgs, 1, -1);
+    int nForce = DtNthInt(sArgs, 2, -1);
+    if (nLevel < 1 || nXp < 0) return 2;
+    object oPC = GetFirstPC();
+    int nLevelBefore = GetHitDice(oPC);
+    int nXPBefore = GetXP(oPC);
+    KSE_SetCreatureField(oPC, KSE_FIELD_CLASS0_LEVEL(), nLevel);
+    KSE_SetCreatureField(oPC, KSE_FIELD_XP(), nXp);
+    if (nForce >= 0) KSE_SetCreatureField(oPC, KSE_FIELD_FORCE(), nForce);
+    KSE_Diag(9, "AP|APPLIED|delevel|levelBefore=" + IntToString(nLevelBefore) + "|xpBefore=" + IntToString(nXPBefore) + "|levelAfter=" + IntToString(GetHitDice(oPC)) + "|xpAfter=" + IntToString(GetXP(oPC)));
+    return 1;
+}
+
+int DtForcePower(string sArgs)
+{
+    int nSpell = StringToInt(sArgs);
+    if (nSpell < 1) return 2;
+    object oPC = GetFirstPC();
+    int nHad = GetHasSpell(nSpell, oPC);
+    if (!nHad)
+    {
+        KSE_SetCreatureField(oPC, KSE_FIELD_ADD_FORCE_POWER(), nSpell);
+    }
+    KSE_Diag(150, "AP|APPLIED|force_power|id=" + IntToString(nSpell) + "|had=" + IntToString(nHad) + "|has=" + IntToString(GetHasSpell(nSpell, oPC)));
+    return 1;
+}
+
+int DtCompanionClass(string sArgs)
+{
+    int nSep = FindSubString(sArgs, ":");
+    if (nSep < 1) return 0;
+    string sName = GetSubString(sArgs, 0, nSep);
+    string sClass = GetSubString(sArgs, nSep + 1, GetStringLength(sArgs));
+    string sTag = "";
+    int nNpc = -1;
+    if (sName == "bastila") { sTag = "Bastila"; nNpc = NPC_BASTILA; }
+    if (sName == "canderous") { sTag = "Cand"; nNpc = NPC_CANDEROUS; }
+    if (sName == "carth") { sTag = "Carth"; nNpc = NPC_CARTH; }
+    if (sName == "jolee") { sTag = "Jolee"; nNpc = NPC_JOLEE; }
+    if (sName == "juhani") { sTag = "Juhani"; nNpc = NPC_JUHANI; }
+    if (sName == "mission") { sTag = "Mission"; nNpc = NPC_MISSION; }
+    if (sName == "zaalbar") { sTag = "Zaalbar"; nNpc = NPC_ZAALBAR; }
+    if (sName == "hk47") { sTag = "HK47"; nNpc = NPC_HK_47; }
+    if (nNpc < 0) return 0;
+    int nNew = -1;
+    int bJedi = FALSE;
+    if (sClass == "soldier") { nNew = CLASS_TYPE_SOLDIER; }
+    if (sClass == "scout") { nNew = CLASS_TYPE_SCOUT; }
+    if (sClass == "scoundrel") { nNew = CLASS_TYPE_SCOUNDREL; }
+    if (sClass == "guardian") { nNew = CLASS_TYPE_JEDIGUARDIAN; bJedi = TRUE; }
+    if (sClass == "consular") { nNew = CLASS_TYPE_JEDICONSULAR; bJedi = TRUE; }
+    if (sClass == "sentinel") { nNew = CLASS_TYPE_JEDISENTINEL; bJedi = TRUE; }
+    if (nNew < 0) return 0;
+    // the companion has to be in the party: a Carth-tagged object can exist well before he really joins, and a class written to it is lost
+    object oCompanion = GetObjectByTag(sTag);
+    if (!IsNPCPartyMember(nNpc) || !GetIsObjectValid(oCompanion)) return 2;
+    int nOldClass = GetClassByPosition(1, oCompanion);
+    int nClass1 = GetClassByPosition(2, oCompanion);
+    // already this class: a repeat of an applied assignment, which would reset the level; counts as done
+    if (nOldClass != nNew)
+    {
+        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_TYPE(), nNew);
+        KSE_SetCreatureField(oCompanion, KSE_FIELD_CLASS0_LEVEL(), 1);
+        KSE_SetCreatureField(oCompanion, KSE_FIELD_FORCE(), 10);
+        if (nNew == CLASS_TYPE_SOLDIER)
+        {
+            if (nOldClass == CLASS_TYPE_SCOUT)
+            {
+                KSE_RemoveFeatArrayA(11, oCompanion);
+                KSE_RemoveFeatArrayA(14, oCompanion);
+                KSE_RemoveFeatArrayA(30, oCompanion);
+                KSE_GrantFeatArrayA(42, oCompanion);
+                KSE_GrantFeatArrayA(29, oCompanion);
+                KSE_GrantFeatArrayA(28, oCompanion);
+                KSE_GrantFeatArrayA(4, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+            {
+                KSE_RemoveFeatArrayA(8, oCompanion);
+                KSE_RemoveFeatArrayA(104, oCompanion);
+                KSE_RemoveFeatArrayA(60, oCompanion);
+                KSE_RemoveFeatArrayA(31, oCompanion);
+                KSE_GrantFeatArrayA(42, oCompanion);
+                KSE_GrantFeatArrayA(28, oCompanion);
+                KSE_GrantFeatArrayA(29, oCompanion);
+                KSE_GrantFeatArrayA(6, oCompanion);
+                KSE_GrantFeatArrayA(4, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+            {
+                KSE_RemoveFeatArrayA(101, oCompanion);
+                KSE_RemoveFeatArrayA(107, oCompanion);
+                KSE_RemoveFeatArrayA(43, oCompanion);
+                KSE_RemoveFeatArrayA(116, oCompanion);
+                KSE_RemoveFeatArrayA(55, oCompanion);
+                KSE_GrantFeatArrayA(40, oCompanion);
+                KSE_GrantFeatArrayA(42, oCompanion);
+                KSE_GrantFeatArrayA(28, oCompanion);
+                KSE_GrantFeatArrayA(29, oCompanion);
+                KSE_GrantFeatArrayA(5, oCompanion);
+                KSE_GrantFeatArrayA(6, oCompanion);
+                KSE_GrantFeatArrayA(4, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+            {
+                KSE_RemoveFeatArrayA(107, oCompanion);
+                KSE_RemoveFeatArrayA(43, oCompanion);
+                KSE_RemoveFeatArrayA(116, oCompanion);
+                KSE_RemoveFeatArrayA(55, oCompanion);
+                KSE_RemoveFeatArrayA(88, oCompanion);
+                KSE_GrantFeatArrayA(40, oCompanion);
+                KSE_GrantFeatArrayA(42, oCompanion);
+                KSE_GrantFeatArrayA(28, oCompanion);
+                KSE_GrantFeatArrayA(29, oCompanion);
+                KSE_GrantFeatArrayA(5, oCompanion);
+                KSE_GrantFeatArrayA(6, oCompanion);
+                KSE_GrantFeatArrayA(4, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+            {
+                KSE_RemoveFeatArrayA(98, oCompanion);
+                KSE_RemoveFeatArrayA(107, oCompanion);
+                KSE_RemoveFeatArrayA(43, oCompanion);
+                KSE_RemoveFeatArrayA(116, oCompanion);
+                KSE_RemoveFeatArrayA(55, oCompanion);
+                KSE_GrantFeatArrayA(40, oCompanion);
+                KSE_GrantFeatArrayA(42, oCompanion);
+                KSE_GrantFeatArrayA(28, oCompanion);
+                KSE_GrantFeatArrayA(29, oCompanion);
+                KSE_GrantFeatArrayA(5, oCompanion);
+                KSE_GrantFeatArrayA(6, oCompanion);
+                KSE_GrantFeatArrayA(4, oCompanion);
+            }
+        }
+        if (nNew == CLASS_TYPE_SCOUT)
+        {
+            if (nOldClass == CLASS_TYPE_SOLDIER)
+            {
+                KSE_RemoveFeatArrayA(4, oCompanion);
+                KSE_RemoveFeatArrayA(42, oCompanion);
+                KSE_RemoveFeatArrayA(29, oCompanion);
+                KSE_RemoveFeatArrayA(28, oCompanion);
+                KSE_GrantFeatArrayA(11, oCompanion);
+                KSE_GrantFeatArrayA(14, oCompanion);
+                KSE_GrantFeatArrayA(30, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+            {
+                KSE_RemoveFeatArrayA(8, oCompanion);
+                KSE_RemoveFeatArrayA(104, oCompanion);
+                KSE_RemoveFeatArrayA(60, oCompanion);
+                KSE_RemoveFeatArrayA(31, oCompanion);
+                KSE_GrantFeatArrayA(11, oCompanion);
+                KSE_GrantFeatArrayA(30, oCompanion);
+                KSE_GrantFeatArrayA(14, oCompanion);
+                KSE_GrantFeatArrayA(6, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+            {
+                KSE_RemoveFeatArrayA(101, oCompanion);
+                KSE_RemoveFeatArrayA(107, oCompanion);
+                KSE_RemoveFeatArrayA(43, oCompanion);
+                KSE_RemoveFeatArrayA(116, oCompanion);
+                KSE_RemoveFeatArrayA(55, oCompanion);
+                KSE_GrantFeatArrayA(40, oCompanion);
+                KSE_GrantFeatArrayA(11, oCompanion);
+                KSE_GrantFeatArrayA(14, oCompanion);
+                KSE_GrantFeatArrayA(30, oCompanion);
+                KSE_GrantFeatArrayA(5, oCompanion);
+                KSE_GrantFeatArrayA(6, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+            {
+                KSE_RemoveFeatArrayA(107, oCompanion);
+                KSE_RemoveFeatArrayA(43, oCompanion);
+                KSE_RemoveFeatArrayA(116, oCompanion);
+                KSE_RemoveFeatArrayA(55, oCompanion);
+                KSE_RemoveFeatArrayA(88, oCompanion);
+                KSE_GrantFeatArrayA(40, oCompanion);
+                KSE_GrantFeatArrayA(11, oCompanion);
+                KSE_GrantFeatArrayA(14, oCompanion);
+                KSE_GrantFeatArrayA(30, oCompanion);
+                KSE_GrantFeatArrayA(5, oCompanion);
+                KSE_GrantFeatArrayA(6, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+            {
+                KSE_RemoveFeatArrayA(98, oCompanion);
+                KSE_RemoveFeatArrayA(107, oCompanion);
+                KSE_RemoveFeatArrayA(43, oCompanion);
+                KSE_RemoveFeatArrayA(116, oCompanion);
+                KSE_RemoveFeatArrayA(55, oCompanion);
+                KSE_GrantFeatArrayA(40, oCompanion);
+                KSE_GrantFeatArrayA(11, oCompanion);
+                KSE_GrantFeatArrayA(14, oCompanion);
+                KSE_GrantFeatArrayA(30, oCompanion);
+                KSE_GrantFeatArrayA(5, oCompanion);
+                KSE_GrantFeatArrayA(6, oCompanion);
+            }
+        }
+        if (nNew == CLASS_TYPE_SCOUNDREL)
+        {
+            if (nOldClass == CLASS_TYPE_SOLDIER)
+            {
+                KSE_RemoveFeatArrayA(4, oCompanion);
+                KSE_RemoveFeatArrayA(6, oCompanion);
+                KSE_RemoveFeatArrayA(42, oCompanion);
+                KSE_RemoveFeatArrayA(28, oCompanion);
+                KSE_RemoveFeatArrayA(29, oCompanion);
+                KSE_GrantFeatArrayA(8, oCompanion);
+                KSE_GrantFeatArrayA(104, oCompanion);
+                KSE_GrantFeatArrayA(60, oCompanion);
+                KSE_GrantFeatArrayA(31, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_SCOUT)
+            {
+                KSE_RemoveFeatArrayA(6, oCompanion);
+                KSE_RemoveFeatArrayA(11, oCompanion);
+                KSE_RemoveFeatArrayA(30, oCompanion);
+                KSE_RemoveFeatArrayA(14, oCompanion);
+                KSE_GrantFeatArrayA(8, oCompanion);
+                KSE_GrantFeatArrayA(104, oCompanion);
+                KSE_GrantFeatArrayA(60, oCompanion);
+                KSE_GrantFeatArrayA(31, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+            {
+                KSE_RemoveFeatArrayA(101, oCompanion);
+                KSE_RemoveFeatArrayA(107, oCompanion);
+                KSE_RemoveFeatArrayA(43, oCompanion);
+                KSE_RemoveFeatArrayA(116, oCompanion);
+                KSE_RemoveFeatArrayA(55, oCompanion);
+                KSE_GrantFeatArrayA(8, oCompanion);
+                KSE_GrantFeatArrayA(40, oCompanion);
+                KSE_GrantFeatArrayA(104, oCompanion);
+                KSE_GrantFeatArrayA(60, oCompanion);
+                KSE_GrantFeatArrayA(31, oCompanion);
+                KSE_GrantFeatArrayA(5, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+            {
+                KSE_RemoveFeatArrayA(107, oCompanion);
+                KSE_RemoveFeatArrayA(43, oCompanion);
+                KSE_RemoveFeatArrayA(116, oCompanion);
+                KSE_RemoveFeatArrayA(55, oCompanion);
+                KSE_RemoveFeatArrayA(88, oCompanion);
+                KSE_GrantFeatArrayA(8, oCompanion);
+                KSE_GrantFeatArrayA(40, oCompanion);
+                KSE_GrantFeatArrayA(104, oCompanion);
+                KSE_GrantFeatArrayA(60, oCompanion);
+                KSE_GrantFeatArrayA(31, oCompanion);
+                KSE_GrantFeatArrayA(5, oCompanion);
+            }
+            else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+            {
+                KSE_RemoveFeatArrayA(98, oCompanion);
+                KSE_RemoveFeatArrayA(107, oCompanion);
+                KSE_RemoveFeatArrayA(43, oCompanion);
+                KSE_RemoveFeatArrayA(116, oCompanion);
+                KSE_RemoveFeatArrayA(55, oCompanion);
+                KSE_GrantFeatArrayA(8, oCompanion);
+                KSE_GrantFeatArrayA(40, oCompanion);
+                KSE_GrantFeatArrayA(104, oCompanion);
+                KSE_GrantFeatArrayA(60, oCompanion);
+                KSE_GrantFeatArrayA(31, oCompanion);
+                KSE_GrantFeatArrayA(5, oCompanion);
+            }
+        }
+        if (nNew == CLASS_TYPE_JEDIGUARDIAN)
+        {
+            if (nOldClass == CLASS_TYPE_SOLDIER)
+            {
+                KSE_RemoveFeatArrayA(4, oCompanion);
+                KSE_RemoveFeatArrayA(6, oCompanion);
+                KSE_RemoveFeatArrayA(5, oCompanion);
+                KSE_RemoveFeatArrayA(40, oCompanion);
+                KSE_RemoveFeatArrayA(42, oCompanion);
+                KSE_RemoveFeatArrayA(28, oCompanion);
+                KSE_RemoveFeatArrayA(29, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(101, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(107, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(43, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(116, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(55, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_SCOUT)
+            {
+                KSE_RemoveFeatArrayA(6, oCompanion);
+                KSE_RemoveFeatArrayA(5, oCompanion);
+                KSE_RemoveFeatArrayA(40, oCompanion);
+                KSE_RemoveFeatArrayA(11, oCompanion);
+                KSE_RemoveFeatArrayA(14, oCompanion);
+                KSE_RemoveFeatArrayA(30, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(101, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(107, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(43, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(116, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(55, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+            {
+                KSE_RemoveFeatArrayA(5, oCompanion);
+                KSE_RemoveFeatArrayA(8, oCompanion);
+                KSE_RemoveFeatArrayA(40, oCompanion);
+                KSE_RemoveFeatArrayA(104, oCompanion);
+                KSE_RemoveFeatArrayA(60, oCompanion);
+                KSE_RemoveFeatArrayA(31, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(101, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(107, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(43, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(116, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(55, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+            {
+                KSE_RemoveFeatArrayA(88, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(101, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+            {
+                KSE_RemoveFeatArrayA(98, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(101, oCompanion));
+            }
+        }
+        if (nNew == CLASS_TYPE_JEDICONSULAR)
+        {
+            if (nOldClass == CLASS_TYPE_SOLDIER)
+            {
+                KSE_RemoveFeatArrayA(4, oCompanion);
+                KSE_RemoveFeatArrayA(6, oCompanion);
+                KSE_RemoveFeatArrayA(5, oCompanion);
+                KSE_RemoveFeatArrayA(40, oCompanion);
+                KSE_RemoveFeatArrayA(42, oCompanion);
+                KSE_RemoveFeatArrayA(28, oCompanion);
+                KSE_RemoveFeatArrayA(29, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(107, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(43, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(116, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(55, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(88, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_SCOUT)
+            {
+                KSE_RemoveFeatArrayA(6, oCompanion);
+                KSE_RemoveFeatArrayA(5, oCompanion);
+                KSE_RemoveFeatArrayA(40, oCompanion);
+                KSE_RemoveFeatArrayA(11, oCompanion);
+                KSE_RemoveFeatArrayA(14, oCompanion);
+                KSE_RemoveFeatArrayA(30, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(107, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(43, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(116, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(55, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(88, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+            {
+                KSE_RemoveFeatArrayA(5, oCompanion);
+                KSE_RemoveFeatArrayA(8, oCompanion);
+                KSE_RemoveFeatArrayA(40, oCompanion);
+                KSE_RemoveFeatArrayA(104, oCompanion);
+                KSE_RemoveFeatArrayA(60, oCompanion);
+                KSE_RemoveFeatArrayA(31, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(107, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(43, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(116, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(55, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(88, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+            {
+                KSE_RemoveFeatArrayA(101, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(88, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_JEDISENTINEL)
+            {
+                KSE_RemoveFeatArrayA(98, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(88, oCompanion));
+            }
+        }
+        if (nNew == CLASS_TYPE_JEDISENTINEL)
+        {
+            if (nOldClass == CLASS_TYPE_SOLDIER)
+            {
+                KSE_RemoveFeatArrayA(4, oCompanion);
+                KSE_RemoveFeatArrayA(6, oCompanion);
+                KSE_RemoveFeatArrayA(5, oCompanion);
+                KSE_RemoveFeatArrayA(40, oCompanion);
+                KSE_RemoveFeatArrayA(42, oCompanion);
+                KSE_RemoveFeatArrayA(28, oCompanion);
+                KSE_RemoveFeatArrayA(29, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(98, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(107, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(43, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(116, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(55, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_SCOUT)
+            {
+                KSE_RemoveFeatArrayA(6, oCompanion);
+                KSE_RemoveFeatArrayA(5, oCompanion);
+                KSE_RemoveFeatArrayA(40, oCompanion);
+                KSE_RemoveFeatArrayA(11, oCompanion);
+                KSE_RemoveFeatArrayA(14, oCompanion);
+                KSE_RemoveFeatArrayA(30, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(98, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(107, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(43, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(116, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(55, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_SCOUNDREL)
+            {
+                KSE_RemoveFeatArrayA(5, oCompanion);
+                KSE_RemoveFeatArrayA(8, oCompanion);
+                KSE_RemoveFeatArrayA(40, oCompanion);
+                KSE_RemoveFeatArrayA(104, oCompanion);
+                KSE_RemoveFeatArrayA(60, oCompanion);
+                KSE_RemoveFeatArrayA(31, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(98, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(107, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(43, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(116, oCompanion));
+                DelayCommand(1.0, KSE_GrantFeatArrayA(55, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_JEDIGUARDIAN)
+            {
+                KSE_RemoveFeatArrayA(101, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(98, oCompanion));
+            }
+            else if (nOldClass == CLASS_TYPE_JEDICONSULAR)
+            {
+                KSE_RemoveFeatArrayA(88, oCompanion);
+                DelayCommand(1.0, KSE_GrantFeatArrayA(98, oCompanion));
+            }
+        }
+    }
+    if (!bJedi)
+    {
+        object oWpn1 = GetItemInSlot(INVENTORY_SLOT_RIGHTWEAPON, oCompanion);
+        if (GetIsObjectValid(oWpn1))
+        {
+            int nBase1 = GetBaseItemType(oWpn1);
+            if (nBase1 == BASE_ITEM_LIGHTSABER || nBase1 == BASE_ITEM_SHORT_LIGHTSABER || nBase1 == BASE_ITEM_DOUBLE_BLADED_LIGHTSABER)
+            {
+                AssignCommand(oCompanion, ActionUnequipItem(oWpn1, TRUE));
+            }
+        }
+        object oWpn2 = GetItemInSlot(INVENTORY_SLOT_LEFTWEAPON, oCompanion);
+        if (GetIsObjectValid(oWpn2))
+        {
+            int nBase2 = GetBaseItemType(oWpn2);
+            if (nBase2 == BASE_ITEM_LIGHTSABER || nBase2 == BASE_ITEM_SHORT_LIGHTSABER || nBase2 == BASE_ITEM_DOUBLE_BLADED_LIGHTSABER)
+            {
+                AssignCommand(oCompanion, ActionUnequipItem(oWpn2, TRUE));
+            }
+        }
+        object oBody3 = GetItemInSlot(INVENTORY_SLOT_BODY, oCompanion);
+        if (GetIsObjectValid(oBody3))
+        {
+            int nBase3 = GetBaseItemType(oBody3);
+            if (nBase3 == BASE_ITEM_JEDI_ROBE || nBase3 == BASE_ITEM_JEDI_KNIGHT_ROBE || nBase3 == BASE_ITEM_JEDI_MASTER_ROBE)
+            {
+                AssignCommand(oCompanion, ActionUnequipItem(oBody3, TRUE));
+            }
+        }
+    }
+    KSE_Diag(109, "AP|APPLIED|companion_class|name=" + sName + "|class=" + sClass + "|class1=" + IntToString(nClass1));
+    return 1;
+}
+
+int DtTrap(string sArgs)
+{
+    int nSep = FindSubString(sArgs, ":");
+    if (nSep < 1) return 0;
+    string sType = GetSubString(sArgs, 0, nSep);
+    string sParams = GetSubString(sArgs, nSep + 1, GetStringLength(sArgs));
+    if (sType == "reduce_skill" && sParams == "computeruse")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetSkillRank(SKILL_COMPUTER_USE, oPC);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_COMPUTER_USE);
+        int nAfter = GetSkillRank(SKILL_COMPUTER_USE, oPC);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill=computeruse|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill=computeruse|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_skill" && sParams == "demolitions")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetSkillRank(SKILL_DEMOLITIONS, oPC);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_DEMOLITIONS);
+        int nAfter = GetSkillRank(SKILL_DEMOLITIONS, oPC);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill=demolitions|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill=demolitions|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_skill" && sParams == "stealth")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetSkillRank(SKILL_STEALTH, oPC);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_STEALTH);
+        int nAfter = GetSkillRank(SKILL_STEALTH, oPC);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill=stealth|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill=stealth|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_skill" && sParams == "awareness")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetSkillRank(SKILL_AWARENESS, oPC);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_AWARENESS);
+        int nAfter = GetSkillRank(SKILL_AWARENESS, oPC);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill=awareness|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill=awareness|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_skill" && sParams == "persuade")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetSkillRank(SKILL_PERSUADE, oPC);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_PERSUADE);
+        int nAfter = GetSkillRank(SKILL_PERSUADE, oPC);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill=persuade|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill=persuade|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_skill" && sParams == "repair")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetSkillRank(SKILL_REPAIR, oPC);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_REPAIR);
+        int nAfter = GetSkillRank(SKILL_REPAIR, oPC);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill=repair|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill=repair|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_skill" && sParams == "security")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetSkillRank(SKILL_SECURITY, oPC);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_SECURITY);
+        int nAfter = GetSkillRank(SKILL_SECURITY, oPC);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill=security|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill=security|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_skill" && sParams == "treatinjury")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetSkillRank(SKILL_TREAT_INJURY, oPC);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_SKILL_RANK(), SKILL_TREAT_INJURY);
+        int nAfter = GetSkillRank(SKILL_TREAT_INJURY, oPC);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_skill|skill=treatinjury|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_skill|skill=treatinjury|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_str")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetAbilityScore(oPC, ABILITY_STRENGTH);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_STR_BASE(), 0);
+        int nAfter = GetAbilityScore(oPC, ABILITY_STRENGTH);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_str|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_str|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_dex")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetAbilityScore(oPC, ABILITY_DEXTERITY);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_DEX_BASE(), 0);
+        int nAfter = GetAbilityScore(oPC, ABILITY_DEXTERITY);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_dex|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_dex|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_int")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetAbilityScore(oPC, ABILITY_INTELLIGENCE);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_INT_BASE(), 0);
+        int nAfter = GetAbilityScore(oPC, ABILITY_INTELLIGENCE);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_int|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_int|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_wis")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetAbilityScore(oPC, ABILITY_WISDOM);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_WIS_BASE(), 0);
+        int nAfter = GetAbilityScore(oPC, ABILITY_WISDOM);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_wis|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_wis|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "reduce_cha")
+    {
+        object oPC = GetFirstPC();
+        int nBefore = GetAbilityScore(oPC, ABILITY_CHARISMA);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_CHA_BASE(), 0);
+        int nAfter = GetAbilityScore(oPC, ABILITY_CHARISMA);
+        if (nAfter == nBefore)
+        {
+            KSE_Diag(134, "AP|NOOP|trap|type=reduce_cha|current=" + IntToString(nBefore));
+        }
+        else
+        {
+            KSE_Diag(134, "AP|APPLIED|trap|type=reduce_cha|before=" + IntToString(nBefore) + "|after=" + IntToString(nAfter));
+        }
+        return 1;
+    }
+    if (sType == "cut_max_hp")
+    {
+        object oPC = GetFirstPC();
+        int nMaxBefore = GetMaxHitPoints(oPC);
+        int nConBefore = GetAbilityScore(oPC, ABILITY_CONSTITUTION);
+        KSE_SetCreatureField(oPC, KSE_FIELD_HALVE_MAX_HP_VIA_CON(), 0);
+        int nMaxAfter = GetMaxHitPoints(oPC);
+        int nConAfter = GetAbilityScore(oPC, ABILITY_CONSTITUTION);
+        KSE_Diag(134, "AP|APPLIED|trap|type=cut_max_hp|maxbefore=" + IntToString(nMaxBefore) + "|maxafter=" + IntToString(nMaxAfter) + "|conbefore=" + IntToString(nConBefore) + "|conafter=" + IntToString(nConAfter));
+        return 1;
+    }
+    if (sType == "remove_half_inventory")
+    {
+        object oPC = GetFirstPC();
+        string sQuestTags0 = "|ancienttome|dan13_bluecryst|dan13_goldcryst|dan13_grncryst|dan14_crystal|dan14_crystal001|dan14_crystal002|dan14_diary|dan14ae_blkcryst|dan14ae_whtcryst|dan16_key|dan16_key001|dan_map1|dan_map2|dan_starpad|datapad|g_head|g_i_asthitem001|g_i_asthitem002|g_i_datapad001|g_i_datapad002|g_i_gizkapois001|g_i_pazdeck|g_i_pazsidebd001|g_i_pltuseitm01|g_i_upgrade001|g_i_upgrade002|g_i_upgrade003|";
+        string sQuestTags1 = "|g_i_upgrade004|g_i_upgrade005|g_i_upgrade006|g_i_upgrade007|g_i_upgrade008|g_i_upgrade009|g_mandat1|g_mandat2|g_mandat3|g_puzdat|g_shipparts|geno_datapad|gizkapoison|holocron|ip_pltuseitm_041|k33_itm_sithmdln|k34_itm_dropping|k35_itm_sithdata|k35_itm_sithdevc|k35_itm_sithpass|k35_itm_uthrpass|k36_itm_holocron|k37_itm_ajunta|k37_itm_freednf1|k37_itm_freednf2|k37_itm_freedont|k38a_itm_data|";
+        string sQuestTags2 = "|k39_itm_cersaber|k39_itm_coldgren|k39_itm_firegren|kas22_datapad|kas22_resouceid|kas24_bowcasbolt|kas24_datapad|kas24_droidhead|kas24_hortberr|kas24_joleeamule|kas24_tachgland|kas25_datapad|kas25_kinrathbod|kas25_mandhelmet|kas25_note|kas25_swordblade|kas25_swordhilt|kas25_wookcrysta|kas_starpad|kor37_datapad01|kor37_datapad02|kor39_itm_datapd|kor_itm_sithtabl|kor_starpad|lev09_portcellke|";
+        string sQuestTags3 = "|lev09_starcellke|lev40_detcard|lev40_spacesuit|man28_chum|man28_envirosuit|man28_sonic|man28_toxic|man_starpad|ptar_appjournal|ptar_daviksgem|ptar_permacrete|ptar_rakghoul001|ptar_rakghoul002|ptar_rakghoulser|ptar_rukjournal|ptar_sbpasscrd|ptar_shieldcodes|ptar_sitharmor|ptar_sithpapers|punk_coldserum|punk_conch|punk_holocron|punk_stargem|strangebox|tar02_sithbaseke|tar05_bekplan|tar05_synthodor|";
+        string sQuestTags4 = "|tar08_comppass|tar09_icebreaker|tar10_accelerato|tar10_elevcar001|tar10_garagekey|tar10_mechid|tar10_powercell|tat17_bountywrit|tat17_datapad|tat17_fizarkprl|tat17_huntpermit|tat17_racebond|tat17_sandperdis|tat17_vaporator|tat17_wraidplate|tat18_dragonprl|tat18_wraidplate|tat20_banthafod|tat20_gaffichief|tat20aa_westmap|tat_starpad|unk42_key|unk44_data|unk_researchpad|w_crystal|w_ddata|w_diary|";
+        string sQuestTags5 = "|w_key|w_repkey|w_repkey2|w_rtape|w_sdatapad|w_sdatapadm|w_sithkey|w_sithkey2|w_tape|w_token|";
+        int nEligible = 0;
+        object oCountItem = GetFirstItemInInventory(oPC);
+        while (GetIsObjectValid(oCountItem))
+        {
+            if (!GetPlotFlag(oCountItem))
+            {
+                nEligible = nEligible + 1;
+            }
+            oCountItem = GetNextItemInInventory(oPC);
+        }
+
+        int nToRemove = nEligible / 2;
+        int nRemaining = nEligible;
+        int nRemovedSoFar = 0;
+        int nRemoved = 0;
+        object oCurrent = GetFirstItemInInventory(oPC);
+        while (GetIsObjectValid(oCurrent))
+        {
+            object oNext = GetNextItemInInventory(oPC);
+            if (!GetPlotFlag(oCurrent))
+            {
+                if (Random(nRemaining) < nToRemove - nRemovedSoFar)
+                {
+                    string sKey = "|" + GetTag(oCurrent) + "|";
+                    int bQuest = FALSE;
+                    if (!bQuest) bQuest = (FindSubString(sQuestTags0, sKey) != -1);
+                    if (!bQuest) bQuest = (FindSubString(sQuestTags1, sKey) != -1);
+                    if (!bQuest) bQuest = (FindSubString(sQuestTags2, sKey) != -1);
+                    if (!bQuest) bQuest = (FindSubString(sQuestTags3, sKey) != -1);
+                    if (!bQuest) bQuest = (FindSubString(sQuestTags4, sKey) != -1);
+                    if (!bQuest) bQuest = (FindSubString(sQuestTags5, sKey) != -1);
+                    if (!bQuest)
+                    {
+                        DestroyObject(oCurrent);
+                        nRemovedSoFar = nRemovedSoFar + 1;
+                        nRemoved = nRemoved + 1;
+                    }
+                }
+                nRemaining = nRemaining - 1;
+            }
+            oCurrent = oNext;
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_inventory|removed=" + IntToString(nRemoved));
+        return 1;
+    }
+    if (sType == "remove_companion" && sParams == "bastila")
+    {
+        RemoveAvailableNPC(NPC_BASTILA);
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name=bastila");
+        return 1;
+    }
+    if (sType == "remove_companion" && sParams == "canderous")
+    {
+        RemoveAvailableNPC(NPC_CANDEROUS);
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name=canderous");
+        return 1;
+    }
+    if (sType == "remove_companion" && sParams == "carth")
+    {
+        RemoveAvailableNPC(NPC_CARTH);
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name=carth");
+        return 1;
+    }
+    if (sType == "remove_companion" && sParams == "jolee")
+    {
+        RemoveAvailableNPC(NPC_JOLEE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name=jolee");
+        return 1;
+    }
+    if (sType == "remove_companion" && sParams == "juhani")
+    {
+        RemoveAvailableNPC(NPC_JUHANI);
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name=juhani");
+        return 1;
+    }
+    if (sType == "remove_companion" && sParams == "mission")
+    {
+        RemoveAvailableNPC(NPC_MISSION);
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name=mission");
+        return 1;
+    }
+    if (sType == "remove_companion" && sParams == "zaalbar")
+    {
+        RemoveAvailableNPC(NPC_ZAALBAR);
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name=zaalbar");
+        return 1;
+    }
+    if (sType == "remove_companion" && sParams == "hk47")
+    {
+        RemoveAvailableNPC(NPC_HK_47);
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name=hk47");
+        return 1;
+    }
+    if (sType == "remove_companion" && sParams == "t3m4")
+    {
+        RemoveAvailableNPC(NPC_T3_M4);
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name=t3m4");
+        return 1;
+    }
+    if (sType == "purge_companion" && sParams == "bastila")
+    {
+        RemovePartyMember(NPC_BASTILA);
+        RemoveAvailableNPC(NPC_BASTILA);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Bastila", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Bastila", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name=bastila|destroyed=" + IntToString(nPurged));
+        return 1;
+    }
+    if (sType == "purge_companion" && sParams == "canderous")
+    {
+        RemovePartyMember(NPC_CANDEROUS);
+        RemoveAvailableNPC(NPC_CANDEROUS);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Cand", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Cand", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name=canderous|destroyed=" + IntToString(nPurged));
+        return 1;
+    }
+    if (sType == "purge_companion" && sParams == "carth")
+    {
+        RemovePartyMember(NPC_CARTH);
+        RemoveAvailableNPC(NPC_CARTH);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Carth", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Carth", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name=carth|destroyed=" + IntToString(nPurged));
+        return 1;
+    }
+    if (sType == "purge_companion" && sParams == "jolee")
+    {
+        RemovePartyMember(NPC_JOLEE);
+        RemoveAvailableNPC(NPC_JOLEE);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Jolee", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Jolee", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name=jolee|destroyed=" + IntToString(nPurged));
+        return 1;
+    }
+    if (sType == "purge_companion" && sParams == "juhani")
+    {
+        RemovePartyMember(NPC_JUHANI);
+        RemoveAvailableNPC(NPC_JUHANI);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Juhani", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Juhani", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name=juhani|destroyed=" + IntToString(nPurged));
+        return 1;
+    }
+    if (sType == "purge_companion" && sParams == "mission")
+    {
+        RemovePartyMember(NPC_MISSION);
+        RemoveAvailableNPC(NPC_MISSION);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Mission", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Mission", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name=mission|destroyed=" + IntToString(nPurged));
+        return 1;
+    }
+    if (sType == "purge_companion" && sParams == "zaalbar")
+    {
+        RemovePartyMember(NPC_ZAALBAR);
+        RemoveAvailableNPC(NPC_ZAALBAR);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Zaalbar", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Zaalbar", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name=zaalbar|destroyed=" + IntToString(nPurged));
+        return 1;
+    }
+    if (sType == "purge_companion" && sParams == "hk47")
+    {
+        RemovePartyMember(NPC_HK_47);
+        RemoveAvailableNPC(NPC_HK_47);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("HK47", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("HK47", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name=hk47|destroyed=" + IntToString(nPurged));
+        return 1;
+    }
+    if (sType == "purge_companion" && sParams == "t3m4")
+    {
+        RemovePartyMember(NPC_T3_M4);
+        RemoveAvailableNPC(NPC_T3_M4);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("t3m4", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("t3m4", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name=t3m4|destroyed=" + IntToString(nPurged));
+        return 1;
+    }
+    if (sType == "trap_companion" && sParams == "bastila")
+    {
+        if (GetJournalEntry("ap_ent_bastila") < 20) AddJournalQuestEntry("ap_ent_bastila", 20);
+        RemovePartyMember(NPC_BASTILA);
+        RemoveAvailableNPC(NPC_BASTILA);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Bastila", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Bastila", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name=bastila|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_bastila")));
+        return 1;
+    }
+    if (sType == "trap_companion" && sParams == "canderous")
+    {
+        if (GetJournalEntry("ap_ent_canderous") < 20) AddJournalQuestEntry("ap_ent_canderous", 20);
+        RemovePartyMember(NPC_CANDEROUS);
+        RemoveAvailableNPC(NPC_CANDEROUS);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Cand", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Cand", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name=canderous|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_canderous")));
+        return 1;
+    }
+    if (sType == "trap_companion" && sParams == "carth")
+    {
+        if (GetJournalEntry("ap_ent_carth") < 20) AddJournalQuestEntry("ap_ent_carth", 20);
+        RemovePartyMember(NPC_CARTH);
+        RemoveAvailableNPC(NPC_CARTH);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Carth", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Carth", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name=carth|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_carth")));
+        return 1;
+    }
+    if (sType == "trap_companion" && sParams == "jolee")
+    {
+        if (GetJournalEntry("ap_ent_jolee") < 20) AddJournalQuestEntry("ap_ent_jolee", 20);
+        RemovePartyMember(NPC_JOLEE);
+        RemoveAvailableNPC(NPC_JOLEE);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Jolee", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Jolee", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name=jolee|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_jolee")));
+        return 1;
+    }
+    if (sType == "trap_companion" && sParams == "juhani")
+    {
+        if (GetJournalEntry("ap_ent_juhani") < 20) AddJournalQuestEntry("ap_ent_juhani", 20);
+        RemovePartyMember(NPC_JUHANI);
+        RemoveAvailableNPC(NPC_JUHANI);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Juhani", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Juhani", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name=juhani|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_juhani")));
+        return 1;
+    }
+    if (sType == "trap_companion" && sParams == "mission")
+    {
+        if (GetJournalEntry("ap_ent_mission") < 20) AddJournalQuestEntry("ap_ent_mission", 20);
+        RemovePartyMember(NPC_MISSION);
+        RemoveAvailableNPC(NPC_MISSION);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Mission", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Mission", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name=mission|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_mission")));
+        return 1;
+    }
+    if (sType == "trap_companion" && sParams == "zaalbar")
+    {
+        if (GetJournalEntry("ap_ent_zaalbar") < 20) AddJournalQuestEntry("ap_ent_zaalbar", 20);
+        RemovePartyMember(NPC_ZAALBAR);
+        RemoveAvailableNPC(NPC_ZAALBAR);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("Zaalbar", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("Zaalbar", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name=zaalbar|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_zaalbar")));
+        return 1;
+    }
+    if (sType == "trap_companion" && sParams == "hk47")
+    {
+        if (GetJournalEntry("ap_ent_hk47") < 20) AddJournalQuestEntry("ap_ent_hk47", 20);
+        RemovePartyMember(NPC_HK_47);
+        RemoveAvailableNPC(NPC_HK_47);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("HK47", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("HK47", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name=hk47|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_hk47")));
+        return 1;
+    }
+    if (sType == "trap_companion" && sParams == "t3m4")
+    {
+        if (GetJournalEntry("ap_ent_t3m4") < 20) AddJournalQuestEntry("ap_ent_t3m4", 20);
+        RemovePartyMember(NPC_T3_M4);
+        RemoveAvailableNPC(NPC_T3_M4);
+        int nPurged = 0;
+        object oStray = GetObjectByTag("t3m4", nPurged);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nPurged++;
+            oStray = GetObjectByTag("t3m4", nPurged);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name=t3m4|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_t3m4")));
+        return 1;
+    }
+    if (sType == "unparty_companion" && sParams == "bastila")
+    {
+        RemovePartyMember(NPC_BASTILA);
+        int nStray = 0;
+        object oStray = GetObjectByTag("Bastila", nStray);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nStray++;
+            oStray = GetObjectByTag("Bastila", nStray);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name=bastila|destroyed=" + IntToString(nStray));
+        return 1;
+    }
+    if (sType == "unparty_companion" && sParams == "canderous")
+    {
+        RemovePartyMember(NPC_CANDEROUS);
+        int nStray = 0;
+        object oStray = GetObjectByTag("Cand", nStray);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nStray++;
+            oStray = GetObjectByTag("Cand", nStray);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name=canderous|destroyed=" + IntToString(nStray));
+        return 1;
+    }
+    if (sType == "unparty_companion" && sParams == "carth")
+    {
+        RemovePartyMember(NPC_CARTH);
+        int nStray = 0;
+        object oStray = GetObjectByTag("Carth", nStray);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nStray++;
+            oStray = GetObjectByTag("Carth", nStray);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name=carth|destroyed=" + IntToString(nStray));
+        return 1;
+    }
+    if (sType == "unparty_companion" && sParams == "jolee")
+    {
+        RemovePartyMember(NPC_JOLEE);
+        int nStray = 0;
+        object oStray = GetObjectByTag("Jolee", nStray);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nStray++;
+            oStray = GetObjectByTag("Jolee", nStray);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name=jolee|destroyed=" + IntToString(nStray));
+        return 1;
+    }
+    if (sType == "unparty_companion" && sParams == "juhani")
+    {
+        RemovePartyMember(NPC_JUHANI);
+        int nStray = 0;
+        object oStray = GetObjectByTag("Juhani", nStray);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nStray++;
+            oStray = GetObjectByTag("Juhani", nStray);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name=juhani|destroyed=" + IntToString(nStray));
+        return 1;
+    }
+    if (sType == "unparty_companion" && sParams == "mission")
+    {
+        RemovePartyMember(NPC_MISSION);
+        int nStray = 0;
+        object oStray = GetObjectByTag("Mission", nStray);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nStray++;
+            oStray = GetObjectByTag("Mission", nStray);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name=mission|destroyed=" + IntToString(nStray));
+        return 1;
+    }
+    if (sType == "unparty_companion" && sParams == "zaalbar")
+    {
+        RemovePartyMember(NPC_ZAALBAR);
+        int nStray = 0;
+        object oStray = GetObjectByTag("Zaalbar", nStray);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nStray++;
+            oStray = GetObjectByTag("Zaalbar", nStray);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name=zaalbar|destroyed=" + IntToString(nStray));
+        return 1;
+    }
+    if (sType == "unparty_companion" && sParams == "hk47")
+    {
+        RemovePartyMember(NPC_HK_47);
+        int nStray = 0;
+        object oStray = GetObjectByTag("HK47", nStray);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nStray++;
+            oStray = GetObjectByTag("HK47", nStray);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name=hk47|destroyed=" + IntToString(nStray));
+        return 1;
+    }
+    if (sType == "unparty_companion" && sParams == "t3m4")
+    {
+        RemovePartyMember(NPC_T3_M4);
+        int nStray = 0;
+        object oStray = GetObjectByTag("t3m4", nStray);
+        while (GetIsObjectValid(oStray))
+        {
+            DestroyObject(oStray);
+            nStray++;
+            oStray = GetObjectByTag("t3m4", nStray);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=unparty_companion|name=t3m4|destroyed=" + IntToString(nStray));
+        return 1;
+    }
+    if (sType == "select_companion" && sParams == "bastila")
+    {
+        SetNPCSelectability(NPC_BASTILA, TRUE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name=bastila");
+        return 1;
+    }
+    if (sType == "select_companion" && sParams == "canderous")
+    {
+        SetNPCSelectability(NPC_CANDEROUS, TRUE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name=canderous");
+        return 1;
+    }
+    if (sType == "select_companion" && sParams == "carth")
+    {
+        SetNPCSelectability(NPC_CARTH, TRUE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name=carth");
+        return 1;
+    }
+    if (sType == "select_companion" && sParams == "jolee")
+    {
+        SetNPCSelectability(NPC_JOLEE, TRUE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name=jolee");
+        return 1;
+    }
+    if (sType == "select_companion" && sParams == "juhani")
+    {
+        SetNPCSelectability(NPC_JUHANI, TRUE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name=juhani");
+        return 1;
+    }
+    if (sType == "select_companion" && sParams == "mission")
+    {
+        SetNPCSelectability(NPC_MISSION, TRUE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name=mission");
+        return 1;
+    }
+    if (sType == "select_companion" && sParams == "zaalbar")
+    {
+        SetNPCSelectability(NPC_ZAALBAR, TRUE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name=zaalbar");
+        return 1;
+    }
+    if (sType == "select_companion" && sParams == "hk47")
+    {
+        SetNPCSelectability(NPC_HK_47, TRUE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name=hk47");
+        return 1;
+    }
+    if (sType == "select_companion" && sParams == "t3m4")
+    {
+        SetNPCSelectability(NPC_T3_M4, TRUE);
+        KSE_Diag(134, "AP|APPLIED|trap|type=select_companion|name=t3m4");
+        return 1;
+    }
+    if (sType == "set_recruit_marker" && sParams == "bastila")
+    {
+        if (GetJournalEntry("ap_recruit_bastila") < 1)
+        {
+            AddJournalQuestEntry("ap_recruit_bastila", 1);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name=bastila|marker=" + IntToString(GetJournalEntry("ap_recruit_bastila")));
+        return 1;
+    }
+    if (sType == "set_recruit_marker" && sParams == "canderous")
+    {
+        if (GetJournalEntry("ap_recruit_canderous") < 1)
+        {
+            AddJournalQuestEntry("ap_recruit_canderous", 1);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name=canderous|marker=" + IntToString(GetJournalEntry("ap_recruit_canderous")));
+        return 1;
+    }
+    if (sType == "set_recruit_marker" && sParams == "carth")
+    {
+        if (GetJournalEntry("ap_recruit_carth") < 1)
+        {
+            AddJournalQuestEntry("ap_recruit_carth", 1);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name=carth|marker=" + IntToString(GetJournalEntry("ap_recruit_carth")));
+        return 1;
+    }
+    if (sType == "set_recruit_marker" && sParams == "jolee")
+    {
+        if (GetJournalEntry("ap_recruit_jolee") < 1)
+        {
+            AddJournalQuestEntry("ap_recruit_jolee", 1);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name=jolee|marker=" + IntToString(GetJournalEntry("ap_recruit_jolee")));
+        return 1;
+    }
+    if (sType == "set_recruit_marker" && sParams == "juhani")
+    {
+        if (GetJournalEntry("ap_recruit_juhani") < 1)
+        {
+            AddJournalQuestEntry("ap_recruit_juhani", 1);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name=juhani|marker=" + IntToString(GetJournalEntry("ap_recruit_juhani")));
+        return 1;
+    }
+    if (sType == "set_recruit_marker" && sParams == "mission")
+    {
+        if (GetJournalEntry("ap_recruit_mission") < 1)
+        {
+            AddJournalQuestEntry("ap_recruit_mission", 1);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name=mission|marker=" + IntToString(GetJournalEntry("ap_recruit_mission")));
+        return 1;
+    }
+    if (sType == "set_recruit_marker" && sParams == "zaalbar")
+    {
+        if (GetJournalEntry("ap_recruit_zaalbar") < 1)
+        {
+            AddJournalQuestEntry("ap_recruit_zaalbar", 1);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name=zaalbar|marker=" + IntToString(GetJournalEntry("ap_recruit_zaalbar")));
+        return 1;
+    }
+    if (sType == "set_recruit_marker" && sParams == "hk47")
+    {
+        if (GetJournalEntry("ap_recruit_hk47") < 1)
+        {
+            AddJournalQuestEntry("ap_recruit_hk47", 1);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name=hk47|marker=" + IntToString(GetJournalEntry("ap_recruit_hk47")));
+        return 1;
+    }
+    if (sType == "set_recruit_marker" && sParams == "t3m4")
+    {
+        if (GetJournalEntry("ap_recruit_t3m4") < 1)
+        {
+            AddJournalQuestEntry("ap_recruit_t3m4", 1);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=set_recruit_marker|name=t3m4|marker=" + IntToString(GetJournalEntry("ap_recruit_t3m4")));
+        return 1;
+    }
+    if (sType == "remove_half_feats")
+    {
+        object oPC = GetFirstPC();
+        int i = 0;
+        int nId = DtNthInt(sParams, 0, -9999);
+        while (nId != -9999)
+        {
+            if (GetHasFeat(nId, oPC)) KSE_RemoveFeatArrayA(nId, oPC);
+            i = i + 1;
+            nId = DtNthInt(sParams, i, -9999);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_feats|ids=" + sParams);
+        return 1;
+    }
+    if (sType == "remove_half_powers")
+    {
+        object oPC = GetFirstPC();
+        int i = 0;
+        int nId = DtNthInt(sParams, 0, -9999);
+        while (nId != -9999)
+        {
+            if (GetHasSpell(nId, oPC)) KSE_SetCreatureField(oPC, KSE_FIELD_REMOVE_FORCE_POWER(), nId);
+            i = i + 1;
+            nId = DtNthInt(sParams, i, -9999);
+        }
+        KSE_Diag(134, "AP|APPLIED|trap|type=remove_half_powers|ids=" + sParams);
+        return 1;
+    }
+    return 0;
+}
+
+// On-screen text does not work in this game (docs/MODE_DEPENDENCIES.md); the one-line dialog ap_gate_msg does.
+void DtShowMessage(object oPC, string sMsg)
+{
+    // "~~" in the text is a line break (the client joins the messages of a batch of jobs with it)
+    int nBr = FindSubString(sMsg, "~~");
+    while (nBr >= 0)
+    {
+        sMsg = GetSubString(sMsg, 0, nBr) + "\n" + GetSubString(sMsg, nBr + 2, GetStringLength(sMsg));
+        nBr = FindSubString(sMsg, "~~");
+    }
+    SetCustomToken(901, sMsg);
+    AssignCommand(oPC, ActionStartConversation(oPC, "ap_gate_msg", FALSE, CONVERSATION_TYPE_CINEMATIC, TRUE));
+}
+
+// give_item:<resref>:<count> -- the same grant as the area-entry give_item block (items created one at a time, marked so the loot
+// handler does not destroy them), without that block's starpad progress marker.
+int DtGiveItem(object oPC, string sArgs)
+{
+    string sRes = sArgs;
+    int nCount = 1;
+    int nC = FindSubString(sArgs, ":");
+    if (nC >= 0)
+    {
+        sRes = GetSubString(sArgs, 0, nC);
+        nCount = StringToInt(GetSubString(sArgs, nC + 1, GetStringLength(sArgs)));
+    }
+    if (nCount < 1) nCount = 1;
+    if (nCount > 50) nCount = 50;
+    KSE_SetData("granted_exempt_" + GetStringLowerCase(sRes), "1");
+    int nMade = 0;
+    int i = 0;
+    while (i < nCount)
+    {
+        object oItem = CreateItemOnObject(sRes, oPC, 1);
+        if (GetIsObjectValid(oItem)) nMade = nMade + 1;
+        i = i + 1;
+    }
+    DtLog("GIVE|resref=" + sRes + "|asked=" + IntToString(nCount) + "|created=" + IntToString(nMade) + "|held=" + IntToString(GetItemStackSize(GetItemPossessedBy(oPC, sRes))));
+    if (nMade < 1) return 2;
+    return 1;
+}
+
+// The actions. Returns 0 for one it does not know, 1 when done, 2 when it ran but could not do its job (for example an item
+// that does not exist). "notify" does nothing itself: its text is the message.
+// "arm:<name>" runs one of the fixed arms (DtArm, generated from generate_trampoline_batch.py's APPLIES table).
+int DtRun(object oPC, string sAction, string sArgs)
+{
+    if (sAction == "notify") return 1;
+    if (sAction == "arm") return DtArm(sArgs);
+    if (sAction == "give_item") return DtGiveItem(oPC, sArgs);
+    if (sAction == "set_xp") return DtSetXp(sArgs);
+    if (sAction == "delevel") return DtDelevel(sArgs);
+    if (sAction == "force_power") return DtForcePower(sArgs);
+    if (sAction == "companion_class") return DtCompanionClass(sArgs);
+    if (sAction == "trap") return DtTrap(sArgs);
+    if (sAction == "set_credits")
+    {
+        KSE_SetCredits(oPC, StringToInt(sArgs));
+        if (GetGold(oPC) != StringToInt(sArgs)) return 2;
+        return 1;
+    }
+    return 0;
+}
+
+void DtTick()
+{
+    object oPC = GetFirstPC();
+    if (!GetIsObjectValid(oPC)) return;
+    int nPoll = 0;
+    if (KSE_HasData("dt_poll")) nPoll = StringToInt(KSE_GetData("dt_poll"));
+    nPoll = nPoll + 1;
+    KSE_SetData("dt_poll", IntToString(nPoll));
+    int nSeq = DtGetSeq(oPC);
+
+    // an area change restarts the settling period; the companions are not materialized yet at the instant of entry
+    int bState = FALSE;
+    string sMod = GetModuleFileName();
+    string sLastMod = "";
+    if (KSE_HasData("dt_mod")) sLastMod = KSE_GetData("dt_mod");
+    if (sMod != sLastMod)
+    {
+        KSE_SetData("dt_mod", sMod);
+        KSE_SetData("dt_ready", "0");
+        DelayCommand(3.0, DtMarkReady());
+        DtLog("area_change|from=" + sLastMod);
+        bState = TRUE;
+    }
+    // the saved number as the client needs it: on every change (a reloaded save), at an area change, and every 12th poll
+    string sLastSeq = "";
+    if (KSE_HasData("dt_lastseq")) sLastSeq = KSE_GetData("dt_lastseq");
+    if (sLastSeq != IntToString(nSeq)) bState = TRUE;
+    if (nPoll % 12 == 0) bState = TRUE;
+    if (bState)
+    {
+        KSE_SetData("dt_lastseq", IntToString(nSeq));
+        DtLog("STATE|seq=" + IntToString(nSeq));
+    }
+
+    int nProbe = DtProbeMask(oPC);
+    int nProbeLast = -1;
+    if (KSE_HasData("dt_probe")) nProbeLast = StringToInt(KSE_GetData("dt_probe"));
+    if (nProbe != nProbeLast)
+    {
+        KSE_SetData("dt_probe", IntToString(nProbe));
+        DtLog("PROBE|mask=" + IntToString(nProbe) + "|prev=" + IntToString(nProbeLast));
+    }
+
+    string sJob = "";
+    if (KSE_HasData("dt_job")) sJob = KSE_GetData("dt_job");
+    if (sJob == "") return;
+    int nC1 = FindSubString(sJob, ":");
+    if (nC1 < 1)
+    {
+        KSE_SetData("dt_job", "");
+        DtLog("BAD|raw=" + sJob);
+        return;
+    }
+    int nJobSeq = StringToInt(GetSubString(sJob, 0, nC1));
+    string sRest = GetSubString(sJob, nC1 + 1, GetStringLength(sJob));
+    string sMsg = "";
+    int nMsg = FindSubString(sRest, "^^");
+    if (nMsg >= 0)
+    {
+        sMsg = GetSubString(sRest, nMsg + 2, GetStringLength(sRest));
+        sRest = GetSubString(sRest, 0, nMsg);
+    }
+    string sAction = sRest;
+    string sArgs = "";
+    int nC2 = FindSubString(sRest, ":");
+    if (nC2 >= 0)
+    {
+        sAction = GetSubString(sRest, 0, nC2);
+        sArgs = GetSubString(sRest, nC2 + 1, GetStringLength(sRest));
+    }
+    if (sAction == "notify") sMsg = sArgs;
+
+    // nothing is judged during the settling period after an area change: the saved number is read once the game has finished loading
+    int nWaited = 0;
+    if (KSE_HasData("dt_waitseq") && KSE_GetData("dt_waitseq") == IntToString(nJobSeq)) nWaited = StringToInt(KSE_GetData("dt_waited"));
+    else
+    {
+        KSE_SetData("dt_waitseq", IntToString(nJobSeq));
+        KSE_SetData("dt_lastgate", "-1");
+    }
+    nWaited = nWaited + 1;
+    KSE_SetData("dt_waited", IntToString(nWaited));
+    int nGate = 0;
+    if (!KSE_HasData("dt_ready") || KSE_GetData("dt_ready") != "1") nGate = 32;
+    else
+    {
+        // "state" only asks for the saved number (the client has not learned it yet); it changes nothing
+        if (sAction == "state")
+        {
+            KSE_SetData("dt_job", "");
+            KSE_SetData("dt_lastseq", IntToString(nSeq));
+            DtLog("STATE|seq=" + IntToString(nSeq));
+            return;
+        }
+        if (nJobSeq == nSeq)
+        {
+            KSE_SetData("dt_job", "");
+            DtLog("DUP|seq=" + IntToString(nJobSeq));
+            return;
+        }
+        if (nJobSeq != (nSeq + 1) % 256)
+        {
+            KSE_SetData("dt_job", "");
+            DtLog("SYNC|seq=" + IntToString(nJobSeq) + "|have=" + IntToString(nSeq));
+            return;
+        }
+        nGate = DtGateBits(oPC);
+        // An incoming DeathLink is not held for combat (that is when it matters), and a player who is already dead is not a reason to wait: the
+        // arm reads wasDead itself. Every other gate (conversation, scene, cutscene, locked player, area just loaded, no party) still holds it.
+        if (sAction == "arm" && sArgs == "force_death")
+        {
+            if ((nGate / 16) % 2 == 1) nGate = nGate - 16;
+            if ((nGate / 256) % 2 == 1) nGate = nGate - 256;
+        }
+    }
+
+    if (nGate != 0)
+    {
+        int nLast = StringToInt(KSE_GetData("dt_lastgate"));
+        if (nGate != nLast || nWaited % 6 == 1)
+        {
+            KSE_SetData("dt_lastgate", IntToString(nGate));
+            DtLog("WAIT|seq=" + IntToString(nJobSeq) + "|gate=" + IntToString(nGate) + "|waited=" + IntToString(nWaited));
+        }
+        return;
+    }
+
+    DtSetSeq(oPC, nJobSeq);
+    KSE_SetData("dt_job", "");
+    KSE_SetData("dt_lastseq", IntToString(nJobSeq));
+    int nRan = DtRun(oPC, sAction, sArgs);
+    if (nRan == 1)
+    {
+        DtLog("APPLIED|seq=" + IntToString(nJobSeq) + "|action=" + sAction + "|waited=" + IntToString(nWaited) + "|party=" + IntToString(GetPartyMemberCount()));
+        if (sMsg != "") DtShowMessage(oPC, sMsg);
+    }
+    else if (nRan == 2)
+        DtLog("FAILED|seq=" + IntToString(nJobSeq) + "|action=" + sAction + "|args=" + sArgs);
+    else
+        DtLog("UNKNOWN|seq=" + IntToString(nJobSeq) + "|action=" + sAction);
 }
 
 void main()
@@ -2307,6 +4991,7 @@ void main()
     KSE_SetData("poll_open", "1");
     KSE_Diag(176, "AP|POLLRUN|begin|party=" + IntToString(GetPartyMemberCount()));
     EnsureHeartbeat();
+    DtTick();
     if (bTrace) KSE_Diag(176, "AP|POLLRUN|s1");
     CheckCompanionStuck();
     if (bTrace) KSE_Diag(176, "AP|POLLRUN|s2");
@@ -2323,12 +5008,14 @@ void main()
     CheckCredits();
     CheckAbilityScores();
     CheckClasses();
-    CheckDroidLook();
     CheckCompanionClasses();
-    CheckCompanionFeats();
     CheckRoster();
     CheckProgressionItems();
+    CheckSithArmor();
     CheckBossDatapads();
+    CheckQuestItems();
+    CheckBazaar();
+    CheckTombDoors();
     CheckVisitedMarkers();
     CheckPlayerId();
     CheckHideoutCarth();

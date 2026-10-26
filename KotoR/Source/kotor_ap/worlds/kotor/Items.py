@@ -9,7 +9,7 @@ class ItemData(typing.NamedTuple):
     code: typing.Optional[int]
     classification: ItemClassification
     # Extender arm name this item forwards to (see KNOWN_ARM_NAMES in
-    # KotorClient.py / AP_ARM_NAMES in extender/src/dllmain.c). Must match
+    # KotorClient.py / AP_ARM_NAMES in extender/src_k1se/ap_extender.c). Must match
     # exactly -- this is how the client knows what to send when the item
     # is received.
     arm_name: str
@@ -19,6 +19,11 @@ class KotorItem(Item):
     game: str = "KotOR"
 
 
+# Classification (0.2.0): an item is progression only if a rule reads it or it is a goal marker (the companions, for the
+# Ebon Hawk subplot checks in the gated companion mode; the story gate tokens; the goal markers), because Archipelago
+# collects only progression items into the logic state and bars them from the locations the rules exclude. Skills and
+# abilities are repeatable small boosts, so they are filler; the class, Jedi Training and droid items gate nothing, so
+# they are useful.
 # Full arm-set coverage. Skills/xp/credits are repeatable (each grant is a
 # fixed additive increment, safe to receive many times -- see
 # kotor_reconciliation.py's ARM_EFFECT table, which uses the exact same
@@ -31,14 +36,14 @@ class KotorItem(Item):
 base_id = 9200000
 
 item_table: typing.Dict[str, ItemData] = {
-    "Skill: Computer Use": ItemData(base_id + 0, ItemClassification.useful, "computer_use"),
-    "Skill: Demolitions": ItemData(base_id + 1, ItemClassification.useful, "demolitions"),
-    "Skill: Stealth": ItemData(base_id + 2, ItemClassification.useful, "stealth"),
-    "Skill: Awareness": ItemData(base_id + 3, ItemClassification.useful, "awareness"),
-    "Skill: Persuade": ItemData(base_id + 4, ItemClassification.useful, "persuade"),
-    "Skill: Repair": ItemData(base_id + 5, ItemClassification.useful, "repair"),
-    "Skill: Security": ItemData(base_id + 6, ItemClassification.useful, "security"),
-    "Skill: Treat Injury": ItemData(base_id + 7, ItemClassification.useful, "treat_injury"),
+    "Skill: Computer Use": ItemData(base_id + 0, ItemClassification.filler, "computer_use"),
+    "Skill: Demolitions": ItemData(base_id + 1, ItemClassification.filler, "demolitions"),
+    "Skill: Stealth": ItemData(base_id + 2, ItemClassification.filler, "stealth"),
+    "Skill: Awareness": ItemData(base_id + 3, ItemClassification.filler, "awareness"),
+    "Skill: Persuade": ItemData(base_id + 4, ItemClassification.filler, "persuade"),
+    "Skill: Repair": ItemData(base_id + 5, ItemClassification.filler, "repair"),
+    "Skill: Security": ItemData(base_id + 6, ItemClassification.filler, "security"),
+    "Skill: Treat Injury": ItemData(base_id + 7, ItemClassification.filler, "treat_injury"),
     "Companion: Bastila Shan": ItemData(base_id + 8, ItemClassification.progression, "companion_bastila"),
     "Companion: Canderous Ordo": ItemData(base_id + 9, ItemClassification.progression, "companion_canderous"),
     # base_id+10 ("Feat: Toughness"/feat_toughness) RETIRED -- feats are
@@ -46,41 +51,32 @@ item_table: typing.Dict[str, ItemData] = {
     # by AP. Not reusing this offset since it's a stable AP item code a
     # live seed's item pool depends on, same reasoning as the retired
     # +13/+14 offsets below.
-    "Class Switch: Jedi Guardian": ItemData(base_id + 11, ItemClassification.progression, "class_guardian"),
-    "Class Switch: Jedi Consular": ItemData(base_id + 12, ItemClassification.progression, "class_consular"),
+    "Class Switch: Jedi Guardian": ItemData(base_id + 11, ItemClassification.useful, "class_guardian"),
+    "Class Switch: Jedi Consular": ItemData(base_id + 12, ItemClassification.useful, "class_consular"),
     # base_id+13/+14 (Companion: Jedi Conversion / Jedi Experience) RETIRED
     # -- see generate_trampoline_batch.py's APPLIES table comment. Confirmed
     # live: AddMultiClass and GiveXPToCreature both have zero effect on a
     # non-PC party member in this engine build. Not renumbering the
     # remaining items' base_id offsets since those are stable AP item codes
     # a live seed's item pool depends on.
-    "Ability: Charisma Increase": ItemData(base_id + 15, ItemClassification.useful, "grant_test_ability"),
+    "Ability: Charisma Increase": ItemData(base_id + 15, ItemClassification.filler, "ability_charisma"),
     "Experience Points": ItemData(base_id + 16, ItemClassification.filler, "xp"),
     "Republic Credits": ItemData(base_id + 17, ItemClassification.filler, "credits"),
     "Companion: Carth Onasi": ItemData(base_id + 18, ItemClassification.progression, "companion_carth"),
-    # "Companion: HK-47" (below) is used when new_companion=off; "Companion:
-    # New Companion" (base_id+87) is used when
-    # new_companion=on -- exactly one of the two is ever placed in a given
-    # seed's pool (see __init__.py's create_items()), never both. They
-    # deliberately share arm_name="companion_hk47" -- whichever one is
-    # actually received forward-resolves via item_table[name].arm_name to
-    # the same arm either way, which is all that matters; the only reverse
-    # lookup (arm_name_to_item, Items.py below) is consulted solely for
-    # STARTING_ABILITY_ARMS/STARTING_SKILL_ARMS, never for companion arms,
-    # so the two entries colliding there is inert, not a real ambiguity.
+    # base_id+87 was "Companion: New Companion" and base_id+88 "Additional Feats Character: New Companion" in 0.1.x. Both are removed:
+    # HK-47 is always the companion, and a replacement is chosen at a console (see "Ebon Hawk: New Companion Selection").
     "Companion: HK-47": ItemData(base_id + 19, ItemClassification.progression, "companion_hk47"),
     "Companion: Jolee Bindo": ItemData(base_id + 20, ItemClassification.progression, "companion_jolee"),
     "Companion: Juhani": ItemData(base_id + 21, ItemClassification.progression, "companion_juhani"),
     "Companion: Mission Vao": ItemData(base_id + 22, ItemClassification.progression, "companion_mission"),
     "Companion: T3-M4": ItemData(base_id + 23, ItemClassification.progression, "companion_t3m4"),
     "Companion: Zaalbar": ItemData(base_id + 24, ItemClassification.progression, "companion_zaalbar"),
-    "Companion: New Companion": ItemData(base_id + 87, ItemClassification.progression, "companion_hk47"),
-    "Class Switch: Jedi Sentinel": ItemData(base_id + 25, ItemClassification.progression, "class_sentinel"),
-    "Ability: Strength Increase": ItemData(base_id + 26, ItemClassification.useful, "ability_strength"),
-    "Ability: Dexterity Increase": ItemData(base_id + 27, ItemClassification.useful, "ability_dexterity"),
-    "Ability: Constitution Increase": ItemData(base_id + 28, ItemClassification.useful, "ability_constitution"),
-    "Ability: Intelligence Increase": ItemData(base_id + 29, ItemClassification.useful, "ability_intelligence"),
-    "Ability: Wisdom Increase": ItemData(base_id + 30, ItemClassification.useful, "ability_wisdom"),
+    "Class Switch: Jedi Sentinel": ItemData(base_id + 25, ItemClassification.useful, "class_sentinel"),
+    "Ability: Strength Increase": ItemData(base_id + 26, ItemClassification.filler, "ability_strength"),
+    "Ability: Dexterity Increase": ItemData(base_id + 27, ItemClassification.filler, "ability_dexterity"),
+    "Ability: Constitution Increase": ItemData(base_id + 28, ItemClassification.filler, "ability_constitution"),
+    "Ability: Intelligence Increase": ItemData(base_id + 29, ItemClassification.filler, "ability_intelligence"),
+    "Ability: Wisdom Increase": ItemData(base_id + 30, ItemClassification.filler, "ability_wisdom"),
     # Completion-condition markers -- locked (place_locked_item
     # in __init__.py's create_regions()) to "Level 20 Reached"/"Malak
     # Defeated" in Locations.py, real items with real codes (NOT an AP
@@ -119,18 +115,18 @@ item_table: typing.Dict[str, ItemData] = {
     # generate_trampoline_batch.py's build_companion_class_block() and
     # KotorClient.py's companion_class dispatch. Order/grouping matches
     # __init__.py's NON_JEDI_COMPANIONS list.
-    "Jedi Training: Carth (Guardian)": ItemData(base_id + 35, ItemClassification.progression, "companion_class:carth:guardian"),
-    "Jedi Training: Carth (Consular)": ItemData(base_id + 36, ItemClassification.progression, "companion_class:carth:consular"),
-    "Jedi Training: Carth (Sentinel)": ItemData(base_id + 37, ItemClassification.progression, "companion_class:carth:sentinel"),
-    "Jedi Training: Canderous (Guardian)": ItemData(base_id + 38, ItemClassification.progression, "companion_class:canderous:guardian"),
-    "Jedi Training: Canderous (Consular)": ItemData(base_id + 39, ItemClassification.progression, "companion_class:canderous:consular"),
-    "Jedi Training: Canderous (Sentinel)": ItemData(base_id + 40, ItemClassification.progression, "companion_class:canderous:sentinel"),
-    "Jedi Training: Zaalbar (Guardian)": ItemData(base_id + 41, ItemClassification.progression, "companion_class:zaalbar:guardian"),
-    "Jedi Training: Zaalbar (Consular)": ItemData(base_id + 42, ItemClassification.progression, "companion_class:zaalbar:consular"),
-    "Jedi Training: Zaalbar (Sentinel)": ItemData(base_id + 43, ItemClassification.progression, "companion_class:zaalbar:sentinel"),
-    "Jedi Training: Mission (Guardian)": ItemData(base_id + 44, ItemClassification.progression, "companion_class:mission:guardian"),
-    "Jedi Training: Mission (Consular)": ItemData(base_id + 45, ItemClassification.progression, "companion_class:mission:consular"),
-    "Jedi Training: Mission (Sentinel)": ItemData(base_id + 46, ItemClassification.progression, "companion_class:mission:sentinel"),
+    "Jedi Training: Carth (Guardian)": ItemData(base_id + 35, ItemClassification.useful, "companion_class:carth:guardian"),
+    "Jedi Training: Carth (Consular)": ItemData(base_id + 36, ItemClassification.useful, "companion_class:carth:consular"),
+    "Jedi Training: Carth (Sentinel)": ItemData(base_id + 37, ItemClassification.useful, "companion_class:carth:sentinel"),
+    "Jedi Training: Canderous (Guardian)": ItemData(base_id + 38, ItemClassification.useful, "companion_class:canderous:guardian"),
+    "Jedi Training: Canderous (Consular)": ItemData(base_id + 39, ItemClassification.useful, "companion_class:canderous:consular"),
+    "Jedi Training: Canderous (Sentinel)": ItemData(base_id + 40, ItemClassification.useful, "companion_class:canderous:sentinel"),
+    "Jedi Training: Zaalbar (Guardian)": ItemData(base_id + 41, ItemClassification.useful, "companion_class:zaalbar:guardian"),
+    "Jedi Training: Zaalbar (Consular)": ItemData(base_id + 42, ItemClassification.useful, "companion_class:zaalbar:consular"),
+    "Jedi Training: Zaalbar (Sentinel)": ItemData(base_id + 43, ItemClassification.useful, "companion_class:zaalbar:sentinel"),
+    "Jedi Training: Mission (Guardian)": ItemData(base_id + 44, ItemClassification.useful, "companion_class:mission:guardian"),
+    "Jedi Training: Mission (Consular)": ItemData(base_id + 45, ItemClassification.useful, "companion_class:mission:consular"),
+    "Jedi Training: Mission (Sentinel)": ItemData(base_id + 46, ItemClassification.useful, "companion_class:mission:sentinel"),
     # StartingClass=random_class: the PC's own starting class,
     # rerolled to one of all 6 classes. A Jedi roll reuses the existing
     # Class Switch items above (AddMultiClass, same as starting_class=
@@ -139,77 +135,33 @@ item_table: typing.Dict[str, ItemData] = {
     # these use KSE_SetCreatureField directly (see generate_trampoline_batch.py's
     # pc_class_soldier/scout/scoundrel arms), the same mechanism
     # CompanionClass already uses for companions.
-    "PC Class: Soldier": ItemData(base_id + 47, ItemClassification.progression, "pc_class_soldier"),
-    "PC Class: Scout": ItemData(base_id + 48, ItemClassification.progression, "pc_class_scout"),
-    "PC Class: Scoundrel": ItemData(base_id + 49, ItemClassification.progression, "pc_class_scoundrel"),
+    "PC Class: Soldier": ItemData(base_id + 47, ItemClassification.useful, "pc_class_soldier"),
+    "PC Class: Scout": ItemData(base_id + 48, ItemClassification.useful, "pc_class_scout"),
+    "PC Class: Scoundrel": ItemData(base_id + 49, ItemClassification.useful, "pc_class_scoundrel"),
     # StartingClass=droid: becomes a Battle Droid (race 5, class 9, HK-47 variant model) at the first area transition.
-    "PC Droid Conversion": ItemData(base_id + 62, ItemClassification.progression, "pc_droid"),
-    # AdditionalFeats: one per eligible character (PC + the 7
-    # non-droid companions, order matching __init__.py's COMPANION_CLASS_KEYS).
-    # Receiving one grants nothing immediately -- the arm_name is a marker
-    # KotorClient.py recognizes specially (NOT a real extender arm name,
-    # unlike every other entry in this table): it records a pending flag
-    # in the delivery log instead of queuing a send, and only decides +
-    # queues the actual 3-feat grant once that character is both recruited
-    # and their class has settled (see KotorContext._is_companion_recruited/
-    # _is_companion_class_finalized/_is_pc_class_finalized). The eventual
-    # real send reuses the "companion_class"-style parameterized-action
-    # shape once the 3 feats are chosen -- see generate_trampoline_batch.py's
-    # build_additional_feats_block().
-    "Additional Feats Character: PC": ItemData(base_id + 50, ItemClassification.useful, "additional_feats:pc"),
-    "Additional Feats Character: Bastila": ItemData(base_id + 51, ItemClassification.useful, "additional_feats:bastila"),
-    "Additional Feats Character: Canderous": ItemData(base_id + 52, ItemClassification.useful, "additional_feats:canderous"),
-    "Additional Feats Character: Carth": ItemData(base_id + 53, ItemClassification.useful, "additional_feats:carth"),
-    "Additional Feats Character: Jolee": ItemData(base_id + 54, ItemClassification.useful, "additional_feats:jolee"),
-    "Additional Feats Character: Juhani": ItemData(base_id + 55, ItemClassification.useful, "additional_feats:juhani"),
-    "Additional Feats Character: Mission": ItemData(base_id + 56, ItemClassification.useful, "additional_feats:mission"),
-    "Additional Feats Character: Zaalbar": ItemData(base_id + 57, ItemClassification.useful, "additional_feats:zaalbar"),
-    # new_companion=on only (see COMPANION_CLASS_KEYS's conditional
-    # inclusion in __init__.py) -- her internal key is "hk47" (the arm/
-    # tag/NPC-const token is left unchanged, only the AP-facing name and
-    # NPC identity change), so this follows the same additional_feats:<key>
-    # naming as every other entry above.
-    "Additional Feats Character: New Companion": ItemData(base_id + 88, ItemClassification.useful, "additional_feats:hk47"),
-
-    # Progression System (ProgressionSystem option) -- 10 real
-    # main-questline items, each classification=progression (not useful --
-    # AP's own fill algorithm needs the real classification to weight/place
-    # these correctly relative to logic, unlike Additional Feats above
-    # which is a pure quality-of-life bonus with no access rule riding on
-    # it). Reuses the EXISTING give_item:<resref> mechanism (already
-    # proven for curated gear, see gear_base_id below) directly -- no new
-    # client-side grant code needed, "create this real item in inventory"
-    # is the exact same operation regardless of WHY it's being granted.
-    # What makes these different from ordinary gear is entirely on the
-    # SUPPRESSION/RECONCILIATION side (see PROGRESSION_ITEM_RESREFS below
-    # and scripts/patch_progression_system.py) -- each one's normal
-    # vanilla acquisition script gets suppressed, and it's granted instead
-    # once the paired AP check clears. See Rules.py for the access rules
-    # gating what each one unlocks (every gate there is confirmed via the
-    # game's own compiled scripts, not guessed).
-    # base_id + 58 through 67 = the 10 originally-designed Progression System
-    # items. base_id+62 (Tatooine Desert Map) and base_id+63 (Star Map:
-    # Dantooine) were dropped after tracing each one's REAL
-    # checkpoint script rather than just its pickup location: nothing in the
-    # entire game (chitin + Override, every resource type) ever checks
-    # whether the player possesses tat20aa_westmap, and Dantooine's star map
-    # turned out to be neither part of the Leviathan-capture gate nor a
-    # travel barrier of any kind (see Rules.py). Their
-    # IDs are left permanently unused rather than renumbering the rest.
-    "Progression Item: Sith Armor": ItemData(base_id + 58, ItemClassification.progression, "give_item:ptar_sitharmor"),
-    "Progression Item: Sith Papers": ItemData(base_id + 59, ItemClassification.progression, "give_item:ptar_sithpapers"),
-    "Progression Item: Taris Shield Codes": ItemData(base_id + 60, ItemClassification.progression, "give_item:ptar_shieldcodes"),
-    "Progression Item: Manaan Enviro Suit": ItemData(base_id + 61, ItemClassification.progression, "give_item:man28_envirosuit"),
-    "Progression Item: Star Map (Tatooine)": ItemData(base_id + 64, ItemClassification.progression, "give_item:tat_starpad"),
-    "Progression Item: Star Map (Kashyyyk)": ItemData(base_id + 65, ItemClassification.progression, "give_item:kas_starpad"),
-    "Progression Item: Star Map (Manaan)": ItemData(base_id + 66, ItemClassification.progression, "give_item:man_starpad"),
-    "Progression Item: Star Map (Korriban)": ItemData(base_id + 67, ItemClassification.progression, "give_item:kor_starpad"),
+    "PC Droid Conversion": ItemData(base_id + 62, ItemClassification.useful, "pc_droid"),
+    # AdditionalFeats: one per non-droid companion (the 7 in __init__.py's COMPANION_CLASS_KEYS). Nothing is chosen or granted by the
+    # item: it delivers a plot item (ap_ft_<key>, created by give_item like the vendor passes) that the companion's dialog reads to
+    # show its "train a feat" option, which then stays available. base_id+50 (the player character's item) and base_id+88 (the New
+    # Companion's) were removed in 0.2.0.
+    "Additional Feats Character: Bastila": ItemData(base_id + 51, ItemClassification.useful, "give_item:ap_ft_bastila"),
+    "Additional Feats Character: Canderous": ItemData(base_id + 52, ItemClassification.useful, "give_item:ap_ft_canderous"),
+    "Additional Feats Character: Carth": ItemData(base_id + 53, ItemClassification.useful, "give_item:ap_ft_carth"),
+    "Additional Feats Character: Jolee": ItemData(base_id + 54, ItemClassification.useful, "give_item:ap_ft_jolee"),
+    "Additional Feats Character: Juhani": ItemData(base_id + 55, ItemClassification.useful, "give_item:ap_ft_juhani"),
+    "Additional Feats Character: Mission": ItemData(base_id + 56, ItemClassification.useful, "give_item:ap_ft_mission"),
+    "Additional Feats Character: Zaalbar": ItemData(base_id + 57, ItemClassification.useful, "give_item:ap_ft_zaalbar"),
+    # NewCompanion: unlocks the console on the Ebon Hawk where HK-47 can be swapped for another companion (plot item ap_nc_console).
+    "Ebon Hawk: New Companion Selection": ItemData(base_id + 95, ItemClassification.useful, "give_item:ap_nc_console"),
+    # The Party Console: a usable inventory item that opens the party selection screen (generate_party_console.py); the unlimited-use
+    # variant. One is always in the pool when companions exist.
+    "Party Console": ItemData(base_id + 96, ItemClassification.useful, "give_item:ap_partycon_a"),
 }
 
 # Story-gate progression items (ProgressionSystem option). Eight families of three plot items that hold story beats
-# until enough of them are owned (scripts/patch_story_gates.py, DEVELOPMENT_HISTORY.md section 17). The items
-# above this block are the retired first design: they stay in the table so their ids remain reserved,
-# but nothing places or tracks them any more.
+# until enough of them are owned (scripts/patch_story_gates.py, DEVELOPMENT_HISTORY.md section 17). The eight
+# main-questline items of the first design (Sith Armor, Sith Papers, Taris Shield Codes, Manaan Enviro Suit and the
+# four Star Maps: base_id + 58 to 61 and 64 to 67) were removed in 0.2.0 and those ids are not reused.
 #
 # STORY_TOKEN_FAMILIES maps a family key to (display name, resref prefix); the resrefs are
 # ap_tk_<key><1..3>, matching ApTokenCount() in extender/scripts_src/ap_gate.nss.
@@ -263,8 +215,7 @@ for _i, (_name, _resref) in enumerate(VENDOR_UNLOCK_ITEMS.items()):
 # pool." item_filler: instead drawn as their own weighted
 # category inside _distribute_items(), with replacement, so the count
 # scales with the pool. arm_name uses a "trap:<key>" sentinel KotorClient.py's
-# _deliver_item recognizes specially (same interception pattern as
-# "additional_feats:") -- every trap's REAL effect is decided at the
+# _deliver_item recognizes specially -- every trap's REAL effect is decided at the
 # moment of delivery from the character's actual live state (which half
 # of their feats/force powers/inventory, which companion, how much CON
 # reduction gets closest to half Max HP), never baked in at generation

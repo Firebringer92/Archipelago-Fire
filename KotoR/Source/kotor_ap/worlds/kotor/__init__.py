@@ -7,7 +7,8 @@ from worlds.LauncherComponents import Component, components, Type
 
 from . import EntranceRando
 from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS, VENDOR_UNLOCK_ITEMS, STORY_TOKEN_NAMES
-from .Locations import KotorLocation, location_table, location_name_to_id, COMPANION_SUBPLOT_LOCATIONS, UNREACHABLE_BY_CHOICE_LOCATIONS
+from .Locations import (KotorLocation, location_table, location_name_to_id, COMPANION_SUBPLOT_LOCATIONS, UNREACHABLE_BY_CHOICE_LOCATIONS,
+                        QUEST_ITEM_LOCATIONS, BAZAAR_PURCHASE_LOCATIONS, LOOT_EXCHANGE_LOCATIONS)
 from .Options import (
     Goal, KotorOptions, STARTING_ABILITY_ARMS, STARTING_SKILL_ARMS,
 )
@@ -181,21 +182,20 @@ COMPANION_ITEM_NAMES = [
 # that mode). Keys match KotorClient.py's COMPANION_IDX_TO_ARM suffix
 # ("companion_<key>") and generate_trampoline_batch.py's _COMPANION_TAGS.
 COMPANION_CLASS_KEYS = ["bastila", "canderous", "carth", "jolee", "juhani", "mission", "zaalbar"]
-# Deliberately NOT edited to add "hk47" directly -- this list (and the
-# additional_feats eligibility list, which reuses it) must stay conditional
-# on new_companion, not static, or vanilla HK-47 (a droid, in seeds where
-# the replacement isn't even selected) would incorrectly become eligible
-# for class randomization/Additional Feats. See KotorWorld._companion_class_keys().
-# Her internal key stays "hk47" (matches every arm/tag/NPC-const token
-# elsewhere in this codebase) even though her AP-facing name is "New
-# Companion" -- COMPANION_CLASS_DISPLAY_NAMES is the one place that needs
-# an explicit override, since "hk47".capitalize() would otherwise produce
-# the broken-looking "Hk47" in a generated item name.
-COMPANION_CLASS_DISPLAY_NAMES = {"hk47": "New Companion"}
+# HK-47 and T3-M4 are droids and never eligible. A new_companion replacement is chosen at a console on the Ebon Hawk and is not in this
+# list: it is never rolled a class and has no Additional Feats item.
 NON_JEDI_COMPANION_KEYS = ["carth", "canderous", "zaalbar", "mission"]
 BASE_CLASS_NAMES = ["soldier", "scout", "scoundrel"]
 JEDI_CLASS_NAMES = ["guardian", "consular", "sentinel"]
 ALL_CLASS_NAMES = BASE_CLASS_NAMES + JEDI_CLASS_NAMES
+# Traps=item_filler: no more than this many trap items in a seed's pool, however large the pool or the trap weight.
+MAX_FILLER_TRAPS = 36
+# The world's release number. scripts/package_apworld.py stamps it into kotor.apworld, and every seed carries it in slot_data ("world_version"):
+# the client refuses a seed made by a different one, because the item and location tables (and so the ids) can differ between releases.
+# Change it only with a release that changes the world; a client-only hotfix keeps it.
+WORLD_VERSION = "0.2.0"
+# The characters the New Companion console offers (generate_new_companion_console.py's CHARACTERS); new_companion=random_class deals each a class.
+NEW_COMPANION_KEYS = ["meetra", "malak", "calo", "yuthura", "bandon", "trask"]
 
 # CompanionClass=droid. Looks are appearance.2da rows, grouped by model: at most 2 companions share a model, and then only
 # with different paint jobs. Rows 58 (war droid) and 82 (assassin droid) are the human-rig models patched in by
@@ -326,6 +326,22 @@ _DEFAULT_DISTRIBUTION_WEIGHTS: typing.Dict[str, int] = {
 }
 
 
+# Shops in a seed with a droid option. "Droid-usable" gear is mostly ordinary weapons and grenades (the droid parts are 22% of it), so a flat draw gave about 6 parts
+# in 30 and almost never a repair kit (only the Construction Kit is in the shop pool). Instead each shop gets: every repair kit tier (droids heal with them);
+# a share of equippable droid parts (DROID_PARTS_SHARE: 40% when both options are droid, about a quarter when one is), with at least one from each group so a shop is
+# never six of the same sensor; and the rest from the ordinary droid-usable gear. The kits are listed here, not taken from the pool, so human seeds are untouched.
+DROID_REPAIR_KITS = ("g_i_drdrepeqp001", "g_i_drdrepeqp002", "g_i_drdrepeqp003")
+DROID_PART_GROUPS = {
+    "plating": ("Droid_Light_Plating", "Droid_Medium_Plating", "Droid_Heavy_Plating"),
+    "shield": ("Droid_Shield",),
+    "head": ("Droid_Search_Scope_x", "Droid_Motion_Sensors_x", "Droid_Sonic_Sensors_x", "Droid_Targeting_Computers"),  # one slot, shared
+    "spike mount": ("Droid_Computer_Spike_Mount_x", "Droid_Security_Spike_Mount"),
+    "utility": ("Droid_Utility_Device",),
+}
+DROID_PARTS_SHARE = {2: 0.4, 1: 0.27}      # keyed by how many options are droid
+DROID_USABLE_SHARE_ONE_DROID = 0.53        # with one droid option: the share of a shop that a droid can use (the rest is gear only a human can wear)
+
+
 def _shop_pool() -> typing.List[str]:
     """resrefs flagged shop_randomize in gear_items.json, sorted for a
     deterministic sample() regardless of the JSON's own key order (which
@@ -371,18 +387,10 @@ class KotorWorld(World):
     location_name_to_id = location_name_to_id
 
     def _companion_class_keys(self) -> list:
-        """COMPANION_CLASS_KEYS, plus "hk47" when new_companion is on. Must
-        be computed per-call (not a static list edit) so a seed where the
-        replacement isn't selected never makes vanilla HK-47 (a droid)
-        eligible for class randomization/Additional Feats -- see
-        COMPANION_CLASS_KEYS's own comment. Used by generate_early()'s
-        no_jedi/randomize_all rolls and by create_items()'s Additional
-        Feats eligibility list; NOT used for jedi_companion (mode 2), which
-        keeps its own separate NON_JEDI_COMPANION_KEYS untouched by design."""
-        keys = list(COMPANION_CLASS_KEYS)
-        if self.options.new_companion:
-            keys.append("hk47")
-        return keys
+        """COMPANION_CLASS_KEYS: the 7 non-droid companions. (Until 0.2.0 this also added the New Companion replacement; a replacement is
+        now a console choice with no class roll and no Additional Feats item.) Used by generate_early()'s no_jedi/randomize_all rolls;
+        NOT used for jedi_companion (mode 2), which keeps its own separate NON_JEDI_COMPANION_KEYS."""
+        return list(COMPANION_CLASS_KEYS)
 
     def _goal_event_locations(self) -> typing.Dict[str, str]:
         """The subset of GOAL_EVENT_LOCATIONS the selected Goal's completion
@@ -399,8 +407,9 @@ class KotorWorld(World):
 
     def _active_locations(self) -> dict:
         """location_table filtered for companion_mode=none, which removes
-        the 9 "companion" location_type entries AND the 10
-        COMPANION_SUBPLOT_LOCATIONS entries (those are
+        the 9 "companion" location_type entries AND the 16
+        COMPANION_SUBPLOT_LOCATIONS entries (the Ebon Hawk subplots and the
+        6 Sunry chain checks; ap_limited removes the 16 too, but keeps the 9 recruit moments) (those are
         location_type="journal", so they aren't caught by the
         "companion" type check alone, even though companions never joining
         at all makes them just as permanently uncompletable) entirely
@@ -423,27 +432,13 @@ class KotorWorld(World):
         if self.options.additional_enemies == 0:  # off
             result = {name: data for name, data in result.items()
                        if data.location_type != "bounty"}
-        # new_companion: "Companion Recruited: HK-47" and
-        # "Companion Recruited: New Companion" share the same companion_idx
-        # (both fire off IsAvailableCreature(3) -- see Locations.py), so
-        # exactly one of the two must be active, never both/neither, or
-        # active_count (create_items()) and the real fillable location
-        # count would drift apart. "Ebon Hawk: HK-47" is dropped outright
-        # (no new_companion equivalent) when the replacement is selected --
-        # her personal subplot dialogue that used to complete it is gone,
-        # replaced with a single placeholder greeting, so the check would
-        # otherwise sit permanently uncompletable (same failure shape as
-        # the companion_mode=none journal-location bug above, this time
-        # self-inflicted by the dialogue cut rather than her never joining
-        # at all). When companion_mode=none has already stripped all
-        # companion-type/subplot locations above, these two filters are a
-        # harmless no-op against an already-absent name.
-        if self.options.new_companion:
+        # 0.2.0: the optional checks. HK-47 is always the companion (a new_companion replacement is a console choice), so his two
+        # checks are never removed.
+        if not self.options.quest_item_checks:
+            result = {name: data for name, data in result.items() if name not in QUEST_ITEM_LOCATIONS}
+        if not self.options.bazaar:
             result = {name: data for name, data in result.items()
-                       if name not in ("Companion Recruited: HK-47", "Ebon Hawk: HK-47")}
-        else:
-            result = {name: data for name, data in result.items()
-                       if name != "Companion Recruited: New Companion"}
+                      if name not in BAZAAR_PURCHASE_LOCATIONS and name not in LOOT_EXCHANGE_LOCATIONS}
         return result
 
     def create_regions(self) -> None:
@@ -547,6 +542,13 @@ class KotorWorld(World):
             for key in self._companion_class_keys():
                 self.companion_class_rolls[key] = self.random.choice(ALL_CLASS_NAMES)
 
+        # NewCompanion=random_class: each console character is dealt a class for the whole seed (sent in slot_data; the client's asset builder
+        # writes it into the character's template). Rolled after the companion classes so the earlier options draw the same values as before.
+        self.new_companion_classes: typing.Dict[str, str] = {}
+        if self.options.new_companion.value == 2 and self.options.companion_mode != 2:
+            for key in NEW_COMPANION_KEYS:
+                self.new_companion_classes[key] = self.random.choice(ALL_CLASS_NAMES)
+
         # CompanionClass=droid: looks and droid classes are dealt here (seeded) and sent in slot_data; the client's
         # droid patcher writes them into the companion templates. Nothing is delivered at recruit time.
         self.companion_droid_plan: typing.Dict[str, typing.List[int]] = {}
@@ -611,17 +613,7 @@ class KotorWorld(World):
         # item at all any more (see Items.py) -- left entirely to normal
         # in-game level-up choices.
         if self.options.companion_mode == 0:  # ap_gated
-            # new_companion: swap "Companion: HK-47" for
-            # "Companion: New Companion" -- exactly one of the two is ever
-            # placed, matching _active_locations()'s companion-location
-            # swap above (both key off the same companion_idx=3 signal).
-            companion_names = COMPANION_ITEM_NAMES
-            if self.options.new_companion:
-                companion_names = [
-                    "Companion: New Companion" if n == "Companion: HK-47" else n
-                    for n in companion_names
-                ]
-            mandatory_names = list(companion_names)
+            mandatory_names = list(COMPANION_ITEM_NAMES)
         else:
             mandatory_names = []
         if self.options.starting_class == 2:  # jedi_granted
@@ -633,27 +625,17 @@ class KotorWorld(World):
         for key, class_name in self.jedi_companion_items.items():
             mandatory_names = mandatory_names + [f"Jedi Training: {key.capitalize()} ({class_name.capitalize()})"]
 
-        # AdditionalFeats: guaranteed placement, same reasoning
-        # as the Jedi Training items above -- a fixed count tied directly to
-        # the option, not subject to the weighted _distribute_items() draw.
-        # 1 item (PC only) when companion_mode is "none" (no companions
-        # exist to target at all), else 8 (PC + all 7 non-droid companions,
-        # regardless of CompanionClass -- KotorClient.py's own recruited/
-        # class-finalized gating handles waiting for each one correctly,
-        # this is just pool placement).
-        if self.options.additional_feats:
-            mandatory_names = mandatory_names + ["Additional Feats Character: PC"]
-            if self.options.companion_mode != 2:  # not "none"
-                # self._companion_class_keys(), not the raw COMPANION_CLASS_KEYS
-                # constant, so new_companion=on makes her eligible here too.
-                # COMPANION_CLASS_DISPLAY_NAMES.get(key, ...)
-                # falls back to .capitalize() for every real name (unaffected),
-                # and only overrides "hk47" -- ".capitalize()" alone would
-                # produce the broken-looking "Additional Feats Character: Hk47".
-                mandatory_names = mandatory_names + [
-                    f"Additional Feats Character: {COMPANION_CLASS_DISPLAY_NAMES.get(key, key.capitalize())}"
-                    for key in self._companion_class_keys()
-                ]
+        # AdditionalFeats: one "train a feat" unlock per non-droid companion (the player character has none since 0.2.0); guaranteed
+        # placement, a fixed count tied directly to the option. None when companion_mode is "none" (no companions exist).
+        if self.options.additional_feats and self.options.companion_mode != 2:  # not "none"
+            mandatory_names = mandatory_names + [
+                f"Additional Feats Character: {key.capitalize()}" for key in COMPANION_CLASS_KEYS]
+
+        # The Party Console is always placed when companions exist; NewCompanion adds the item that unlocks the swap console.
+        if self.options.companion_mode != 2:
+            mandatory_names = mandatory_names + ["Party Console"]
+            if self.options.new_companion:
+                mandatory_names = mandatory_names + ["Ebon Hawk: New Companion Selection"]
 
         # ProgressionSystem: the 24 story-gate progression items (8 families of 3) are guaranteed placement. The
         # access rules in StoryGates.py assume every item exists, so there is no weighted draw.
@@ -799,13 +781,22 @@ class KotorWorld(World):
 
         total_weight = sum(available.values())
         result: typing.List[KotorItem] = []
+        traps = 0
         for _ in range(needed):
+            if not available:       # the trap cap took the last category: the same safe filler as above
+                result.append(self.create_item("Skill: Computer Use"))
+                continue
             roll = self.random.uniform(0, total_weight)
             upto = 0.0
             for key, w in available.items():
                 upto += w
                 if roll <= upto:
                     result.append(self.create_item(self.random.choice(categories[key])))
+                    if key == "trap":
+                        traps += 1
+                        if traps >= MAX_FILLER_TRAPS:          # the cap: no trap is drawn after this one
+                            del available["trap"]
+                            total_weight = sum(available.values())
                     break
         return result
 
@@ -819,10 +810,15 @@ class KotorWorld(World):
         transitions, and by how much) that can't be inferred from the item
         pool alone."""
         return {
+            "world_version": WORLD_VERSION,
             "companion_mode": self.options.companion_mode.value,
             # ap_limited: the seeded order companions are earned in (empty for every other mode)
             "companion_unlock_order": self.companion_unlock_order,
             "new_companion": self.options.new_companion.value,
+            "new_companion_classes": self.new_companion_classes,
+            # 0.2.0: the quest item checks and the Archipelago Bazaar (read by the client for which checks exist).
+            "quest_item_checks": bool(self.options.quest_item_checks),
+            "bazaar": bool(self.options.bazaar),
             "starting_class": self.options.starting_class.value,
             "experience_mode": self.options.experience_mode.value,
             "experience_limiter": self.options.experience_limiter.value,
@@ -925,21 +921,36 @@ class KotorWorld(World):
         if droid_mode:
             gear = read_gear_json()
             droid_pool = [r for r in pool if _is_droid_gear(gear.get(r, {}))]
-            if droid_mode == 2:  # both droid: every shop item is something a droid can use
-                pool = droid_pool
-            else:  # one droid: at least ~40% of each shop is droid gear
-                droid_set = set(droid_pool)
-                human_pool = [r for r in pool if r not in droid_set]
-                droid_share = min(len(droid_pool), -(-count * 2 // 5))
-                return {
-                    planet: self.random.sample(droid_pool, droid_share)
-                    + self.random.sample(human_pool, min(count - droid_share, len(human_pool)))
-                    for planet in PLANET_MODULE_PREFIXES
-                }
+            droid_set = set(droid_pool)
+            human_pool = [r for r in pool if r not in droid_set]
+            return {planet: self._droid_shop(droid_pool, human_pool, gear, droid_mode, count) for planet in PLANET_MODULE_PREFIXES}
         return {
             planet: self.random.sample(pool, min(count, len(pool)))
             for planet in PLANET_MODULE_PREFIXES
         }
+
+    def _droid_shop(self, droid_pool, human_pool, gear, droid_mode: int, count: int) -> typing.List[str]:
+        """One shop's catalog in a seed with a droid option (see DROID_PARTS_SHARE): all repair kit tiers, a guaranteed share of equippable droid parts with
+        one from every group first, then ordinary droid-usable gear; with one droid option the remainder is gear only a human can use."""
+        part_types = {t for types in DROID_PART_GROUPS.values() for t in types}
+        parts = [r for r in droid_pool if gear[r]["base_item_type"] in part_types]
+        part_set = set(parts)
+        others = [r for r in droid_pool if r not in part_set and gear[r]["base_item_type"] != "Droid_Repair_Equipment"]
+        picks = list(DROID_REPAIR_KITS[:min(len(DROID_REPAIR_KITS), count // 4)])
+        want = round(count * DROID_PARTS_SHARE[droid_mode])
+        chosen: typing.List[str] = []
+        for types in DROID_PART_GROUPS.values():
+            options = [r for r in parts if gear[r]["base_item_type"] in types]
+            if options and len(chosen) < want:
+                chosen.append(self.random.choice(options))
+        remaining = [r for r in parts if r not in chosen]
+        chosen += self.random.sample(remaining, min(len(remaining), want - len(chosen)))
+        picks += chosen
+        droid_total = count if droid_mode == 2 else max(len(picks), round(count * DROID_USABLE_SHARE_ONE_DROID))
+        picks += self.random.sample(others, min(len(others), droid_total - len(picks)))
+        if droid_mode == 1:
+            picks += self.random.sample(human_pool, min(count - len(picks), len(human_pool)))
+        return picks
 
     def set_rules(self) -> None:
         set_rules(self.multiworld, self.player)

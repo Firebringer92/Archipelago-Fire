@@ -215,6 +215,10 @@ def check_paths(path, rules):
             base = os.path.basename(rel).lower()
             if base in rules.zip_forbidden_names or (base.startswith("apo_") and base not in rules.zip_own_apo):
                 problems.append(f"{rel}: a file written from, or a copy of, the game's scripts was recorded in the history")
+            if ext in (".ncs", ".exe", ".dll", ".obj"):
+                problems.append(f"{rel}: build output ({ext}) was recorded in the history; the repository holds source only")
+            if ext in rules.gff_ext and not base.startswith(rules.gff_prefix):
+                problems.append(f"{rel}: a template not named {rules.gff_prefix}* was recorded in the history; the game's own are never named like that, so this may be a copy of one")
     return problems, n
 
 

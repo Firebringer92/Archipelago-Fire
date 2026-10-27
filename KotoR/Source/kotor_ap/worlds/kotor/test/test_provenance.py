@@ -120,10 +120,14 @@ class TestReleaseComparisonAndHistory(unittest.TestCase):
                                    "KotoR/Source/extender/scripts_src/apo_0001.ncs"]))
             found, count = cp.check_paths(path, cp.Rules())
             self.assertEqual(count, 3)
-            self.assertEqual(len(found), 2)
+            self.assertEqual(len(found), 3)          # the model; the preserved game script; and the compiled file, which the repository no longer holds
             with open(path, "w") as f:
                 f.write("\n".join(["KotoR/Source/scripts/tool.py", "KotoR/Docs/README.md"]))
             self.assertEqual(cp.check_paths(path, cp.Rules())[0], [])
+            with open(path, "w") as f:
+                f.write("\n".join(["a/ap_item.uti", "a/p_bastilla.utc", "a/old.ncs", "a/binkw32.dll", "a/nwnnsscomp.exe"]))
+            found, _count = cp.check_paths(path, cp.Rules())
+            self.assertEqual(len(found), 4)          # the ap_ template passes; the game-named template and the three build outputs do not
 
     def test_the_comparison_flags_only_files_that_are_not_plain_code(self):
         with tempfile.TemporaryDirectory() as tmp:

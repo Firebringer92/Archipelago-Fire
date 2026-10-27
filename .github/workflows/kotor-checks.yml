@@ -24,8 +24,8 @@ jobs:
     name: Provenance (no game files)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
         with:
           python-version: "3.12"
       - name: Check every file in KotoR/
@@ -37,15 +37,15 @@ jobs:
     env:
       KOTOR_GAME_DIR: C:\no\kotor\install
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
         with:
           path: repo
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
         with:
           repository: ArchipelagoMW/Archipelago
           ref: 0.6.8
           path: work/Archipelago
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6.2.0
         with:
           python-version: "3.12"
       - name: Install dependencies
@@ -60,4 +60,4 @@ jobs:
         run: python repo/KotoR/Source/scripts/ci_layout.py --source repo/KotoR/Source --work work
       - name: Run the tests
         working-directory: work/Archipelago
-        run: python -m pytest worlds/kotor/test -q
+        run: python -m pytest worlds/kotor/test -q -rs

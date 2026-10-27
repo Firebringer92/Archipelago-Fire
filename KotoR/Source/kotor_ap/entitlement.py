@@ -176,9 +176,12 @@ def compute_entitlement(tracker: "ReconciliationTracker") -> EntitlementSnapshot
     # it's never delivery-order-dependent, so no tracking is needed beyond
     # what's already there. Empty for off/jedi_companion, matching
     # _maybe_queue_companion_class's own no-op reasoning for those modes.
+    # jedi_companion's class is the one a received "Jedi Training" item
+    # named (companion_class_items): the last item received for a companion
+    # wins, so it overrides a roll if both ever exist.
     companion_classes = {
         npc_key: CLASS_NAME_TO_CONST[class_name]
-        for npc_key, class_name in tracker.companion_class_rolls.items()
+        for npc_key, class_name in {**tracker.companion_class_rolls, **tracker.companion_class_items}.items()
         if class_name in CLASS_NAME_TO_CONST
     }
 

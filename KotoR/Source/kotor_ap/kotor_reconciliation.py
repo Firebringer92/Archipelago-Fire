@@ -41,7 +41,7 @@ import re
 import time
 import typing
 
-from entitlement import (EntitlementSnapshot, PC_CLASS_CONST_TO_ARM, compute_entitlement, is_heavy_arm,
+from entitlement import (CLASS_NAME_TO_CONST, EntitlementSnapshot, PC_CLASS_CONST_TO_ARM, compute_entitlement, is_heavy_arm,
                           JEDI_CLASS_FEATS, PROGRESSION_ITEM_RESREFS)
 
 logger = logging.getLogger("Client")
@@ -692,6 +692,11 @@ class ReconciliationTracker:
         # Connect (see KotorClient.py), same scope/lifetime as credit_mode
         # etc. above. Empty for off/jedi_companion.
         self.companion_class_rolls: typing.Dict[str, str] = {}
+        # CompanionClass=jedi_companion's "Jedi Training" items (npc_key -> class name): the class a received item named is that companion's
+        # expected class, and it is corrected whenever the companion is in the party with a different one. The delivery of the item itself
+        # fails when the companion is not in the active party yet (the training item can arrive before the item that recruits him), and nothing
+        # else would apply it later. Filled by note_item_received(), and again on a reconnect from the items the server replays.
+        self.companion_class_items: typing.Dict[str, str] = {}
         # Class corrections' own in-flight tracking -- see
         # _STAGED_ARM_INFLIGHT_TIMEOUT_SECONDS's own comment for why this
         # exists at all. Same single-target-per-key shape as credits'
@@ -962,6 +967,12 @@ class ReconciliationTracker:
             # received always wins, same as set_xp/set_credits' own
             # replace semantics.
             self.expected_pc_class = pc_class_const
+            return
+        if arm_name.startswith("companion_class:"):
+            # A Jedi Training item (or any companion_class: send): the last one received for a companion wins, like a PC class switch.
+            parts = arm_name.split(":", 2)
+            if len(parts) == 3 and parts[1] in _COMPANION_CLASS_KEYS and parts[2] in CLASS_NAME_TO_CONST:
+                self.companion_class_items[parts[1]] = parts[2]
             return
         rule = ARM_EFFECT.get(arm_name)
         if rule is None:
@@ -1963,7 +1974,7 @@ class ReconciliationTracker:
                 stale = self._staged_arm_stale(since)
                 if self._companion_class_inflight.get(npc_key) == expected_const and not stale:
                     continue
-                class_name = self.companion_class_rolls.get(npc_key)
+                class_name = self.companion_class_items.get(npc_key) or self.companion_class_rolls.get(npc_key)
                 if class_name is None:
                     continue
                 comp_arm = f"companion_class:{npc_key}:{class_name}"

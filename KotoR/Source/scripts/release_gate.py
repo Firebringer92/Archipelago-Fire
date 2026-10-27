@@ -9,7 +9,8 @@ Checks (a FAIL exits with status 1):
   2. the whole test suite passes on this machine, with the game installed so the tests that read it run too
   3. no file that is derived from the game is in the repository copy (list_game_derived.py applied to the published folder)
   4. check_provenance.py passes on the repository copy and on every release zip in dist/
-  5. (information) the non-code files this release adds or changes compared with --previous, for a person to look at
+  5. no compiled script (.ncs) in a release zip holds a NOP: nwnsc writes them and the game stops a script at one (ncs_nops.py)
+  6. (information) the non-code files this release adds or changes compared with --previous, for a person to look at
 """
 import argparse
 import datetime
@@ -94,6 +95,14 @@ def check_provenance_everywhere(mirror, zips):
         result(f"provenance: {os.path.basename(z)} ({count} files)", not problems, "; ".join(problems[:3]))
 
 
+def check_no_nops(zips):
+    import ncs_nops
+    for z in zips:
+        with_nops, unreadable = ncs_nops.nops_in_zip(z)
+        bad = with_nops + unreadable
+        result(f"compiled scripts have no NOP: {os.path.basename(z)}", not bad, "; ".join(f"{n}: {w}" for n, w in bad[:3]))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--previous", help="the previous release's PlayerBundle zip, to list what is new")
@@ -110,7 +119,8 @@ def main():
     check_tests()
     check_mirror_has_no_derived(args.mirror)
     check_provenance_everywhere(args.mirror, zips)
-    bundles = [z for z in zips if "PlayerBundle" in z]
+    check_no_nops(zips)
+    bundles =[z for z in zips if "PlayerBundle" in z]
     if args.previous and bundles:
         import check_provenance as cp
         say("")

@@ -3518,18 +3518,20 @@ class KotorContext(CommonContext):
 
     def _reseed_expected_state(self, arm_name: str) -> None:
         """Rebuilds the reconciler's "what should I have" memory from an item that was delivered in
-        an earlier client session. The reconciler fills expected_companions, expected_pc_class and
-        expected_progression_items only through note_item_received(), which _deliver_item calls when
+        an earlier client session. The reconciler fills expected_companions, expected_pc_class,
+        expected_progression_items and companion_class_items (a Jedi Training item's class) only through note_item_received(), which _deliver_item calls when
         it actually sends; after a client restart the server replays every item, each already-settled
         one returns early, and those three would stay empty -- so the missing-companion resend, the
         PC-class self-heal (all six class arms) and the progression-item re-grant would do nothing
-        until a fresh item arrived. Only these three groups are re-noted. Skills and abilities are
+        until a fresh item arrived. Only these groups are re-noted. Skills and abilities are
         NOT: their expected values are bootstrapped from the live game on the first poll, so
         re-adding every past grant would double count; xp and credits already have their own replay.
         Nothing is sent and none of the new-recruit follow-ups run -- this only restores memory.
         A companion removed by the Remove a Companion trap stays out (reconciler.trapped_off_companions)."""
         if arm_name.startswith("companion_") and not arm_name.startswith("companion_class:"):
             self.reconciler.note_item_received(arm_name)
+        elif arm_name.startswith("companion_class:"):
+            self.reconciler.note_item_received(arm_name)        # a Jedi Training item: the companion's expected class
         elif arm_name in ("class_guardian", "class_consular", "class_sentinel",
                           "pc_class_soldier", "pc_class_scout", "pc_class_scoundrel", "pc_droid"):
             self.reconciler.note_item_received(arm_name)
@@ -4128,10 +4130,20 @@ class KotorContext(CommonContext):
         queue itself gives up after -- once the normal pipeline has
         stopped waiting on this send too, the reconciler is the right
         thing to retry it, not blocked from ever doing so."""
+        if arm_name.startswith("companion_class:"):
+            # A class send is a dispatcher job, and its delivery record is keyed by the companion alone ("companion_class:<npc>"), so the lookup
+            # below never matches this arm name. The same send is still pending while the job waits in the heavy queue or in the dispatcher.
+            parts = arm_name.split(":", 2)
+            if len(parts) == 3 and (self._heavy_queue_holds(arm_name) or self.dispatcher.has_unfinished("companion_class", f"{parts[1]}:{parts[2]}")):
+                return True
         record = self.extender.deliveries.get(arm_name)
         if record is None or record.staged_at is None or record.applied_at is not None:
             return False
         return (time.time() - record.staged_at) < HEAVY_SEND_CONFIRM_TIMEOUT_SECONDS
+
+    def _heavy_queue_holds(self, arm_name: str) -> bool:
+        """True while an entry for this arm is waiting in the heavy queue (entries are (label, arm_name, index, character, is_correction))."""
+        return any(len(entry) > 1 and entry[1] == arm_name for entry in list(getattr(self._heavy_queue, "_queue", ())))
 
     async def _guarded_send_apply(self, arm_name: str) -> bool:
         """Wraps ExtenderBridge.send_apply for ReconciliationTracker's own
@@ -4429,6 +4441,10 @@ class KotorContext(CommonContext):
             # write), and the standard delivery-log dedup above already
             # covers the reconnect-replay case anyway.
             _, npc_key, class_name = arm_name.split(":", 2)
+            if not is_correction:
+                # The class this item names is the companion's expected class from now on, whether or not this send lands: the game refuses it
+                # while he is not in the active party, and the reconciler applies it once he is (see companion_class_items).
+                self.reconciler.note_item_received(arm_name)
             sent = await self.extender.send_companion_class(npc_key, class_name, message=receipt_message)
             if sent:
                 # See give_item's own comment on wait_staged above -- same

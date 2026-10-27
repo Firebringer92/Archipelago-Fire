@@ -52,6 +52,7 @@ FILES = [
     (("tools", "nwnsc", "LICENSE.txt"), "tools/nwnsc/LICENSE.txt"),
     (("tools", "nwnsc", "CREDITS.txt"), "tools/nwnsc/CREDITS.txt"),
     (("scripts", "nwnnsscomp_path.py"), "scripts/nwnnsscomp_path.py"),
+    (("scripts", "ncs_nops.py"), "scripts/ncs_nops.py"),
     # Records the files the client writes while connected, and removes them for Uninstall and /ap_restore_all.
     (("scripts", "client_files.py"), "scripts/client_files.py"),
     # extender/install.ps1 is retired, not shipped here -- a parallel
@@ -461,6 +462,15 @@ def main():
             print("  " + p)
         sys.exit(1)
     print("  provenance check: OK (no game files, every program registered)")
+    import ncs_nops
+    with_nops, unreadable = ncs_nops.nops_in_zip(out_path)
+    if with_nops or unreadable:
+        print("\nCOMPILED SCRIPT CHECK FAILED: this zip must not be published. The game stops a script at a NOP, and these are not readable as compiled scripts"
+              " or hold one:")
+        for name, what in with_nops + unreadable:
+            print(f"  {name}: {what}")
+        sys.exit(1)
+    print("  compiled scripts: OK (no NOP in any .ncs)")
 
 
 if __name__ == "__main__":

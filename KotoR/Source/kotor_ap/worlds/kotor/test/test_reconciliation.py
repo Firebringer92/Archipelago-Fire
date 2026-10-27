@@ -102,3 +102,89 @@ class TestCutMaxHpTrap(unittest.TestCase):
         text = "\n".join(gtb.build_trap_block("cut_max_hp", "-"))
         self.assertIn("conbefore=", text)
         self.assertIn("conafter=", text)
+
+
+class TestJediTrainingReconcile(unittest.IsolatedAsyncioTestCase):
+    """CompanionClass=jedi_companion: the class a received "Jedi Training" item names is that companion's expected class. The item's own delivery fails while the
+    companion is not in the active party, so the reconciler applies it once he is."""
+
+    def _tracker(self, awaiting=lambda arm: False):
+        self.heavy = []
+
+        async def send_apply(name):
+            return True
+
+        async def send_apply_value(name, value):
+            return True
+
+        tracker = ReconciliationTracker(send_apply, send_apply_value, send_heavy=self.heavy.append, is_awaiting_confirmation=awaiting)
+        tracker._classes_known = True
+        return tracker
+
+    async def _cycle(self, tracker):
+        tracker._reconcile()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    def test_a_received_item_is_the_expected_class_and_the_last_one_wins(self):
+        tracker = self._tracker()
+        tracker.note_item_received("companion_class:zaalbar:consular")
+        self.assertEqual(tracker.companion_class_items, {"zaalbar": "consular"})
+        tracker.note_item_received("companion_class:zaalbar:guardian")
+        self.assertEqual(tracker.companion_class_items, {"zaalbar": "guardian"})
+
+    def test_a_companion_the_class_report_does_not_cover_or_an_unknown_class_is_ignored(self):
+        tracker = self._tracker()
+        for arm in ("companion_class:hk47:guardian", "companion_class:zaalbar:wizard", "companion_class:zaalbar", "companion_class:"):
+            tracker.note_item_received(arm)
+        self.assertEqual(tracker.companion_class_items, {})
+
+    def test_the_expected_class_counts_in_the_entitlement(self):
+        from entitlement import CLASS_NAME_TO_CONST, compute_entitlement
+        tracker = self._tracker()
+        tracker.note_item_received("companion_class:zaalbar:consular")
+        self.assertEqual(compute_entitlement(tracker).companion_classes, {"zaalbar": CLASS_NAME_TO_CONST["consular"]})
+
+    async def test_a_companion_in_the_party_with_the_wrong_class_is_corrected_once(self):
+        tracker = self._tracker()
+        tracker.note_item_received("companion_class:zaalbar:consular")
+        tracker.current_companion_classes["zaalbar"] = 1                      # his own class: he is in the party and the class never changed
+        await self._cycle(tracker)
+        self.assertEqual(self.heavy, ["companion_class:zaalbar:consular"])
+        await self._cycle(tracker)                                            # the correction is in flight: not sent again every poll
+        self.assertEqual(self.heavy, ["companion_class:zaalbar:consular"])
+
+    async def test_a_companion_who_is_not_in_the_party_is_left_alone(self):
+        tracker = self._tracker()
+        tracker.note_item_received("companion_class:zaalbar:consular")
+        tracker.current_companion_classes["zaalbar"] = -1                     # the game's report for a companion who is not in the party
+        await self._cycle(tracker)
+        self.assertEqual(self.heavy, [])
+
+    async def test_a_companion_who_already_has_the_class_is_left_alone(self):
+        from entitlement import CLASS_NAME_TO_CONST
+        tracker = self._tracker()
+        tracker.note_item_received("companion_class:zaalbar:consular")
+        tracker.current_companion_classes["zaalbar"] = CLASS_NAME_TO_CONST["consular"]
+        await self._cycle(tracker)
+        self.assertEqual(self.heavy, [])
+
+    async def test_nothing_is_sent_while_the_items_own_delivery_is_still_pending(self):
+        tracker = self._tracker(awaiting=lambda arm: arm == "companion_class:zaalbar:consular")
+        tracker.note_item_received("companion_class:zaalbar:consular")
+        tracker.current_companion_classes["zaalbar"] = 1
+        await self._cycle(tracker)
+        self.assertEqual(self.heavy, [])
+
+    async def test_a_roll_is_still_corrected_as_before(self):
+        tracker = self._tracker()
+        tracker.companion_class_rolls = {"carth": "sentinel"}
+        tracker.current_companion_classes["carth"] = 0
+        await self._cycle(tracker)
+        self.assertEqual(self.heavy, ["companion_class:carth:sentinel"])
+
+    def test_a_new_connection_forgets_the_items(self):
+        tracker = self._tracker()
+        tracker.note_item_received("companion_class:zaalbar:consular")
+        tracker.reset_for_new_connection()
+        self.assertEqual(tracker.companion_class_items, {})

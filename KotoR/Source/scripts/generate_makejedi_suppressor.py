@@ -135,13 +135,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--game-dir", default=DEFAULT_GAME_DIR,
                          help=r"Your KOTOR install folder, the one with swkotor.exe (default: the standard Steam location).")
+    parser.add_argument("--restore", action="store_true", help="remove the suppressor and the preserved original from Override (Uninstall and /ap_restore_all run this).")
     parser.add_argument("--starting-class", type=int, default=None,
                          help="Options.py's StartingClass value to use directly (0=off, anything else=project-managed), "
                               "instead of reading it from _slot_data.json (see SLOT_DATA_PATH above).")
     args = parser.parse_args()
-
-    starting_class = args.starting_class if args.starting_class is not None else _connected_starting_class()
     game_dir = args.game_dir
+    if args.restore:
+        import client_files
+        print(f"Removed {client_files.restore_group(game_dir, 'makejedi')} Jedi-trial suppressor file(s).")
+        return
+
+    import client_files
+    tracker = client_files.start("makejedi", game_dir)
+    starting_class = args.starting_class if args.starting_class is not None else _connected_starting_class()
     mod_dir = os.path.join(game_dir, "modules")
     override_dir = os.path.join(game_dir, "Override")
 
@@ -191,6 +198,7 @@ def main():
     with open(deploy_path, "wb") as f:
         f.write(wrapper_bytes)
     print(f"Deployed -> {deploy_path}")
+    tracker.finish()
 
 
 if __name__ == "__main__":

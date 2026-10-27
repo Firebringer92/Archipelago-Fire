@@ -361,6 +361,7 @@ BUILD_GAME_ASSETS = os.path.join(REPO_ROOT, "scripts", "build_game_assets.py")
 PATCH_DROID_ASSETS = os.path.join(REPO_ROOT, "scripts", "generate_droid_assets.py")
 PATCH_SHOP_ITEM_COSTS = os.path.join(REPO_ROOT, "scripts", "patch_shop_item_costs.py")
 PATCH_AREA_POLL_HOOKS = os.path.join(REPO_ROOT, "scripts", "patch_area_poll_hooks.py")
+CLIENT_FILES = os.path.join(REPO_ROOT, "scripts", "client_files.py")
 BUILD_AP_TRACKER_QUEST = os.path.join(REPO_ROOT, "scripts", "build_ap_tracker_quest.py")
 ARM_ORCHESTRATOR = os.path.join(REPO_ROOT, "scripts", "arm_orchestrator.py")
 
@@ -790,7 +791,10 @@ def revert_all_game_files() -> tuple[bool, str]:
     ok_all = True
     # The boss datapad patch takes its own datapads back out of the live module files (it must not copy
     # a backup over them, which would also undo the other patchers' edits), so it goes last.
-    for script in (PATCH_ITEM_SUPPRESSION, PATCH_STORY_GATES, PATCH_LOOT_DISTURB, PATCH_BAZAAR_TOKENS, PATCH_BOSS_DATAPADS, PATCH_DROID_ASSETS):
+    # the last four undo what the client writes on every connect (the Jedi-trial suppressor, the shop price fixes, the New Companion files, the tracker journal and its
+    # dialog.tlk strings); client_files.py then removes the Override tables that are back to the game's own. A reconnect writes them again.
+    for script in (PATCH_ITEM_SUPPRESSION, PATCH_STORY_GATES, PATCH_LOOT_DISTURB, PATCH_BAZAAR_TOKENS, PATCH_BOSS_DATAPADS, PATCH_DROID_ASSETS,
+                   GENERATE_MAKEJEDI_SUPPRESSOR, PATCH_SHOP_ITEM_COSTS, PATCH_NEW_COMPANION_ASSETS, BUILD_AP_TRACKER_QUEST, CLIENT_FILES):
         try:
             result = subprocess.run(
                 [sys.executable, script, "--restore", f"--game-dir={GAME_DIR}"],

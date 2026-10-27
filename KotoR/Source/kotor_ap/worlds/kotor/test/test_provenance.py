@@ -129,6 +129,14 @@ class TestReleaseComparisonAndHistory(unittest.TestCase):
             found, _count = cp.check_paths(path, cp.Rules())
             self.assertEqual(len(found), 4)          # the ap_ template passes; the game-named template and the three build outputs do not
 
+    def test_history_paths_with_archives_logs_and_caches_fail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "paths.txt")
+            with open(path, "w") as f:
+                f.write("\n".join(["KotoR/Release/old.zip", "x/debug_pykotor.log", "x/__pycache__/a.cpython-312.pyc", "x/dllmain.obj", "KotoR/Source/scripts/tool.py"]))
+            found, count = cp.check_paths(path, cp.Rules())
+            self.assertEqual((count, len(found)), (5, 4))
+
     def test_the_comparison_flags_only_files_that_are_not_plain_code(self):
         with tempfile.TemporaryDirectory() as tmp:
             old, new = os.path.join(tmp, "old.zip"), os.path.join(tmp, "new.zip")

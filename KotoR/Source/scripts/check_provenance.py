@@ -203,8 +203,12 @@ def compare_zips(old_path, new_path):
 def check_paths(path, rules):
     """Every path git ever recorded (a list, one per line): none may have been a game-data file."""
     problems, n = [], 0
-    with open(path, encoding="utf-8", errors="replace") as f:
-        for line in f:
+    with open(path, "rb") as f:
+        raw = f.read()
+    # Windows PowerShell's > writes UTF-16; accept that as well as UTF-8 so the list can come from either
+    text = raw.decode("utf-16") if raw[:2] in (bytes([0xFF, 0xFE]), bytes([0xFE, 0xFF])) else raw.decode("utf-8-sig", errors="replace")
+    if True:
+        for line in text.splitlines():
             rel = line.strip().strip('"')
             if not rel:
                 continue
@@ -215,8 +219,10 @@ def check_paths(path, rules):
             base = os.path.basename(rel).lower()
             if base in rules.zip_forbidden_names or (base.startswith("apo_") and base not in rules.zip_own_apo):
                 problems.append(f"{rel}: a file written from, or a copy of, the game's scripts was recorded in the history")
-            if ext in (".ncs", ".exe", ".dll", ".obj"):
-                problems.append(f"{rel}: build output ({ext}) was recorded in the history; the repository holds source only")
+            if ext in (".ncs", ".exe", ".dll", ".obj", ".pcode", ".pdb", ".pyc", ".log"):
+                problems.append(f"{rel}: build output, a cache or a log ({ext}) was recorded in the history; the repository holds source only")
+            if ext in (".zip", ".7z", ".rar", ".gz", ".apworld"):
+                problems.append(f"{rel}: an archive ({ext}) was recorded in the history; releases are attached to GitHub Releases, never committed, and an old one may hold game files")
             if ext in rules.gff_ext and not base.startswith(rules.gff_prefix):
                 problems.append(f"{rel}: a template not named {rules.gff_prefix}* was recorded in the history; the game's own are never named like that, so this may be a copy of one")
     return problems, n

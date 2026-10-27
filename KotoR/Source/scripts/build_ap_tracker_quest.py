@@ -290,6 +290,37 @@ def build_quests(jrl, stringrefs: list[int]) -> None:
     print(f"  added {len(RECRUITS)} crew quests ({CREW_QUEST_PREFIX}*) -> {len(jrl.quests)} total quests")
 
 
+def restore_tlk(game_dir: str) -> None:
+    """Puts dialog.tlk back the way it was before this script appended the quest strings, from the backup it made the first time. Only when the file is still the
+    backup plus strings this script appended; if the game is running, or anything else changed the file, it is left alone."""
+    tlk_path = os.path.join(game_dir, "dialog.tlk")
+    backup_path = tlk_path + ".pre_ap_tracker_backup"
+    if not os.path.isfile(backup_path):
+        print("  dialog.tlk: no backup from this mod, nothing to put back")
+        return
+    if _game_running():
+        print("  SKIPPED dialog.tlk: close the game and run this again")
+        return
+    with open(backup_path, "rb") as f:
+        original = [e.text for e in read_tlk(f.read()).entries]
+    with open(tlk_path, "rb") as f:
+        current = [e.text for e in read_tlk(f.read()).entries]
+    ours = set(_TLK_TEXTS)
+    if current[:len(original)] == original and all(text in ours for text in current[len(original):]):
+        shutil.copy2(backup_path, tlk_path)
+        os.remove(backup_path)
+        print(f"  Restored dialog.tlk ({len(current)} -> {len(original)} entries)")
+    else:
+        print("  dialog.tlk has changed in ways this mod did not make; left alone")
+
+
+def restore(game_dir: str) -> None:
+    import client_files
+    removed = client_files.restore_group(game_dir, "tracker")
+    print(f"Removed {removed} journal file(s).")
+    restore_tlk(game_dir)
+
+
 def build(game_dir: str, dry_run_dir: str | None = None) -> None:
     """dry_run_dir (testing only): read the real install but write nothing
     into it -- dialog.tlk is read from/written to a copy in dry_run_dir and
@@ -320,9 +351,15 @@ def build(game_dir: str, dry_run_dir: str | None = None) -> None:
         print("  dry run: nothing deployed")
         return
     override_dir = os.path.join(game_dir, "Override")
+    import client_files
+    tracker = client_files.start("tracker", game_dir)
     shutil.copy2(out_path, os.path.join(override_dir, "global.jrl"))
+    tracker.finish()
     print(f"  deployed -> {override_dir}\\global.jrl")
 
 
 if __name__ == "__main__":
-    build(_arg_value("--game-dir", DEFAULT_GAME_DIR), _arg_value("--dry-run-dir", None))
+    if "--restore" in sys.argv:
+        restore(_arg_value("--game-dir", DEFAULT_GAME_DIR))
+    else:
+        build(_arg_value("--game-dir", DEFAULT_GAME_DIR), _arg_value("--dry-run-dir", None))

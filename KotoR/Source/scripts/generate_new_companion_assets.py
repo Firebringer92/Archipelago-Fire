@@ -1193,6 +1193,11 @@ def main():
         new_companion = _connected_new_companion()
 
     override_dir = os.path.join(game_dir, "Override")
+    import client_files
+    if "--restore" in sys.argv:
+        print(f"Removed {client_files.restore_group(game_dir, 'new_companion')} New Companion file(s).")
+        return
+    tracker = client_files.start("new_companion", game_dir)
     # 0.2.0: nothing replaces HK-47 at his recruitment any more. The Tatooine trigger is always the vanilla one; with the option on, the
     # ship's New Companion console (generate_new_companion_console.py) swaps him for any of the characters below.
     deploy_vanilla_trigger(override_dir, 0, game_dir)
@@ -1217,6 +1222,8 @@ def main():
         if new_companion == 2:      # random_class: rewrite each character with the class the seed rolled for them (before the T3-M4 copies are made)
             apply_rolled_classes(override_dir, _connected_new_companion_classes())
         write_t3_slot_variants(override_dir)
+    tracker.finish()
+
 
 if __name__ == "__main__":
     main()

@@ -61,6 +61,11 @@ OVERRIDE = os.path.join(GAME_DIR, "Override")
 
 
 def main():
+    import client_files
+    if "--restore" in sys.argv:
+        print(f"Removed {client_files.restore_group(GAME_DIR, 'shop_costs')} shop price file(s).")
+        return
+    tracker = client_files.start("shop_costs", GAME_DIR)
     with open(GEAR_JSON, encoding="utf-8") as f:
         gear = json.load(f)
     shop_resrefs = sorted(r for r, v in gear.items() if v.get("shop_randomize"))
@@ -93,6 +98,7 @@ def main():
         print(f"  {resref}: Cost 0 -> {DEFAULT_MIN_COST}, deployed -> {out_path}")
         fixed += 1
 
+    tracker.finish()
     print(f"\nDone. Fixed {fixed} zero-cost items, {already_nonzero} already had a "
           f"real cost, {not_found} not found.")
 

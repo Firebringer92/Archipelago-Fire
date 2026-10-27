@@ -69,9 +69,11 @@ If the client cannot find the project's `scripts\` folder (an unusual folder lay
   datapad patch and the vendor refresh also run on every connect and have
   no manual command; reconnecting re-runs them.
 - `/ap_restore_all` — reverts the per-seed patches (the same set `/ap_patch_all`
-  re-applies). The always-on patches (Galactic Shop crate, area poll hook, New
-  Companion, shop prices) are not touched by either command; `Uninstall.bat` removes
-  them. Connect with the game CLOSED: the patches rewrite module files.
+  re-applies), and removes what the client writes on every connect: the Jedi-trial suppressor, the shop price
+  fixes, the New Companion files and the tracker journal with its `dialog.tlk` strings (a reconnect writes them
+  again). It removes only files it recorded writing (`%LOCALAPPDATA%\KotorAP\client_files.json`) and only while they
+  are still the files it wrote. The Galactic Shop crate and the area poll hooks are left for `Uninstall.bat`.
+  Connect with the game CLOSED: the patches rewrite module files.
 - `/ap_autorelease [on|off]` — when your goal completes the client tells
   the server and sends `!release` for you (only if the room's release
   permission is `goal` or `enabled`; `auto` rooms release by themselves,

@@ -123,10 +123,13 @@ This mod repacks real game files in place — `modules\*.rim` and
   goes wrong beyond what the built-in restore covers.
 - **`Uninstall.bat`** reverts everything the installer touched, including
   restoring every module file the per-seed patches edited (doors, Loot Mode,
-  additional enemies, boss datapads, Galactic Shop), removing the Progression System's story gates and the droid assets, and deleting the files Install built from your game.
-- If all else fails, Steam's **Verify integrity of game files** will
-  restore any modified `modules\`/`Override\` content from scratch (this
-  won't undo save-file changes, which is why saves need their own backup).
+  additional enemies, boss datapads, Galactic Shop), removing the Progression System's story gates and the droid assets, deleting the files Install built from your game, and
+  removing what the client wrote into `Override\` and `dialog.tlk` while you were connected (the Jedi-trial suppressor, the shop price fixes, the New Companion files and the
+  tracker journal). It removes only files it recorded writing, and only while they are still the files it wrote. Files written by an older release were not recorded, so
+  a game last patched by an older release may keep some.
+- `/ap_restore_all` in the client undoes the same things without uninstalling. A reconnect writes them again.
+- If all else fails, Steam's **Verify integrity of game files** restores the game's own files in `modules\` (this
+  won't undo save-file changes, which is why saves need their own backup). It does **not** remove extra files that were added to `Override\`, so it is not a substitute for `Uninstall.bat`.
 
 
 ## Other Notes

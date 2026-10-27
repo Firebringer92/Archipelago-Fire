@@ -1019,6 +1019,12 @@ generated seed, gated on that seed's options):
 - `model_builders.py` — builds the Malak, HK-47 variant and droid models with MDLOps (`tools/mdlops`, GPL, shipped with its licence) from the model scripts
   (`fix_malak_basic_attack_animations.py`, `build_hk47_human_rig.py`, `build_droid_human_rig.py`, `fix_droid_ranged_animations.py`, `build_hk47_variant_texture.py`; they
   write to `KOTOR_AP_MODEL_OUT`) and caches the results in `%LOCALAPPDATA%\KotorAP\models`.
+- `client_files.py` — records the loose files the client writes into `Override` on every connect (the Jedi-trial suppressor, the shop price fixes, the New Companion templates and scripts,
+  the tracker journal) and removes them again. Each of those scripts calls `start(group, game_dir)` before it writes and `finish()` after; the files that appeared, with their SHA-256, go into
+  `%LOCALAPPDATA%\KotorAP\client_files.json`. Each script's `--restore` removes its group's files that are still byte-for-byte what was written (a fingerprint is updated only when the script
+  itself rewrote the file, so another script's edit is not mistaken for ours), and `client_files.py --restore` then removes the shared `.2da` tables (appearance, baseitems and the others) that no
+  longer differ from the game's own, or differ only in the `denysubrace` cells of the rows New Companion sets. `build_ap_tracker_quest.py --restore` puts `dialog.tlk` back from its backup, only
+  when the file is still the backup plus the strings that script appended. `Uninstall.bat` and the client's `/ap_restore_all` both run these.
 - `nwnnsscomp_path.py` — `compile_nss()`, the one function every generator and patcher calls to turn an `.nss` into an `.ncs`. It runs `tools/nwnsc/nwnsc.exe`
   (MIT and BSD licensed; the compiler library is by Edward T. Smith and The Open Knights Consortium) with the script's folder and `extender/scripts_src` as include folders, and
   falls back to a KotOR Scripting Tool `nwnnsscomp.exe` on a development machine. A failed compile leaves any older `.ncs` untouched, so callers check for a fresh file.

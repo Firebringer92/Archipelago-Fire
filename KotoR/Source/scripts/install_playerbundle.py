@@ -449,7 +449,9 @@ def uninstall() -> None:
     # gate and droid asset patchers after them (gate scripts left in Override would keep gating a vanilla game).
     for name in ("patch_loot_disturb.py", "patch_item_suppression.py", "patch_door_randomizer.py", "patch_additional_enemies.py",
                  "patch_bazaar_tokens.py", "patch_boss_datapads.py", "patch_galactic_shop.py", "patch_area_poll_hooks.py", "patch_story_gates.py",
-                 "generate_droid_assets.py", "patch_party_console.py", "build_game_assets.py"):
+                 "generate_droid_assets.py", "patch_party_console.py", "build_game_assets.py",
+                 "generate_makejedi_suppressor.py", "patch_shop_item_costs.py", "generate_new_companion_assets.py", "build_ap_tracker_quest.py",
+                 "client_files.py"):
         result = subprocess.run(
             [sys.executable, os.path.join(SCRIPT_DIR, name), "--restore", f"--game-dir={game_dir}"],
             capture_output=True, text=True,

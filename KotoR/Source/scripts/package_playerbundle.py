@@ -52,6 +52,8 @@ FILES = [
     (("tools", "nwnsc", "LICENSE.txt"), "tools/nwnsc/LICENSE.txt"),
     (("tools", "nwnsc", "CREDITS.txt"), "tools/nwnsc/CREDITS.txt"),
     (("scripts", "nwnnsscomp_path.py"), "scripts/nwnnsscomp_path.py"),
+    # Records the files the client writes while connected, and removes them for Uninstall and /ap_restore_all.
+    (("scripts", "client_files.py"), "scripts/client_files.py"),
     # extender/install.ps1 is retired, not shipped here -- a parallel
     # PowerShell install path never wrote python_path.txt the way
     # install_playerbundle.py does, reintroducing the PATH-resolution bug

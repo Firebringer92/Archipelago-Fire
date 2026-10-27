@@ -85,7 +85,7 @@ MANIFEST_PATH = os.path.join(SRC_DIR, "_vendor_manifest.json")
 _COMPILED = []
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402
 NWNNSSCOMP = resolve_nwnnsscomp()
 
 # Vendor unlock items (the Archipelago Vendor option, Options.py's ArchipelagoVendor): one
@@ -269,28 +269,6 @@ FEATS = [
 # writes to a live in-memory list, not whatever the save writer treats
 # as authoritative). reply_power is NOT wired into entry_greet in
 # build_dlg() below -- do not re-add without a real extender-level fix.
-#
-# TSL-ported powers (see scripts/patch_tsl_powers.py). Only the base tier
-# of each tiered family -- Improved/Master both have real prerequisites on
-# the lower tier (same "no dependency" curation rule as the vanilla pool),
-# so those tiers are excluded the same way Advanced/Master vanilla tiers
-# are.
-#
-# Revitalize (row 133) intentionally excluded: it's the target of
-# ap_extender.c's ap_bootstrap_tsl_force_powers() (currently disabled, see
-# that function's own call site comment), so a Vendor entry for it would
-# be redundant even once that's re-enabled. Force Scream (136) has a known
-# cosmetic bug -- its cast animation looks identical to Shock's even after
-# fixing its raw K2 castanim to 'self' (see CASTANIM_OVERRIDE_BY_FAMILY in
-# patch_tsl_powers.py); the actual cause is still open, but the power
-# itself is otherwise fully functional (damage/save/debuff all work), so
-# it stays exposed here. Force Barrier (139) is excluded here too: its
-# character-sheet "next tier" navigation lands on Force Shield instead of
-# Improved Force Barrier (see patch_tsl_powers.py's
-# CATEGORY_OVERRIDE_BY_FAMILY comment for what was ruled out). Master
-# Energy Resistance (142) and Master Heal (143) are new additions,
-# single-tier caps on lines K1 already has -- verified column-clean
-# against their real K1 predecessors, no override needed.
 POWERS = [
     (6, "Train Affect Mind"),
     (8, "Train Speed Burst"),
@@ -305,24 +283,11 @@ POWERS = [
     (47, "Train Droid Stun"),
     (49, "Train Lightsaber Throw"),
     (50, "Train Wound"),
-    (136, "Train Force Scream"),
-    (142, "Train Master Energy Resistance"),
-    (143, "Train Master Heal"),
 ]
 
-# The curated POWERS pool above is restricted to powers with an empty
-# spells.2da "prerequisites" column (see this list's own docstring), so
-# most entries need no tier-gate check at the point of purchase. Master
-# Energy Resistance (142, real prereq "40_42" = Resist Energy II + I) and
-# Master Heal (143, real prereq "10_28" = Cure + Heal) are the exception --
-# without this, a player could buy straight into the Master tier via the
-# Vendor without ever having earned the lower ones. power_id -> list of
-# OTHER power_ids that must ALL already be known first (empty list/absent
-# key = no additional gate, matching every other entry above).
-POWER_PREREQUISITES = {
-    142: [40, 42],
-    143: [10, 28],
-}
+# power_id -> list of OTHER power_ids that must ALL already be known before the power can be bought (empty or absent = no gate). Every
+# power in the pool above has an empty spells.2da "prerequisites" column, so none needs one today.
+POWER_PREREQUISITES = {}
 
 VENDOR_LOCATION = (55.5, 36.5, 1.80)
 
@@ -346,10 +311,7 @@ def write_and_compile(resref, source):
         f.write(source)
 
     mtime_before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
-    result = subprocess.run(
-        [NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-        capture_output=True, text=True, cwd=SRC_DIR, timeout=30,
-    )
+    result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR, timeout=30)
     compiled_fresh = os.path.exists(ncs_path) and (
         mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
     )

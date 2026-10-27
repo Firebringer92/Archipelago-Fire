@@ -66,7 +66,7 @@ def _arg_value(flag, default):
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402 -- see that module's docstring
 NWNNSSCOMP = resolve_nwnnsscomp()
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 # Same path generate_poll_shared.py/the two patch_*.py scripts read --
@@ -175,10 +175,7 @@ def main():
     # that stale file sitting there and this check would report success
     # anyway. mtime_before + a compile-error stdout scan catches that.
     mtime_before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
-    result = subprocess.run(
-        [NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-        capture_output=True, text=True, cwd=SRC_DIR, timeout=30,
-    )
+    result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR, timeout=30)
     compiled_fresh = os.path.exists(ncs_path) and (
         mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
     )

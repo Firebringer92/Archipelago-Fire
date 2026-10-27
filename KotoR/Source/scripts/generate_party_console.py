@@ -37,7 +37,7 @@ from pykotor.common.language import LocalizedString
 from pykotor.common.misc import ResRef, Game
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
@@ -119,7 +119,7 @@ def compile_script(resref, source):
     with open(nss, "w") as f:
         f.write(source)
     before = os.path.getmtime(ncs) if os.path.exists(ncs) else None
-    result = subprocess.run([NWNNSSCOMP, "-c", nss, "-o", ncs], capture_output=True, text=True, cwd=SRC_DIR, timeout=30)
+    result = compile_nss(nss, ncs, cwd=SRC_DIR, timeout=30)
     fresh = os.path.exists(ncs) and (before is None or os.path.getmtime(ncs) != before)
     if not fresh or "Error" in result.stdout or "aborted" in result.stdout:
         sys.exit(f"COMPILE FAILED: {resref}\n{result.stdout}\n{result.stderr}")

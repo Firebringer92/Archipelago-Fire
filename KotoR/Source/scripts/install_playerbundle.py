@@ -8,9 +8,8 @@ Steps 2-5:
   - Deploys the always-on base mod content (dist/Override/*) into your
     game's Override folder -- same operation as setup_game.py, called
     directly rather than reimplemented.
-  - Copies nwnnsscomp.exe into the game folder root (see
-    scripts/nwnnsscomp_path.py -- this is now the PREFERRED location the
-    3 patch scripts and 4 NWScript generators look for it).
+  - Checks that the script compiler (tools/nwnsc/nwnsc.exe, run from this
+    folder by scripts/nwnnsscomp_path.py) came with the download.
   - Installs the merged binkw32.dll proxy (captures the real DLL once,
     then swaps in the merged proxy -- see _install_binkw32()). This is the
     only tester-facing path that does this: a parallel PowerShell
@@ -57,7 +56,7 @@ DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 
 DIST_OVERRIDE = os.path.join(REPO_ROOT, "dist", "Override")
 SETUP_GAME = os.path.join(SCRIPT_DIR, "setup_game.py")
-BUNDLED_NWNNSSCOMP = os.path.join(REPO_ROOT, "to_game_folder", "nwnnsscomp.exe")
+BUNDLED_COMPILER = os.path.join(REPO_ROOT, "tools", "nwnsc", "nwnsc.exe")
 PROXY_DLL = os.path.join(REPO_ROOT, "extender", "build_new", "binkw32.dll")
 INSTALL_PS1_BACKUP_DIR = os.path.join(REPO_ROOT, "extender", "backup")
 CAPTURED_ORIG_COPY = os.path.join(INSTALL_PS1_BACKUP_DIR, "binkw32_real_captured.dll")
@@ -257,24 +256,11 @@ def _run_setup_game(game_dir: str) -> list[str]:
     return pre_existing
 
 
-def _copy_nwnnsscomp(game_dir: str) -> bool:
-    """Returns True if this installer is the one that put nwnnsscomp.exe
-    there (False if one was already present, e.g. a tester who'd
-    separately installed the standalone KotOR Scripting Tool into their
-    game folder by hand -- don't remove THEIRS on uninstall)."""
-    if not os.path.isfile(BUNDLED_NWNNSSCOMP):
-        _warn(f"nwnnsscomp.exe is missing from the download ({BUNDLED_NWNNSSCOMP}), so it was skipped. "
-              f"Some features that compile scripts may not work. Extract the whole zip again if you "
-              f"see problems later.")
-        return False
-    dest = os.path.join(game_dir, "nwnnsscomp.exe")
-    pre_existing = os.path.isfile(dest)
-    if not pre_existing:
-        shutil.copy2(BUNDLED_NWNNSSCOMP, dest)
-        print(f"Copied nwnnsscomp.exe -> {dest}")
-    else:
-        print(f"{dest} already exists -- leaving it as-is.")
-    return not pre_existing
+def _check_compiler() -> None:
+    """The compiler runs from the extracted download, so there is nothing to copy; only say so plainly if it is missing."""
+    if not os.path.isfile(BUNDLED_COMPILER):
+        _warn(f"The script compiler is missing from the download ({BUNDLED_COMPILER}). Features that compile scripts will not work. "
+              f"Extract the whole zip again, then run the installer again.")
 
 
 def _pip_install_pykotor() -> None:
@@ -390,7 +376,7 @@ def install(game_dir: str) -> None:
     print(f"Installing into {game_dir} ...\n")
     override_pre_existing = _run_setup_game(game_dir)
     print()
-    nwnnsscomp_installed_by_us = _copy_nwnnsscomp(game_dir)
+    _check_compiler()
     print()
     binkw32_result = _install_binkw32(game_dir)
     print()
@@ -403,7 +389,6 @@ def install(game_dir: str) -> None:
         "game_dir": game_dir,
         "repo_root": REPO_ROOT,
         "override_files": override_pre_existing,  # {filename: was_pre_existing}
-        "nwnnsscomp_installed_by_us": nwnnsscomp_installed_by_us,
         "binkw32": binkw32_result,
     }
     try:
@@ -480,13 +465,11 @@ def uninstall() -> None:
     _uninstall_binkw32(game_dir)
     print()
 
-    if manifest.get("nwnnsscomp_installed_by_us"):
+    if manifest.get("nwnnsscomp_installed_by_us"):      # copied there by an earlier version of this installer
         dest = os.path.join(game_dir, "nwnnsscomp.exe")
         if os.path.isfile(dest):
             os.remove(dest)
             print(f"Removed {dest}")
-    else:
-        print("nwnnsscomp.exe was already present before install -- leaving it in place.")
 
     dest_override = os.path.join(game_dir, "Override")
     removed = 0

@@ -118,6 +118,15 @@ def main():
         zf.writestr("kotor/archipelago.json", json.dumps(manifest))
 
     print(f"Wrote {args.out}")
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import check_provenance
+    problems, _count = check_provenance.check_zip(args.out, check_provenance.Rules())
+    if problems:
+        print("\nPROVENANCE CHECK FAILED: this world file must not be published.")
+        for p in problems:
+            print("  " + p)
+        sys.exit(1)
+    print("  provenance check: OK")
     print(f"  game={GAME_NAME} world_version={args.version} minimum_ap_version={min_ap_version}"
           f"{' (this machine core is ' + ap_core_version + ')' if min_ap_version != ap_core_version else ''}")
     print(f"  {len(included)} files packaged:")

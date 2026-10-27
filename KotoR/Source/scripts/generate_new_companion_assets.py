@@ -312,9 +312,8 @@ def write_new_companion_template(override_dir: str) -> None:
 
 def deploy_malak_spawn_script(override_dir: str) -> None:
     """k_hmal_spawn01.ncs is precompiled and checked into extender/
-    scripts_src/ (see build_malak_head_model.py-adjacent convention --
-    same "no compiler needed at runtime" reasoning patch_item_suppression.py
-    already uses for its own mode variants). Just a copy, same shape as
+    scripts_src/ (same "no compiler needed at runtime" reasoning
+    patch_item_suppression.py already uses for its own mode variants). Just a copy, same shape as
     deploy_vanilla_trigger()'s own NCS deploys."""
     src = os.path.join(SRC_DIR, "k_hmal_spawn01.ncs")
     dest = os.path.join(override_dir, "k_hmal_spawn01.ncs")
@@ -741,10 +740,7 @@ def deploy_malak_head_model(override_dir: str) -> None:
 
 def ensure_malak_portrait_row(game_dir: str, appearance_id: int) -> int:
     """Adds a 'po_malak' row to Override/portraits.2da if not already
-    present -- idempotent across repeated Connects, same add_row()
-    precedent patch_tsl_powers.py already established for spells.2da (see
-    that script's own k1_dir/chitin.key base-2DA resolution for the exact
-    precedent this mirrors). No TLK entry needed -- portraits.2da carries
+    present -- idempotent across repeated Connects. No TLK entry needed -- portraits.2da carries
     no name/label strref column at all (confirmed via its real headers:
     baseresref, sex, appearancenumber, race, inanimatetype, plot, lowgore,
     appearance_s, appearance_l, forpc, baseresrefe/ve/vve/vvve).
@@ -1019,14 +1015,14 @@ def _spawn_script_source(spec: dict) -> str:
 def build_character_spawn_script(spec: dict) -> bytes:
     """Writes and compiles the spawn script into extender/scripts_src (the checked-in precompiled convention), returns the NCS."""
     import subprocess
-    from nwnnsscomp_path import resolve_nwnnsscomp
+    from nwnnsscomp_path import compile_nss
     resref = spec["spawn"]
     nss_path = os.path.join(SRC_DIR, f"{resref}.nss")
     ncs_path = os.path.join(SRC_DIR, f"{resref}.ncs")
     with open(nss_path, "w") as f:
         f.write(_spawn_script_source(spec))
     before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
-    result = subprocess.run([resolve_nwnnsscomp(), "-c", nss_path, "-o", ncs_path], capture_output=True, text=True, cwd=SRC_DIR, timeout=30)
+    result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR, timeout=30)
     if not os.path.exists(ncs_path) or os.path.getmtime(ncs_path) == before:
         raise RuntimeError(f"compile failed for {resref}:\n{result.stdout}\n{result.stderr}")
     with open(ncs_path, "rb") as f:

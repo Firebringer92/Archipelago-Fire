@@ -13,7 +13,7 @@ Donor: N_DarkJediM, a full (type F) human model whose animations come from the s
   4. align the donor's weapon/effect hooks (rhand, lhand, ...) to HK-47's;
   5. rename (ap_hk47v / ap_hk47v_01) and compile with MDLOps.
 The result has NO animations of its own: they all come from the supermodel. appearance.2da row 1 (model ap_hk47v, type F) is
-the same row build_hk47_variant.py patches, so use that script's --deploy / --restore for the game files.
+the row generate_droid_assets.py writes into the player's install.
 
 Usage: python build_hk47_human_rig.py [--game-dir=PATH]      (builds into extender/raw_override_files, keeps the previous build
 as ap_hk47v_retarget.mdl/.mdx)

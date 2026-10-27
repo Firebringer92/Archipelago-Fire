@@ -1,0 +1,90 @@
+{
+  "description": "What may be published in the KotoR repository and in the release zips, and where each kind of file comes from. check_provenance.py enforces it. Add a rule here, with its origin, in the same commit as any new kind of file.",
+  "banned_extensions": [
+    ".mdl", ".mdx", ".wok", ".pwk", ".dwk", ".tga", ".tpc", ".txi", ".dds", ".lip", ".ssf", ".wav", ".mp3", ".ogg", ".bik", ".bk2",
+    ".2da", ".tlk", ".bif", ".key", ".erf", ".rim", ".mod", ".sav", ".jrl", ".lyt", ".vis", ".are", ".git", ".ifo", ".gic", ".fac", ".gui"
+  ],
+  "gff_extensions": [".uti", ".utc", ".utp", ".dlg", ".utt", ".ute", ".utm", ".utw", ".utd", ".uts"],
+  "gff_name_prefix": "ap_",
+  "prose_keys_forbidden_in_data": ["description", "desc", "text", "dialogue", "dialog", "lines", "flavor", "flavour", "lore"],
+  "data_tables_checked_for_prose": [
+    "Source/kotor_ap/worlds/kotor/gear_items.json",
+    "Source/kotor_ap/worlds/kotor/door_graph.json",
+    "Source/**/_enemy*.json",
+    "Source/questtagmapping.json",
+    "Source/force_powers_and_feats.json",
+    "Source/kotor_ap/force_powers_and_feats.json",
+    "Source/areatodisplaymap.json"
+  ],
+  "zip_exempt_from_banned_extensions": ["tools/mdlops/**"],
+  "zip_forbidden_names": ["nwscript.nss", "k_inc_utility.nss", "k_inc_debug.nss"],
+  "zip_own_apo_files": ["apo_0029.ncs", "apo_0034.ncs"],
+  "allowed": [
+    {"glob": "Docs/*.md", "origin": "authored: project documentation"},
+    {"glob": "Docs/*.yaml", "origin": "authored: the player YAML template"},
+
+    {"glob": "Source/**/*.py", "origin": "authored: our Python (AI-assisted, human-reviewed); no game data inside"},
+    {"glob": "Source/**/*.bat", "origin": "authored: installer and launcher batch files"},
+    {"glob": "Source/**/*.ps1", "origin": "authored: build script"},
+
+    {"glob": "Source/extender/src_k1se/*.c", "origin": "authored: the extender (ours), including K1SE's hook code (MIT, see K1SE_LICENSE.txt)"},
+    {"glob": "Source/extender/src_k1se/*.cpp", "origin": "authored: the extender (ours), including K1SE's hook code (MIT, see K1SE_LICENSE.txt)"},
+    {"glob": "Source/extender/src_k1se/*.h", "origin": "authored: the extender (ours), including K1SE's hook code (MIT, see K1SE_LICENSE.txt)"},
+    {"glob": "Source/extender/src_k1se/K1SE_LICENSE.txt", "origin": "third-party licence text: K1SE, MIT, Brandon Guffey"},
+    {"glob": "Source/extender/kse.nss", "origin": "third-party: K1SE's script header (MIT, Brandon Guffey)"},
+    {"glob": "Source/extender/third_party/minhook/**", "origin": "third-party: MinHook (Tsuda Kageyu, BSD-2) with the Hacker Disassembler Engine (Vyacheslav Patkov, BSD-2); licence in LICENSE.txt in that folder"},
+
+    {"glob": "Source/extender/scripts_src/*.nss", "origin": "authored: our NWScript source (generated or hand-written); the game's own scripts are never stored here"},
+    {"glob": "Source/extender/scripts_src/*.ncs", "origin": "built: compiled from the .nss next to it"},
+    {"glob": "Source/extender/scripts_src/*.uti", "origin": "authored: item templates we generate (named ap_*)"},
+    {"glob": "Source/extender/scripts_src/*.utc", "origin": "authored: creature templates we generate (named ap_*)"},
+    {"glob": "Source/extender/scripts_src/*.utp", "origin": "authored: placeable templates we generate (named ap_*)"},
+    {"glob": "Source/extender/scripts_src/*.dlg", "origin": "authored: conversations we generate (named ap_*)"},
+    {"glob": "Source/extender/scripts_src/_*_manifest.json", "origin": "authored: lists of the files a generator wrote (names only)"},
+    {"glob": "Source/extender/raw_override_files/*.uti", "origin": "authored: item templates we generate (named ap_*)"},
+    {"glob": "Source/extender/raw_override_files/*.utc", "origin": "authored: creature templates we generate (named ap_*)"},
+    {"glob": "Source/extender/raw_override_files/*.utp", "origin": "authored: placeable templates we generate (named ap_*)"},
+    {"glob": "Source/extender/raw_override_files/*.dlg", "origin": "authored: conversations we generate (named ap_*)"},
+    {"glob": "Source/extender/raw_override_files/*.ncs", "origin": "built: compiled from our NWScript source"},
+
+    {"glob": "Source/extender/area_trampolines/*.nss", "origin": "authored: generated NWScript"},
+    {"glob": "Source/extender/area_trampolines/_*.json", "origin": "game facts: area names and links, enemy spawn coordinates, challenge ratings and shop locations (identifiers, tags and numbers; no art, audio or prose)"},
+
+    {"glob": "Source/*.json", "origin": "game facts: identifier tables (quest tags, area names, power and feat ids)"},
+    {"glob": "Source/kotor_ap/force_powers_and_feats.json", "origin": "game facts: power and feat ids and short names"},
+    {"glob": "Source/kotor_ap/worlds/kotor/gear_items.json", "origin": "game facts: item identifiers, short names and stats (descriptions removed)"},
+    {"glob": "Source/kotor_ap/worlds/kotor/door_graph.json", "origin": "game facts: which door leads to which module"},
+    {"glob": "Source/scripts/provenance.json", "origin": "authored: this rules file"},
+    {"glob": "Source/scripts/preserved_originals.json","origin": "recipe: names of the game's scripts and byte offsets to patch; contains no game bytes"},
+
+    {"glob": "Source/tools/nwnsc/LICENSE.txt", "origin": "third-party licence text: nwnsc (MIT) and its compiler library (BSD-3)"},
+    {"glob": "Source/tools/nwnsc/CREDITS.txt", "origin": "third-party credits: nwnsc"}
+  ],
+  "binaries": [
+    {
+      "path": "Source/tools/nwnsc/nwnsc.exe",
+      "zip_path": "tools/nwnsc/nwnsc.exe",
+      "sha256": "11219870c747f748fe1956f275921c74ad0867a996fc2d3c197513bb7e8f5b12",
+      "origin": "nwnsc 1.1.5, downloaded unchanged from https://github.com/nwneetools/nwnsc/releases (nwnsc-win-v1.1.5.zip)",
+      "licence_file": "Source/tools/nwnsc/LICENSE.txt",
+      "licence_zip_path": "tools/nwnsc/LICENSE.txt",
+      "notice_must_mention": ["nwnsc", "Skywing"]
+    },
+    {
+      "path": "Source/extender/build_new/binkw32.dll",
+      "zip_path": "extender/build_new/binkw32.dll",
+      "sha256": "429fde1ddeae00f3764cfac5ea5f8a76a6dbf2b5540d75892bc15a20109eca05",
+      "origin": "built from Source/extender/src_k1se (ours, with K1SE's MIT hook code) linked with MinHook and the Hacker Disassembler Engine",
+      "licence_file": "Source/extender/src_k1se/K1SE_LICENSE.txt",
+      "notice_must_mention": ["K1SE", "MinHook"]
+    },
+    {
+      "zip_path": "tools/mdlops/mdlops.exe",
+      "path": "Source/tools/mdlops/mdlops.exe",
+      "sha256": "9b42b84704f831155661335a7546777f7562fe2d4ef763bde375ead85eab20b4",
+      "origin": "MDLOps 1.0.0 from https://deadlystream.com/files/file/779-mdlops/ (GPL); shipped only in the release zip, with its Perl source and licence",
+      "licence_zip_path": "tools/mdlops/GPL.txt",
+      "notice_must_mention": ["MDLOps", "Chuck Chargin"]
+    }
+  ]
+}

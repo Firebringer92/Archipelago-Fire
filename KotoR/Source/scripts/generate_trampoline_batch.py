@@ -32,7 +32,7 @@ from collections import defaultdict
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "area_trampolines")
 OVERRIDE_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor\Override"
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402 -- see that module's docstring
 NWNNSSCOMP = resolve_nwnnsscomp()
 
 # new_companion (Options.py) -- read the same way patch_item_suppression.py's
@@ -1338,18 +1338,9 @@ def build_delevel_block(level, xp, force):
 
 
 def build_force_power_block(spell_id):
-    # TSL Force Power port pilot -- the grant half of the
-    # "three tests" for porting KOTOR 2 powers into K1 (Revitalize, Force
-    # Scream, Force Barrier -- see scripts/patch_tsl_powers.py for the
-    # spells.2da/TLK/icon/impact-script install half). Reuses the
-    # KSE_FIELD_ADD_FORCE_POWER field write already confirmed by the
-    # retired research arm 47 (add/remove/remove-again on
-    # FORCE_POWER_CURE all passed first try) and shipped for the Remove
-    # Half Known Force Powers trap's REMOVE twin. spell_id is a spells.2da
-    # row index -- for a ported power that's a row patch_tsl_powers.py
-    # appended (133+ on a vanilla table), for a vanilla power any real
-    # FORCE_POWER_* row. Guarded with GetHasSpell so a reconnect replay is
-    # a harmless no-op rather than a duplicate entry in the power list.
+    # Grants one Force Power with the KSE_FIELD_ADD_FORCE_POWER field write (the same write the Remove Half Known Force Powers trap uses to remove
+    # them). spell_id is a spells.2da row index (any vanilla FORCE_POWER_* row). Guarded with GetHasSpell so a reconnect replay is a harmless
+    # no-op rather than a duplicate entry in the power list.
     return [
         "object oPC = GetFirstPC();",
         f"int nHad = GetHasSpell({spell_id}, oPC);",
@@ -2600,10 +2591,7 @@ void main()
         # output handle, so a bounded exit here anywhere in the chain is
         # sufficient, no DLL rebuild needed.
         try:
-            result = subprocess.run(
-                [NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-                capture_output=True, text=True, cwd=SRC_DIR, timeout=30,
-            )
+            result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR, timeout=30)
             compiled_fresh = os.path.exists(ncs_path) and (
                 mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
             )

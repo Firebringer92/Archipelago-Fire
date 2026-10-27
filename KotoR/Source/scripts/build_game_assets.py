@@ -130,22 +130,34 @@ OPTIONAL_CATEGORIES = {
 }
 
 
+# The game's own include scripts that ours #include (k_inc_utility also pulls in nothing further). nwnsc, unlike the compiler it replaced, does not read the
+# game's archives, so they are written next to nwscript.nss in extender/scripts_src from the player's install and never shipped.
+GAME_INCLUDES = ("k_inc_utility", "k_inc_debug")
+
+
 def ensure_compiler_support(game):
-    """The compiler reads nwscript.nss (the game's own definition of its script language) from the folder it compiles in, extender/scripts_src.
-    It is written from the player's install and not shipped. Returns True when it had to write it."""
+    """The compiler reads nwscript.nss (the game's own definition of its script language) and the game's include scripts from the folder it
+    compiles in, extender/scripts_src. They are written from the player's install and not shipped. Returns True when it had to write any."""
     from pykotor.resource.type import ResourceType
     from pykotor.extract.installation import SearchLocation
-    res = game.installation.resource("nwscript", ResourceType.NSS, [SearchLocation.CHITIN])
-    if res is None:
-        raise FileNotFoundError("the game has no nwscript.nss")
-    path = os.path.join(REPO_ROOT, "extender", "scripts_src", "nwscript.nss")
-    data = bytes(res.data)
-    if os.path.isfile(path) and open(path, "rb").read() == data:
-        return False
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
-        f.write(data)
-    return True
+    folder = os.path.join(REPO_ROOT, "extender", "scripts_src")
+    os.makedirs(folder, exist_ok=True)
+    wrote = False
+    for name in ("nwscript",) + GAME_INCLUDES:
+        res = game.installation.resource(name, ResourceType.NSS, [SearchLocation.CHITIN])
+        if res is None:
+            raise FileNotFoundError(f"the game has no {name}.nss")
+        data = bytes(res.data)
+        if name == "nwscript":
+            # The game's file declares SetAvailableNPCId with upper-case type names (INT, OBJECT_ID), which nwnsc rejects; the lower-case spelling is the same declaration.
+            data = data.replace(b"INT nNPC, OBJECT_ID oidNPC", b"int nNPC, object oidNPC")
+        path = os.path.join(folder, name + ".nss")
+        if os.path.isfile(path) and open(path, "rb").read() == data:
+            continue
+        with open(path, "wb") as f:
+            f.write(data)
+        wrote = True
+    return wrote
 
 
 def _sha1(data):

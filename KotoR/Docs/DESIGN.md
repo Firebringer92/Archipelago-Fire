@@ -2,7 +2,8 @@
 
 **Status: Alpha.** The core pipeline (delivery, detection, options, item distribution, goal detection) is built, wired, and generation-tested
 end-to-end, and most of it has been played. As of 0.1.9 every story gate of the Progression System (Taris, Dantooine, Tatooine, Kashyyyk,
-Manaan, Korriban) has been played closed and then open
+Manaan, Korriban) has been played closed and then open. 0.2.0 adds the job dispatcher, the New Companion console, feat training, the quest item and Bazaar checks, and
+builds everything that is a copy or edit of the game's own files on the player's machine (section 3).
 
 This document explains how the whole system fits together and what each file is for. It does not re-derive the engine-constraint
 discoveries that shaped the design; the ones that matter for reading the code are summarised in section 3 and in each file's entry.
@@ -148,6 +149,10 @@ gradually, not all at once):
   planet's first area (Taris on entering the Jedi Enclave, Dantooine on entering the Leviathan's Hawk, and so on). Nothing is lost in the base game because
   those planets cannot be revisited; with the area randomizer a shuffled door can lead back, and the planet comes back in its fresh state (enemies, containers,
   fog and first-entry scenes reset, while quests and globals are kept). The mod does not change this table.
+- **Nothing in the download is a copy or an edit of the game's own files.** `scripts/build_game_assets.py` makes them from the player's install with recipes only
+  (names, byte offsets, one-link edits to a conversation); `scripts/list_game_derived.py` is the one rule for what counts, and the packagers, the GitHub sync and
+  `test_game_assets.py` all use it, so a derived file cannot ship by accident. The few game files our scripts need to compile against (`nwscript.nss`, `k_inc_utility`,
+  `k_inc_debug`) are written from the install too. Third-party tools run as separate programs (MDLOps, nwnsc) and ship with their licences.
 
 ## 4. File-by-file breakdown
 
@@ -841,7 +846,7 @@ generated seed, gated on that seed's options):
   console raises the Unknown World flag when all five star maps are counted and the Leviathan is done.
 - `generate_droid_assets.py` — installs (or removes, when neither option is on; it runs on every Connect) everything the droid options need in Override: the Battle
   Droid class (a tenth `classes.2da` row, class 9, with its own feat, skill and level-gain columns), the melee weapon types opened to droids (`baseitems.2da`), the
-  human-rig droid models (war droid, assassin droid and an HK-47 PC variant) so melee weapons swing, the Mark Two droid's ranged animations, wrappers that let a droid
+  human-rig droid models (war droid, assassin droid and an HK-47 PC variant; built on the player's machine by MDLOps through `model_builders.py`) so melee weapons swing, the Mark Two droid's ranged animations, wrappers that let a droid
   PC past the Taris elevator guard and roll Persuade on Charisma, and, for `companion_class: droid`, droid-race templates for the seven organic companions. The plan
   (a look and a class per companion) is rolled at generation time by `roll_droid_companions` in `__init__.py`: seven looks from twelve (at most two companions
   share a model type, with different paint jobs) and a 3/2/2 hand of Combat, Expert and Battle Droid classes; the human-rig looks are swapped onto Battle Droids
@@ -882,7 +887,8 @@ generated seed, gated on that seed's options):
     the character's own appearance row, so no custom model is needed.
   - A spawn script, a one-line greeting dialog (`k_h<name>_dialog.dlg`; a
     replacement has only that greeting, no personal subplot) and a
-    `portraits.2da` row per character.
+    `portraits.2da` row per character. Malak, Calo Nord, Yuthura Ban and Darth Bandon have no portrait art of their own: their rows borrow the game's stock
+    portraits, so nothing from the game's art is shipped.
   - `random_class` (`new_companion` = 2): the class the seed rolled for each
     character (`new_companion_classes` in the slot data, which `KotorClient.py`
     writes to `_slot_data.json` at Connect) is written into each template —
@@ -908,7 +914,8 @@ generated seed, gated on that seed's options):
     `baseitems.2da`'s Lightsaber row is `weaponwield=2`, so his own partial
     set was never the right group. Fixed by splicing animations from
     `S_Male02` into his model via MDLOps
-    (`scripts/fix_malak_basic_attack_animations.py`): the melee swings
+    (`scripts/fix_malak_basic_attack_animations.py`, run by `model_builders.py` on the player's machine from their own copy of the model, about half a
+    minute once, kept under `%LOCALAPPDATA%\KotorAP\models`; the model is not shipped): the melee swings
     (`g2a1`/`g2a2`) and, since he now also holds firearms as a party member,
     the ready/wound/guard/dodge/attack animations of the blaster pistol,
     rifle, repeating blaster and double blade groups and the rifle and
@@ -950,8 +957,7 @@ generated seed, gated on that seed's options):
   accepted side effect. Generated files: `ap_nc_c_<key>`/`ap_nc_s_<key>`
   (HK-47 slot) and `ap_nc_ct_<key>`/`ap_nc_st_<key>` (T3-M4 slot) condition
   and swap scripts, `ap_nc_hk_ok`/`ap_nc_t3_ok`, the greeting conditions
-  `ap_nc_greet`/`ap_nc_greett`; `/ap_dispatch nc_here` (developer, needs
-  `KOTOR_AP_DEV=1`) places the terminal in front of the player to test a spot.
+  `ap_nc_greet`/`ap_nc_greett`.
 - `generate_party_console.py` — the Party Console item (AP item "Party
   Console", `give_item:ap_partycon_a`, always in the pool while companions
   exist). A plot item with one CastSpell property on a reused `spells.2da` row
@@ -959,9 +965,7 @@ generated seed, gated on that seed's options):
   `ap_party_con`, whose answer opens the party selection screen. It refuses
   (with a message) in the Taris cantina and its Duel Ring arena, the Korriban
   star map tomb, the Star Forge Malak fight (`BLOCKED_MODULES`) and on the
-  Ebon Hawk (`BLOCKED_PREFIXES`, modules starting `ebo_`). The script's own
-  docstring still calls it a developer test, and its files are not yet in
-  `package_dist.py`'s lists.
+  Ebon Hawk (`BLOCKED_PREFIXES`, modules starting `ebo_`).
 - `generate_feat_training.py` — Additional Feats as a training dialog. Each of
   the seven non-droid companions' conversation files gets one new first
   starter whose condition (`ap_ftr_front`) holds while the companion's unlock
@@ -1003,31 +1007,51 @@ generated seed, gated on that seed's options):
   4.2); `--restore` puts the backups back. The Jawa's and the token's
   generated files are not yet in `package_dist.py`'s lists.
 
+**Game-derived files — built on the player's machine** (nothing here ships as a copy of the game's data; see section 3):
+- `build_game_assets.py` — makes the Override files that are copies or edits of the game's own, from the player's install via pykotor, and records a hash manifest
+  (`%LOCALAPPDATA%\KotorAP\game_assets_manifest.json`) so `--restore` removes only what it wrote. Categories: `preserved_scripts` (the vanilla scripts our
+  wrappers call, copied under `apo_*` names from `preserved_originals.json`; derived with `derive_preserved_recipe.py`), `cutstart_dialogs` and `feat_training_dialogs`
+  (`dialog_fixes.py`: the game's own conversations with one extra unconditional link, and the seven companions' feat training menus), `saber_colors`
+  (`saber_colors.py`: the six extra crystal colors from the game's violet saber model with the texture code swapped, procedurally drawn blade glows, recolored icons,
+  templates and `upcrystals.2da`), `edited_templates` (`template_fixes.py`: one field changed in three creature and trigger templates) and, only when an option
+  needs it, `companion_models`. It also writes `nwscript.nss` and the game includes our scripts use (`GAME_INCLUDES`) into `extender/scripts_src` for the compiler,
+  lower-casing one declaration in `nwscript.nss` that `nwnsc` rejects. The installer runs it once and the client runs it on every connect.
+- `model_builders.py` — builds the Malak, HK-47 variant and droid models with MDLOps (`tools/mdlops`, GPL, shipped with its licence) from the model scripts
+  (`fix_malak_basic_attack_animations.py`, `build_hk47_human_rig.py`, `build_droid_human_rig.py`, `fix_droid_ranged_animations.py`, `build_hk47_variant_texture.py`; they
+  write to `KOTOR_AP_MODEL_OUT`) and caches the results in `%LOCALAPPDATA%\KotorAP\models`.
+- `nwnnsscomp_path.py` — `compile_nss()`, the one function every generator and patcher calls to turn an `.nss` into an `.ncs`. It runs `tools/nwnsc/nwnsc.exe`
+  (MIT and BSD licensed; the compiler library is by Edward T. Smith and The Open Knights Consortium) with the script's folder and `extender/scripts_src` as include folders, and
+  falls back to a KotOR Scripting Tool `nwnnsscomp.exe` on a development machine. A failed compile leaves any older `.ncs` untouched, so callers check for a fresh file.
+- `list_game_derived.py` — the single rule for "is this file derived from the game": every model, texture, icon, 2DA and journal, every `.dlg`/`.utc`/`.utt`/`.utp`/`.uti`
+  whose name exists in the game, the preserved scripts, `nwscript.nss` and the game includes. The packagers, the GitHub sync and `test_game_assets.py` use it.
+
 **Distribution/packaging** (for getting a fresh install running without
 the full dev toolchain — see `README.md`):
 - `package_dist.py` — collects the always-on generated Override content
   into `dist/Override/`, deriving the exact file list from the generator
   scripts' own data so it can't silently drift. **`EXTRA_RAW_FILES`**
   ships the non-`.ncs` files verbatim (never compiled) from
-  `extender/raw_override_files/`: the replacement `.dlg` files that fix the
-  "CutStart" engine bug (see TESTING.md's troubleshooting notes), the Player ID
-  placeholder `ap_pid.uti`, the 78 `ap_loc_*.uti` location markers, the vendor
-  token templates and dialogs, the Leviathan console and dialogs, and the extra
-  lightsaber crystal icons, sourced from the repo itself rather than a dev
-  machine's live game install, since they're static and seed-independent. The 87
-  vendor scripts and the other hand-written scripts ride in
+  `extender/raw_override_files/`: the Player ID placeholder `ap_pid.uti`, the 78
+  `ap_loc_*.uti` location markers, the vendor token templates and dialogs, the
+  Leviathan console and dialogs and the other files that are entirely our own,
+  sourced from the repo itself rather than a dev machine's live game install,
+  since they're static and seed-independent. It leaves out everything
+  `build_game_assets.py` makes (`list_game_derived.builder_output_names`): the
+  fixed "CutStart" conversations (see TESTING.md's troubleshooting notes), the
+  lightsaber crystal colors and the preserved vanilla scripts are built on the
+  player's machine. The vendor scripts and the other hand-written scripts ride in
   `HAND_WRITTEN_EXTRA`.
 - `setup_game.py` — tester-facing: copies `dist/Override/` into a real
   install. Pure standard library, no `pykotor`/compiler needed.
 - `install_playerbundle.py` (2026-09-08, the "3-step install" plan's
   Step 2) — the real, only tester-facing installer: calls `setup_game.py`,
-  copies the now-bundled `nwnnsscomp.exe` into the game folder root,
+  checks that the bundled script compiler (`tools/nwnsc`) is present,
   installs the merged `binkw32.dll` proxy and writes
   `%LOCALAPPDATA%\KotorAP\python_path.txt` (the real interpreter that ran
   this installer, so `ap_extender.c`'s orchestrator shell-out never has to
   guess at a working Python from the game process's own inherited PATH --
-  see 4.4's `ap_run_orchestrator()` entry), `pip install`s `pykotor`, and
-  writes an
+  see 4.4's `ap_run_orchestrator()` entry), `pip install`s `pykotor` (with numpy and pillow), runs `build_game_assets.py` to make the
+  game-derived files, and writes an
   install-path marker (`%LOCALAPPDATA%\KotorAP\install_path.txt`, which the
   apworld's "KOTOR Client" Launcher button reads) plus a
   manifest (`install_manifest.json`) recording exactly what it touched.
@@ -1041,8 +1065,10 @@ the full dev toolchain — see `README.md`):
 - `package_playerbundle.py` — builds the PlayerBundle zip (the Client
   folder's extra files: `KotorClient.py` and its helper modules including
   `entitlement.py` and `kotor_dispatcher.py`, the scripts (including
-  `dispatch_actions.py`, which the poll generator imports), the extender folder, `Install.bat` and
-  `Uninstall.bat`). Its `FILES`/`DIRS` lists do not update themselves: a new
+  `dispatch_actions.py`, which the poll generator imports), the builder and its
+  recipes, the extender folder, the tools `tools/mdlops` and `tools/nwnsc` with
+  their licences, `THIRD_PARTY_NOTICES.txt`, `Install.bat` and `Uninstall.bat`). It
+  skips every file `list_game_derived.py` marks as derived from the game. Its `FILES`/`DIRS` lists do not update themselves: a new
   file a tester needs must be added there, and `BUNDLE_VERSION` is bumped by
   hand together with `WORLD_VERSION`.
 - `package_apworld.py` — packages `Archipelago/worlds/kotor/`

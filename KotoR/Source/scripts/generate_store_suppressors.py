@@ -24,7 +24,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 MOD_DIR = os.path.join(GAME, "modules")
 OVERRIDE = os.path.join(GAME, "Override")
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402 -- see that module's docstring
 NWNNSSCOMP = resolve_nwnnsscomp()
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 
@@ -110,10 +110,7 @@ def main():
         print(f"  wrote wrapper source -> {nss_path}")
 
         ncs_path = os.path.join(SRC_DIR, f"{resref}.ncs")
-        result = subprocess.run(
-            [NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-            capture_output=True, text=True, cwd=SRC_DIR,
-        )
+        result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR)
         if not os.path.exists(ncs_path):
             print(f"  COMPILE FAILED:\n{result.stdout}\n{result.stderr}")
             continue

@@ -32,7 +32,7 @@ MOD_DIR = os.path.join(GAME, "Modules")
 OVERRIDE = os.path.join(GAME, "Override")
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402
 NWNNSSCOMP = resolve_nwnnsscomp()
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 
@@ -125,8 +125,7 @@ def main():
         ncs_path = os.path.join(SRC_DIR, f"{resref}.ncs")
         with open(nss_path, "w") as f:
             f.write(build_trampoline_source(resref, modules))
-        result = subprocess.run([NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-                                 capture_output=True, text=True, cwd=SRC_DIR)
+        result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR)
         if not os.path.exists(ncs_path):
             print(f"  COMPILE FAILED: {resref}\n{result.stdout}\n{result.stderr}")
             continue

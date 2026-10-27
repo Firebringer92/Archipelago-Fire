@@ -36,7 +36,7 @@ def _arg_value(flag, default):
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402 -- see that module's docstring
 # The recruit markers' quest tags and companion order (position == Locations.py's
 # companion_idx) are defined once, next to the global.jrl builder that declares them.
 from build_ap_tracker_quest import RECRUITS, RECRUIT_QUEST_PREFIX  # noqa: E402
@@ -1699,10 +1699,7 @@ ncs_path = os.path.join(SRC_DIR, f"{_poll_name}.ncs")
 # poll data forever, not just once. mtime_before + a compile-error stdout
 # scan catches that.
 mtime_before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
-result = subprocess.run(
-    [NWNNSSCOMP, "-c", out_path, "-o", ncs_path],
-    capture_output=True, text=True, cwd=SRC_DIR, timeout=30,
-)
+result = compile_nss(out_path, ncs_path, cwd=SRC_DIR, timeout=30)
 compiled_fresh = os.path.exists(ncs_path) and (
     mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
 )

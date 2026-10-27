@@ -58,7 +58,7 @@ from pykotor.resource.formats.rim import read_rim, write_rim
 from pykotor.resource.generics.git import construct_git, dismantle_git
 from pykotor.resource.type import ResourceType
 
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402 -- see that module's docstring
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
@@ -177,8 +177,7 @@ def deploy_handler(override_dir: str) -> None:
         # trampoline_batch.py/generate_makejedi_suppressor.py/generate_poll_
         # shared.py.
         mtime_before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
-        result = subprocess.run([NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-                                capture_output=True, text=True, cwd=SRC_DIR, timeout=30)
+        result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR, timeout=30)
         compiled_fresh = os.path.exists(ncs_path) and (
             mtime_before is None or os.path.getmtime(ncs_path) != mtime_before
         )

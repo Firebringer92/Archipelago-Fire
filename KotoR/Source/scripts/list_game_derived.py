@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 FOLDERS = [os.path.join("extender", "raw_override_files"), os.path.join("extender", "scripts_src"),
            os.path.join("extender", "dialog_bases"), os.path.join("extender", "portrait_sources")]
+GAME_INCLUDES = ("k_inc_utility", "k_inc_debug")       # the same list as build_game_assets.GAME_INCLUDES
 ALWAYS_DERIVED = {".mdl", ".mdx", ".tga", ".tpc", ".txi", ".jrl", ".2da", ".png"}
 NAME_CHECKED = {".dlg", ".utc", ".utt", ".utp", ".uti"}
 
@@ -77,7 +78,7 @@ def derived_files(game_dir=DEFAULT_GAME_DIR):
                     out.append(rel)
                 elif ext in (".ncs", ".nss") and (low in preserved or low.startswith("apo_")):
                     out.append(rel)
-                elif low == "nwscript.nss":      # the game's own script language definition, written from the player's install (build_game_assets.py)
+                elif low == "nwscript.nss" or (ext == ".nss" and stem in GAME_INCLUDES):      # the game's own script language definition and includes, written from the player's install (build_game_assets.py)
                     out.append(rel)
                 elif ext in NAME_CHECKED and (stem in vanilla[ext[1:]] or low in saber):
                     out.append(rel)

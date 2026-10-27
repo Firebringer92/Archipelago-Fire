@@ -8,8 +8,10 @@ the client does on connect, its commands, what to look at in this build, and wha
 Connect before launching KOTOR: the client writes your seed's real options to a local file the moment it connects, and the patches and the
 regenerated poll script need that file before the game starts reading its Override and modules.
 
-On every connect the client regenerates and deploys `ap_poll_shared.ncs` for the seed (look for `[poll_shared] regenerated for ...`; a `regeneration
-FAILED` line means a stale `nwnnsscomp.exe` path or `--game-dir` mismatch, retry with `/ap_regen_poll`). It then applies the per-seed game-file patches:
+On every connect the client first builds the files that are made from your own copy of the game (`[game assets] built N, already in place M`; a `FAILED` line says
+what was missing; the Malak and droid model builds log as `[new companion]` and `[droid assets]`). It then regenerates and deploys `ap_poll_shared.ncs` for the seed
+(look for `[poll_shared] regenerated for ...`; a `regeneration FAILED` line carries the compiler's own message: a missing `nwscript.nss` means the game-assets step did
+not finish, and a `--game-dir` mismatch also causes it; retry with `/ap_regen_poll`). It then applies the per-seed game-file patches:
 Loot Mode, item suppression, the story gates (Progression System), door randomization, Additional Enemies and the Bazaar tokens, then Galactic Shop, New Companion, the droid
 assets, the area poll hooks and the boss datapads. It prints `[patching] ...` when it starts and a `Finished` line when you can start the game (a warning if
 a patch failed); relaunch the game if it was already running, since the droid options replace tables it reads once at startup.
@@ -161,6 +163,8 @@ crash bug — send these along with it:
   silently-broken delivery chain shows up (see "Known rough edges" below)
   — check this first for anything that looks like "staged but never
   arrived."
+- **The `[game assets]`, `[new companion]` and `[droid assets]` lines** in the client log, and whether `%LOCALAPPDATA%\KotorAP\models` exists: it holds the finished Malak,
+  HK-47 and droid models (delete it to force a rebuild).
 - **`kotor_delivery_log.jsonl`** — next to `KotorClient.py`
   (your Client folder). The full history of
   what's been delivered and confirmed this playthrough, plus every
@@ -185,7 +189,9 @@ crash bug — send these along with it:
 - A `[dispatch] ... the game does not know the action` or `could not apply job` line means that one job failed and was not retried; it is in the delivery log with the reason. Report it.
 - Close an old KotorClient before starting a new one: a leftover client process can hold the game's connection, and the new client then connects to nothing
   without showing an error.
+- A `COMPILE FAILED` line in the client log comes from `tools\nwnsc\nwnsc.exe`, the script compiler, and carries its own message. If `nwnsc.exe` or `tools\mdlops\mdlops.exe`
+  will not start, check whether your antivirus quarantined it; restore or allow it, then connect again.
 - Crashes in the Taris Undercity or during a dialogue are known vanilla issues (graphics driver, audio engine); README's "Other Notes" has the workarounds.
 - **Stuck at a "CutStart" object mid-dialogue.** A vanilla KOTOR 1 engine bug: several cutscenes hang if the PC's base class was never Soldier, Scout or
-  Scoundrel, which `starting_class: jedi_start` / `jedi_granted` would otherwise cause. Four replacement `.dlg` files ship in the always-on Override package to prevent it.
+  Scoundrel, which `starting_class: jedi_start` / `jedi_granted` would otherwise cause. Replacement conversation files that prevent it are built from your own game files by the installer (and on every connect) into Override.
   **If it still happens, or after editing Override by hand, restart the game completely (not just reload the save):** those files are read once at process start.

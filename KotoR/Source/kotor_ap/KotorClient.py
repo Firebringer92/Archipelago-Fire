@@ -1174,16 +1174,11 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
             self.output(f"Admin: queued trap {arm_name!r} -- resolves on the next poll cycle (bypassing AP server).")
             return True
         if arm_name.startswith("force_power:"):
-            # TSL Force Power port pilot: force_power:<spells.2da
-            # row id>. For a ported power the id is whatever row
-            # patch_tsl_powers.py appended (it prints them; 133+ on a
-            # vanilla table); any vanilla FORCE_POWER_* row works too.
-            # Deliberately admin-only for now -- the pilot's whole point is
-            # live-testing the 3 ported powers before deciding whether they
-            # become real AP items.
+            # force_power:<spells.2da row id>: grants that Force Power to the PC (any vanilla FORCE_POWER_* row).
+            # Admin-only, a testing tool.
             raw = arm_name.split(":", 1)[1]
             if not raw.isdigit():
-                self.output("Usage: /ap_apply force_power:<spells.2da row id>, e.g. /ap_apply force_power:133")
+                self.output("Usage: /ap_apply force_power:<spells.2da row id>, e.g. /ap_apply force_power:6")
                 return False
             asyncio.create_task(self.ctx.extender.send_force_power(int(raw)))
             self.output(f"Admin: queued force_power {raw} directly (bypassing AP server) -- "

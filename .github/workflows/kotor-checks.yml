@@ -1,0 +1,63 @@
+name: KotoR checks
+
+# Runs on every push and pull request that touches KotoR/. Two independent jobs, both must pass:
+#   provenance  - no copy of the game's data is in the repository, and every file is accounted for (KotoR/Source/scripts/provenance.json)
+#   world-tests - the world's test suite, run against a stock Archipelago 0.6.8 with no KOTOR install present
+# Neither job has the game, so the tests that read the game are skipped here; the release checklist (KotoR/Docs/RELEASE_CHECKLIST.md) covers those on a machine that has it.
+
+on:
+  push:
+    paths:
+      - "KotoR/**"
+      - ".github/workflows/kotor-checks.yml"
+  pull_request:
+    paths:
+      - "KotoR/**"
+      - ".github/workflows/kotor-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    name: Provenance (no game files)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check every file in KotoR/
+        run: python KotoR/Source/scripts/check_provenance.py --root KotoR
+
+  world-tests:
+    name: World tests (no game installed)
+    runs-on: windows-latest
+    env:
+      KOTOR_GAME_DIR: C:\no\kotor\install
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+      - uses: actions/checkout@v4
+        with:
+          repository: ArchipelagoMW/Archipelago
+          ref: 0.6.8
+          path: work/Archipelago
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: work/Archipelago
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ci-requirements.txt
+          python ModuleUpdate.py --yes --force --append "WebHostLib/requirements.txt"
+          python Launcher.py --update_settings
+          pip install pykotor numpy pillow
+      - name: Put the repository files where the tests expect them
+        run: python repo/KotoR/Source/scripts/ci_layout.py --source repo/KotoR/Source --work work
+      - name: Run the tests
+        working-directory: work/Archipelago
+        run: python -m pytest worlds/kotor/test -q

@@ -47,16 +47,10 @@ BUNDLE_VERSION = "0.2.0"
 #
 # Individual files (not whole folders) copied in as-is.
 FILES = [
-    # Destination is deliberately NOT under "extender/" like the rest of
-    # this list -- every other entry here lands in the merged PlayerBundle
-    # folder, but this one file specifically needs to end up in the real
-    # Steam KOTOR game folder ROOT (see scripts/nwnnsscomp_path.py's
-    # resolve_nwnnsscomp(), which checks <game-dir>/nwnnsscomp.exe first).
-    # The Step-2 installer script is the thing that actually knows to copy
-    # this one to a different place than everything else in this list --
-    # not a generic "unzip everything into the same folder" operation.
-    # Redistribution permission confirmed directly with the tool's dev.
-    (("extender", "nwnnsscomp.exe"), "to_game_folder/nwnnsscomp.exe"),
+    # The script compiler: nwnsc (MIT and BSD licensed) with its licence and credits, run from this folder by scripts/nwnnsscomp_path.py.
+    (("tools", "nwnsc", "nwnsc.exe"), "tools/nwnsc/nwnsc.exe"),
+    (("tools", "nwnsc", "LICENSE.txt"), "tools/nwnsc/LICENSE.txt"),
+    (("tools", "nwnsc", "CREDITS.txt"), "tools/nwnsc/CREDITS.txt"),
     (("scripts", "nwnnsscomp_path.py"), "scripts/nwnnsscomp_path.py"),
     # extender/install.ps1 is retired, not shipped here -- a parallel
     # PowerShell install path never wrote python_path.txt the way
@@ -215,13 +209,18 @@ FILES = [
     (("scripts", "build_hk47_variant_texture.py"), "scripts/build_hk47_variant_texture.py"),
     (("scripts", "build_droid_human_rig.py"), "scripts/build_droid_human_rig.py"),
     (("scripts", "fix_droid_ranged_animations.py"), "scripts/fix_droid_ranged_animations.py"),
-    # MDLOps (GPL, Chuck Chargin Jr.): decompiles and recompiles the game's own models. Shipped with its licence and its Perl source.
+    # MDLOps (GPL; Chuck Chargin Jr., JdNoa, ndix UR and others; https://deadlystream.com/files/file/779-mdlops/): decompiles and recompiles the game's own models. Shipped with its licence and its Perl source.
     (("tools", "mdlops", "mdlops.exe"), "tools/mdlops/mdlops.exe"),
     (("tools", "mdlops", "mdlops.pl"), "tools/mdlops/mdlops.pl"),
     (("tools", "mdlops", "MDLOpsM.pm"), "tools/mdlops/MDLOpsM.pm"),
     (("tools", "mdlops", "GPL.txt"), "tools/mdlops/GPL.txt"),
     (("tools", "mdlops", "readme_MDLOps_1-0.txt"), "tools/mdlops/readme_MDLOps_1-0.txt"),
     (("tools", "mdlops", "changelog.txt"), "tools/mdlops/changelog.txt"),
+    # the rest of the author's download, so the package goes out as the Deadly Stream page lists it
+    (("tools", "mdlops", "KotOR_Tutorial.txt"), "tools/mdlops/KotOR_Tutorial.txt"),
+    (("tools", "mdlops", "Quick_tutorial.txt"), "tools/mdlops/Quick_tutorial.txt"),
+    (("tools", "mdlops", "replacer_tutorial.txt"), "tools/mdlops/replacer_tutorial.txt"),
+    (("tools", "mdlops", "icon.bmp"), "tools/mdlops/icon.bmp"),
     # Droid options: run on every Connect from KotorClient.py (apply_droid_assets()). Installs or removes the droid models,
     # appearance rows, Battle Droid class tables and companion templates; its models live in extender/raw_override_files.
     (("scripts", "generate_droid_assets.py"), "scripts/generate_droid_assets.py"),
@@ -240,12 +239,30 @@ ARCHIPELAGO_TREE = os.path.join(REPO_ROOT, "Archipelago")
 CORE_FILES = ["CommonClient.py", "NetUtils.py", "Utils.py", "settings.py", "ModuleUpdate.py", "kvui.py", "BaseClasses.py", "Fill.py", "Options.py",
               "entrance_rando.py", "MultiServer.py", "Launcher.py", "LICENSE",
               "worlds/__init__.py", "worlds/AutoWorld.py", "worlds/LauncherComponents.py", "worlds/Files.py",
-              "data/client.kv", "data/launcher.kv", "data/icon.png", "data/icon.ico", "data/discord-mark-blue.png", "data/options.yaml", "data/GLOBAL.apignore"]
+              "data/client.kv", "data/launcher.kv", "data/options.yaml", "data/GLOBAL.apignore"]
+# data/icon.png and data/icon.ico (the window and shortcut icon) are drawn by _own_icons(), not copied from Archipelago; the Discord logo and the
+# pictures in worlds/generic/docs are left out.
 CORE_TREE = ["rule_builder", "worlds/generic", "worlds/kotor"]      # folders, copied whole
 CORE_TREE_SKIP = ("__pycache__", "logs", "test")                      # the world's tests stay in the repo
 # The packages the client imports (from Archipelago's own requirements.txt, kept at its pins; the KivyMD lines need Git, see Install.bat).
 REQUIREMENT_NAMES = {"colorama", "websockets", "pyyaml", "jellyfish", "jinja2", "schema", "kivy", "bsdiff4", "platformdirs", "certifi",
                      "typing_extensions", "pathspec", "kivymd"}
+
+
+def _own_icons():
+    """(png bytes, ico bytes): a plain icon drawn here for the client window and the launcher shortcut."""
+    import io
+    from PIL import Image, ImageDraw
+    size = 256
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.ellipse((8, 8, size - 8, size - 8), fill=(24, 32, 48, 255), outline=(214, 170, 60, 255), width=10)
+    d.arc((52, 52, size - 52, size - 52), 20, 340, fill=(214, 170, 60, 255), width=14)
+    d.ellipse((size // 2 - 22, size // 2 - 22, size // 2 + 22, size // 2 + 22), fill=(214, 170, 60, 255))
+    png, ico = io.BytesIO(), io.BytesIO()
+    img.save(png, "PNG")
+    img.save(ico, "ICO", sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    return png.getvalue(), ico.getvalue()
 
 
 def _slim_requirements() -> str:
@@ -276,8 +293,15 @@ Archipelago (core files in this folder: CommonClient.py, NetUtils.py, Utils.py, 
             parts.append("\n\n" + "=" * 80 + "\n" + title + "\n" + "=" * 80 + "\n")
         with open(path, encoding="utf-8-sig") as f:
             parts.append(f.read().replace("\r", "").rstrip() + "\n")
+    with open(os.path.join(REPO_ROOT, "tools", "nwnsc", "LICENSE.txt"), encoding="utf-8") as f:
+        nwnsc_licence = f.read().replace("\r", "").rstrip()
+    parts.append("\n\n" + "=" * 80 + "\nnwnsc 1.1.5 -- tools/nwnsc (the NWScript compiler, https://github.com/nwneetools/nwnsc; run as a separate program)\n" + "=" * 80 + "\n"
+                 "Copyright (C) 2008-2014 Ken Johnson (Skywing); _NscLib: Copyright (c) 2002-2003 Edward T. Smith and (c) 2003 The Open Knights Consortium.\n"
+                 "Its licence follows (also tools/nwnsc/LICENSE.txt).\n\n" + nwnsc_licence + "\n")
     parts.append("\n\n" + "=" * 80 + "\nMDLOps -- tools/mdlops (used by the installer to make models from your own copy of the game)\n" + "=" * 80 + "\n"
-                 "MDLOps v1.0.0 by Chuck Chargin Jr. and its contributors (see tools/mdlops/readme_MDLOps_1-0.txt), released under the GNU General Public\n"
+                 "MDLOps v1.0.0, written by Chuck Chargin Jr., with animation support by JdNoa, version 1.0 by ndix UR and many other contributors (see\n"
+                 "tools/mdlops/readme_MDLOps_1-0.txt). Download page: https://deadlystream.com/files/file/779-mdlops/ (Deadly Stream, submitted by Fair Strides).\n"
+                 "It is released under the GNU General Public\n"
                  "License. The licence text is tools/mdlops/GPL.txt. Its source is the Perl program tools/mdlops/mdlops.pl with the module\n"
                  "tools/mdlops/MDLOpsM.pm; mdlops.exe is the same program packaged with a Perl runtime. It is run as a separate program and is not linked\n"
                  "into anything else in this download.\n")
@@ -391,11 +415,15 @@ def main():
             for root, dirs, files in os.walk(root_dir):
                 dirs[:] = [d for d in dirs if d not in CORE_TREE_SKIP]
                 for fname in files:
-                    if fname.endswith((".pyc", ".pyo")):
+                    if fname.endswith((".pyc", ".pyo")) or (rel == "worlds/generic" and fname.endswith(".png")):
                         continue
                     full = os.path.join(root, fname)
                     zf.write(full, rel + "/" + os.path.relpath(full, root_dir).replace(os.sep, "/"))
                     included += 1
+        icon_png, icon_ico = _own_icons()
+        zf.writestr("data/icon.png", icon_png)
+        zf.writestr("data/icon.ico", icon_ico)
+        included += 2
         zf.writestr("requirements.txt", _slim_requirements())
         zf.writestr("THIRD_PARTY_NOTICES.txt", _third_party_notices())
         included += 2
@@ -407,6 +435,9 @@ def main():
             for root, dirs, files in os.walk(full_root):
                 dirs[:] = [d for d in dirs if d not in ("__pycache__", "logs", "backups")]   # backups: old copies of generated files, not part of a release
                 for fname in files:
+                    if fname.endswith((".obj", ".pdb", ".ilk")):
+                        left_out += 1
+                        continue
                     if arc_root == "extender/scripts_src" and is_dev_only(os.path.splitext(fname)[0]):
                         left_out += 1
                         continue
@@ -420,6 +451,14 @@ def main():
 
     print(f"Wrote {out_path}")
     print(f"  {included} files packaged, {left_out} dev/test script files left out of extender/scripts_src")
+    import check_provenance
+    problems, _count = check_provenance.check_zip(out_path, check_provenance.Rules())
+    if problems:
+        print("\nPROVENANCE CHECK FAILED: this zip must not be published.")
+        for p in problems:
+            print("  " + p)
+        sys.exit(1)
+    print("  provenance check: OK (no game files, every program registered)")
 
 
 if __name__ == "__main__":

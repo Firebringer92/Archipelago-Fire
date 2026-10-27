@@ -1,5 +1,5 @@
 """
-Builds the recolored HK-47 skin (black armor, silver trim) used by the HK-47 variant look (see build_hk47_variant.py).
+Builds the recolored HK-47 skin (black armor, silver trim) used by the HK-47 variant look (see build_hk47_human_rig.py).
 
 Takes the vanilla texture p_hk47_01 straight from the game's data, so nothing copyrighted is stored in the repo until
 this runs on the user's own install, and writes extender/raw_override_files/ap_hk47v_01.tga (32-bit TGA, fully

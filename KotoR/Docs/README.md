@@ -23,6 +23,7 @@ optional — skipping either means the mod won't work.
   play a seed someone else hosts you do not need it: the KOTOR download already contains the Archipelago files the client runs on, so
   there is no Archipelago source code to download any more.
 - **Git for Windows**, if the installer says it needs it (it offers to install it for you).
+- **An internet connection for the first install:** `Install.bat` downloads the Python packages the client needs (kivy, pykotor, numpy, pillow and others).
 
 ## Step 1 — Get the files
 
@@ -44,6 +45,10 @@ install to the default Steam location, or paste your KOTOR folder path if
 it's somewhere else. Leave the window open until it says "Install
 finished."
 
+The download contains no scripts, conversations, models, textures or icons from the game itself. Install builds the ones the mod needs from **your own
+copy of KOTOR** (about half a minute): the original scripts the mod wraps, the edited cutscene conversations, the six extra lightsaber crystal colors and the
+game's script definitions. The client tops them up on every connect, and `Uninstall.bat` removes them.
+
 To remove everything later, double-click **`Uninstall.bat`** the same way.
 
 ## Step 3 — Generate, host, and play
@@ -57,7 +62,8 @@ To remove everything later, double-click **`Uninstall.bat`** the same way.
 2. In the Archipelago Launcher: click **Generate** and select your yaml,
    then click **Host** and select the seed zip it just made (or upload it to archipelago.gg).
 3. Double-click **`Start KOTOR Client.bat`** in your Client folder (or click **"KOTOR Client"** in the Archipelago Launcher, if you
-   put `kotor.apworld` there: it starts the same client). Then connect to the server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes. The client prints `[patching] ...` while it prepares the game files and a `Finished` line when you can start the game; if KOTOR was already running, relaunch it, because the game reads some of the tables the patches replace (the droid options) only at startup. Connect before you start KOTOR: the first connect after an
+   put `kotor.apworld` there: it starts the same client). Then connect to the server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes. The client prints `[patching] ...` while it prepares the game files and a `Finished` line when you can start the game; if KOTOR was already running, relaunch it, because the game reads some of the tables the patches replace (the droid options) only at startup. The first time an option needs them (the Malak New Companion, the droid options) it also builds the Malak and droid models from your game
+   with a small model tool, about half a minute each; they are kept and reused. Connect before you start KOTOR: the first connect after an
    install or update also adds a few entries to the game's `dialog.tlk` once, which can't happen while the game is running.
 4. Open the actual game. You should see on the client.py it switch status to `Extender: CONNECTED`  otherwise type   command  `/ap_status` to see if your client is talking to game. If it shows connected and your in the server. You are  good to go!
 
@@ -80,6 +86,8 @@ New in 0.2.0:
 - **New checks:** `quest_item_checks` (13 checks for picking up the game's quest items, on by default) and `bazaar` (a Jawa trader on the Ebon Hawk: 5 purchases and 20
   Bazaar Token Exchange checks, with tokens hidden in containers around the game).
 - **Traps with `item_filler` are limited to 36 per seed.**
+- **Nothing from the game ships in the download any more.** The files that are copies or edits of KOTOR's own are built on your machine from your install (see Step 2),
+  and the Malak, Calo Nord, Yuthura Ban and Darth Bandon console characters use the game's stock portraits.
 - Checks you never reached on Taris and the Endar Spire are released when the Ebon Hawk takes off from Taris, and several story-gate and area randomizer door problems were fixed.
   `KotoR_TEMPLATE.yaml` documents every option.
 
@@ -115,7 +123,7 @@ This mod repacks real game files in place — `modules\*.rim` and
   goes wrong beyond what the built-in restore covers.
 - **`Uninstall.bat`** reverts everything the installer touched, including
   restoring every module file the per-seed patches edited (doors, Loot Mode,
-  additional enemies, boss datapads, Galactic Shop) and removing the Progression System's story gates and the droid assets.
+  additional enemies, boss datapads, Galactic Shop), removing the Progression System's story gates and the droid assets, and deleting the files Install built from your game.
 - If all else fails, Steam's **Verify integrity of game files** will
   restore any modified `modules\`/`Override\` content from scratch (this
   won't undo save-file changes, which is why saves need their own backup).
@@ -201,11 +209,22 @@ For more technical details on how it all works refer to DESIGN.md
 - The Unknown World may never appear on the galaxy map if the Dantooine ruins star map is never found (an area randomizer run): the game counts
   five star map activations, Dantooine's included, before it opens the Unknown World.
 - The Taris Hideout escape-plan scene starts after a long black screen (about 25 seconds); the scene plays when you move.
+- If the client log shows `[game assets] FAILED` (or a model build fails), check that your KOTOR folder is complete (Steam: Verify integrity of game files), close KOTOR and
+  connect again. Some antivirus programs block the small helper programs the download runs, `tools\nwnsc\nwnsc.exe` (the script compiler) and `tools\mdlops\mdlops.exe`
+  (the model tool); allow them if yours does.
 - The war droid and assassin droid are the only droid looks that display melee weapons; the other droid looks keep their class's
   proficiency but show no weapon.
 - With the area randomizer, a planet you have left resets when a shuffled door takes you back to it: the base game deletes a planet's saved areas once you enter the next planet
   (Taris when you enter the Jedi Enclave, Dantooine when you go on to the Leviathan, and so on), so enemies, loot containers, fog and first-entry scenes come back. Quest and
   story progress are kept; only the areas reset. Without the area randomizer you cannot return to those planets, so it never shows.
+
+## Provenance and checks
+
+[![KotoR checks](https://github.com/Firebringer92/Archipelago-Fire/actions/workflows/kotor-checks.yml/badge.svg)](https://github.com/Firebringer92/Archipelago-Fire/actions/workflows/kotor-checks.yml)
+
+Nothing in this repository or in a release download is a copy or an edit of the game's own files: those are built on your machine from your own copy of KOTOR.
+`PROVENANCE.md` lists where every kind of file comes from. Every push is checked automatically (the badge above): no game-format file, no file without a described origin, every
+included program registered with its hash, and the full test suite. Every release follows `RELEASE_CHECKLIST.md`, and the published zips are checked again after they are uploaded.
 
 ## Credits
 
@@ -229,6 +248,12 @@ and Archipelago communities. It would not exist without:
   by LaneDibello — an existing KOTOR randomizer whose approach to entrance/
   location randomization was referenced while designing this project's own
   door-randomization and location-detection systems.
+- **[MDLOps](https://deadlystream.com/files/file/779-mdlops/)** v1.0.0, written by Chuck Chargin Jr., with animation support by JdNoa, version 1.0 by ndix UR and many
+  other contributors (GPL; submitted to Deadly Stream by Fair Strides). It ships unchanged in `tools\mdlops`, with its licence, readme and tutorials, and builds the
+  Malak and droid models from your own game.
+- **[nwnsc](https://github.com/nwneetools/nwnsc)** by Ken Johnson (Skywing), MIT licence, built on the NWScript compiler library by Edward T. Smith (Torlack) and
+  The Open Knights Consortium (BSD licence). It compiles the scripts the client generates for your seed. The licences are in `tools\nwnsc\LICENSE.txt` and
+  `THIRD_PARTY_NOTICES.txt`.
 - **[Archipelago](https://archipelago.gg/)** itself, obviously — this
   project is built as an Archipelago world/client 
 - **[Bioware]** For making an amazing game, I loved it as a kid growing up and its been interesting learning about the

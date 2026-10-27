@@ -37,7 +37,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 SLOT_DATA_PATH = os.path.join(REPO_ROOT, "extender", "area_trampolines", "_slot_data.json")
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402 -- see that module's docstring
 NWNNSSCOMP = resolve_nwnnsscomp()
 
 
@@ -202,7 +202,7 @@ def _compile(src_name):
     nss = os.path.join(SRC_DIR, f"{src_name}.nss")
     ncs = os.path.join(SRC_DIR, f"{src_name}.ncs")
     mtime_before = os.path.getmtime(ncs) if os.path.exists(ncs) else None
-    result = subprocess.run([NWNNSSCOMP, "-c", nss, "-o", ncs], capture_output=True, text=True, cwd=SRC_DIR, timeout=60)
+    result = compile_nss(nss, ncs, cwd=SRC_DIR, timeout=60)
     fresh = os.path.exists(ncs) and (mtime_before is None or os.path.getmtime(ncs) != mtime_before)
     if not fresh or "Compilation aborted" in result.stdout or "Error:" in result.stdout:
         print(f"  COMPILE FAILED: {src_name}\n{result.stdout}\n{result.stderr}")

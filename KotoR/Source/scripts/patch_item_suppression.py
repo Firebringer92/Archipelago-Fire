@@ -62,7 +62,7 @@ def _arg_value(flag, default):
 GAME_DIR = _arg_value("--game-dir", DEFAULT_GAME_DIR)
 MOD_DIR = os.path.join(GAME_DIR, "modules")
 OVERRIDE = os.path.join(GAME_DIR, "Override")
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402 -- see that module's docstring
 NWNNSSCOMP = resolve_nwnnsscomp()
 SRC_DIR = os.path.join(REPO_ROOT, "extender", "scripts_src")
 BACKUP_DIR = os.path.join(REPO_ROOT, "extender", "backup", "modules")
@@ -501,10 +501,7 @@ def compile_and_deploy(nss_path, ncs_path, deploy_name):
     shipped. This is what makes item pickup handling work without a
     NWScript compiler on a tester's machine at all."""
     if os.path.exists(NWNNSSCOMP):
-        result = subprocess.run(
-            [NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-            capture_output=True, text=True, cwd=SRC_DIR,
-        )
+        result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR)
         if not os.path.exists(ncs_path):
             print(f"  COMPILE FAILED: {nss_path}\n{result.stdout}\n{result.stderr}")
             return False

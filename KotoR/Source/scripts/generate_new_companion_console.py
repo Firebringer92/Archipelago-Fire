@@ -33,7 +33,7 @@ from pykotor.common.language import LocalizedString
 from pykotor.common.misc import ResRef, Game
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402 -- see that module's docstring
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
@@ -97,7 +97,7 @@ def write_and_compile(resref, source, deploy_dir):
     with open(nss_path, "w") as f:
         f.write(source)
     before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
-    result = subprocess.run([NWNNSSCOMP, "-c", nss_path, "-o", ncs_path], capture_output=True, text=True, cwd=SRC_DIR, timeout=30)
+    result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR, timeout=30)
     if not os.path.exists(ncs_path) or os.path.getmtime(ncs_path) == before:
         print(f"  COMPILE FAILED: {resref}\n{result.stdout}\n{result.stderr}")
         return False

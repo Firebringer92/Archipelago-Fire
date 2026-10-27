@@ -75,7 +75,7 @@ from pykotor.resource.generics.utc import construct_utc, dismantle_utc
 from pykotor.resource.generics.uti import construct_uti, dismantle_uti
 from pykotor.resource.type import ResourceType
 
-from nwnnsscomp_path import resolve_nwnnsscomp  # noqa: E402 -- see that module's docstring
+from nwnnsscomp_path import resolve_nwnnsscomp, compile_nss  # noqa: E402 -- see that module's docstring
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TABLES_DIR = os.path.join(REPO_ROOT, "extender", "area_trampolines")
@@ -310,8 +310,7 @@ def _clone_bounty_carrier(resref: str, carrier_index: int, installation: Install
     ncs_path = os.path.join(SRC_DIR, f"{wrapper_resref}.ncs")
     with open(nss_path, "w", encoding="utf-8") as f:
         f.write(build_bounty_death_wrapper(original_on_death))
-    result = subprocess.run([NWNNSSCOMP, "-c", nss_path, "-o", ncs_path],
-                            capture_output=True, text=True, cwd=SRC_DIR)
+    result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR)
     if not os.path.exists(ncs_path) or os.path.getmtime(ncs_path) < os.path.getmtime(nss_path) - 5:
         sys.exit(f"COMPILE FAILED for {wrapper_resref}:\n{result.stdout}\n{result.stderr}")
     shutil.copy2(ncs_path, os.path.join(override_dir, f"{wrapper_resref}.ncs"))

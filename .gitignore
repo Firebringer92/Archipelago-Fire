@@ -1,0 +1,13 @@
+# The repository holds source, not build output. Programs and compiled scripts are produced when a release is built.
+# To run the scripts from a clone: download nwnsc 1.1.5 (see KotoR/Docs/PROVENANCE.md) and put nwnsc.exe in KotoR/Source/tools/nwnsc/,
+# then compile the scripts with KotoR/Source/scripts/build_scripts.py.
+*.exe
+*.dll
+*.ncs
+
+# Python caches, logs and build leftovers
+__pycache__/
+*.pyc
+*.log
+*.obj
+*.pcode

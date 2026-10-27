@@ -22,6 +22,8 @@ decide where a new file came from. That decision is always made by a person.
 ## 2. Build
 
 - [ ] `python scripts/package_apworld.py` and `python scripts/package_playerbundle.py`. Both run the provenance check on the zip they just wrote and refuse (exit 1) if it fails.
+- [ ] **Programs and compiled scripts are not committed.** The zips carry `binkw32.dll`, `nwnsc.exe`, `mdlops.exe` and the compiled `.ncs` files; the repository does not (`.gitignore`, and the check
+  fails them). If the extender was rebuilt, record the new DLL's SHA-256 in `provenance.json` (the gate fails until you do) and in the patch notes.
 
 ## 3. The gate (automatic)
 

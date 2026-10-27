@@ -65,7 +65,7 @@ class Rules:
         self.gff_ext = {e.lower() for e in m["gff_extensions"]}
         self.gff_prefix = m["gff_name_prefix"].lower()
         self.allowed = [(_glob_to_regex(r["glob"]), r) for r in m["allowed"]]
-        self.binaries = {b["path"].lower(): b for b in m["binaries"]}
+        self.binaries = {b["path"].lower(): b for b in m["binaries"] if "path" in b}
         self.zip_binaries = {b["zip_path"].lower(): b for b in m["binaries"] if "zip_path" in b}
         self.prose_keys = {k.lower() for k in m["prose_keys_forbidden_in_data"]}
         self.prose_files = [_glob_to_regex(g) for g in m["data_tables_checked_for_prose"]]

@@ -141,8 +141,9 @@ class TestReleaseComparisonAndHistory(unittest.TestCase):
 class TestAgainstTheProject(unittest.TestCase):
     def test_every_registered_program_has_a_licence_entry(self):
         for entry in cp.Rules().manifest["binaries"]:
-            self.assertTrue(entry.get("licence_file") or entry.get("licence_zip_path"), entry["path"])
-            self.assertTrue(entry["origin"])
+            name = entry.get("path") or entry["zip_path"]
+            self.assertTrue(entry.get("licence_file") or entry.get("licence_zip_path"), name)
+            self.assertTrue(entry["origin"], name)
 
 
 if __name__ == "__main__":

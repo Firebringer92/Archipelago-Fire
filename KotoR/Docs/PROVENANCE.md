@@ -11,7 +11,8 @@ Models, textures, icons, audio, conversations, scripts and data tables that belo
 | What | Where | Origin |
 |---|---|---|
 | Python (world, client, installer, generators, tests) | `Source/kotor_ap`, `Source/scripts` | Written for this project with heavy AI assistance (see the README's "AI usage"), reviewed by the maintainer. Contains no game data. |
-| NWScript source (`.nss`) and its compiled form (`.ncs`) | `Source/extender/scripts_src`, `Source/extender/raw_override_files` | Our scripts, many of them generated. The game's own scripts are never stored here; the few of them our scripts depend on are copied from the player's install (below). |
+| NWScript source (`.nss`) | `Source/extender/scripts_src` | Our scripts, many of them generated. The game's own scripts are never stored here; the few of them our scripts depend on are copied from the player's install (below). |
+| Compiled scripts (`.ncs`) | not in the repository | Build output: the release zips carry them, compiled from the `.nss` files. `Source/scripts/build_scripts.py` compiles them from a clone with nwnsc and your own game's script definitions. The repository holds source a person can read; the check fails any `.ncs` committed. |
 | Item, creature, placeable and conversation templates | `*.uti`, `*.utc`, `*.utp`, `*.dlg` in the two folders above | Created by our generators. Every one is named `ap_*`; the game's own files never are, and the check fails any template that is not. They refer to game models and base item types by name but contain none of them. |
 | The extender (a game-side DLL) | `Source/extender/src_k1se` | Ours, built on K1SE's hook code (MIT, Brandon Guffey; licence in `K1SE_LICENSE.txt`), linked with MinHook and the Hacker Disassembler Engine (BSD-2). |
 | MinHook | `Source/extender/third_party/minhook` | Third party, BSD-2 (Tsuda Kageyu); its licence is in the folder. |
@@ -37,9 +38,12 @@ Models, textures, icons, audio, conversations, scripts and data tables that belo
 
 | Program | Licence | Source |
 |---|---|---|
-| `binkw32.dll` (the extender) | ours + MIT (K1SE) + BSD-2 (MinHook, HDE) | built from `Source/extender/src_k1se` |
+| `binkw32.dll` (the extender) | ours + MIT (K1SE) + BSD-2 (MinHook, HDE) | built from `Source/extender/src_k1se` with `Source/extender/build.ps1`; its SHA-256 is in each release's notes |
 | `tools/nwnsc/nwnsc.exe` | MIT + BSD-3 | https://github.com/nwneetools/nwnsc |
 | `tools/mdlops/mdlops.exe` (release zip only) | GPL | https://deadlystream.com/files/file/779-mdlops/ ; shipped with its Perl source, licence, readme and tutorials |
+
+The repository holds none of these programs; the release zips get them when they are built (`.gitignore` keeps `.exe`, `.dll` and `.ncs` files out). To run the
+scripts from a clone, download `nwnsc-win-v1.1.5.zip` from the nwnsc releases page above and put `nwnsc.exe` in `Source/tools/nwnsc/`; its SHA-256 is in `provenance.json`.
 
 Each program is listed in `provenance.json` with its SHA-256, so replacing or adding one is a visible change that the check rejects until it is recorded. Python packages
 (Kivy, pykotor, numpy, pillow and others) are downloaded by the installer and not shipped.

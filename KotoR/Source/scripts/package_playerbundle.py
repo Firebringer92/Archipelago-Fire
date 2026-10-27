@@ -167,7 +167,6 @@ FILES = [
     (("scripts", "patch_boss_datapads.py"), "scripts/patch_boss_datapads.py"),
     # Player ID: runs from KotorClient.py on every Connect (apply_player_id()).
     (("scripts", "patch_player_id.py"), "scripts/patch_player_id.py"),
-    (("scripts", "patch_tsl_powers.py"), "scripts/patch_tsl_powers.py"),
     # Found missing entirely -- runs automatically from KotorClient.py's
     # Connect handler (apply_shop_item_costs()), universal/not seed-gated,
     # but had never actually been wired into the PlayerBundle or the
@@ -201,6 +200,28 @@ FILES = [
     (("scripts", "patch_bazaar_tokens.py"), "scripts/patch_bazaar_tokens.py"),
     # Party Console: adds the spells.2da row its item needs, on every Connect (apply_party_console()); Uninstall runs its --restore.
     (("scripts", "patch_party_console.py"), "scripts/patch_party_console.py"),
+    # The files that are edits of the game's own (scripts, dialogs, models, art) are not in the download: these build them from the player's
+    # own install (build_game_assets.py, run by Install.bat and again on every Connect).
+    (("scripts", "build_game_assets.py"), "scripts/build_game_assets.py"),
+    (("scripts", "preserved_originals.json"), "scripts/preserved_originals.json"),
+    (("scripts", "dialog_fixes.py"), "scripts/dialog_fixes.py"),
+    (("scripts", "template_fixes.py"), "scripts/template_fixes.py"),
+    (("scripts", "saber_colors.py"), "scripts/saber_colors.py"),
+    (("scripts", "model_builders.py"), "scripts/model_builders.py"),
+    (("scripts", "build_class_fallback_dialogs.py"), "scripts/build_class_fallback_dialogs.py"),
+    (("scripts", "generate_feat_training.py"), "scripts/generate_feat_training.py"),
+    (("scripts", "fix_malak_basic_attack_animations.py"), "scripts/fix_malak_basic_attack_animations.py"),
+    (("scripts", "build_hk47_human_rig.py"), "scripts/build_hk47_human_rig.py"),
+    (("scripts", "build_hk47_variant_texture.py"), "scripts/build_hk47_variant_texture.py"),
+    (("scripts", "build_droid_human_rig.py"), "scripts/build_droid_human_rig.py"),
+    (("scripts", "fix_droid_ranged_animations.py"), "scripts/fix_droid_ranged_animations.py"),
+    # MDLOps (GPL, Chuck Chargin Jr.): decompiles and recompiles the game's own models. Shipped with its licence and its Perl source.
+    (("tools", "mdlops", "mdlops.exe"), "tools/mdlops/mdlops.exe"),
+    (("tools", "mdlops", "mdlops.pl"), "tools/mdlops/mdlops.pl"),
+    (("tools", "mdlops", "MDLOpsM.pm"), "tools/mdlops/MDLOpsM.pm"),
+    (("tools", "mdlops", "GPL.txt"), "tools/mdlops/GPL.txt"),
+    (("tools", "mdlops", "readme_MDLOps_1-0.txt"), "tools/mdlops/readme_MDLOps_1-0.txt"),
+    (("tools", "mdlops", "changelog.txt"), "tools/mdlops/changelog.txt"),
     # Droid options: run on every Connect from KotorClient.py (apply_droid_assets()). Installs or removes the droid models,
     # appearance rows, Battle Droid class tables and companion templates; its models live in extender/raw_override_files.
     (("scripts", "generate_droid_assets.py"), "scripts/generate_droid_assets.py"),
@@ -255,6 +276,11 @@ Archipelago (core files in this folder: CommonClient.py, NetUtils.py, Utils.py, 
             parts.append("\n\n" + "=" * 80 + "\n" + title + "\n" + "=" * 80 + "\n")
         with open(path, encoding="utf-8-sig") as f:
             parts.append(f.read().replace("\r", "").rstrip() + "\n")
+    parts.append("\n\n" + "=" * 80 + "\nMDLOps -- tools/mdlops (used by the installer to make models from your own copy of the game)\n" + "=" * 80 + "\n"
+                 "MDLOps v1.0.0 by Chuck Chargin Jr. and its contributors (see tools/mdlops/readme_MDLOps_1-0.txt), released under the GNU General Public\n"
+                 "License. The licence text is tools/mdlops/GPL.txt. Its source is the Perl program tools/mdlops/mdlops.pl with the module\n"
+                 "tools/mdlops/MDLOpsM.pm; mdlops.exe is the same program packaged with a Perl runtime. It is run as a separate program and is not linked\n"
+                 "into anything else in this download.\n")
     return "".join(parts)
 
 
@@ -340,6 +366,10 @@ def main():
     included = 0
     left_out = 0
     is_dev_only = _dev_only_filter()
+    # Files that are copies or edits of the game's own are built on the player's machine and never shipped (list_game_derived.py).
+    import list_game_derived
+    derived_in_source = {os.path.normcase(os.path.join(REPO_ROOT, r)) for r in list_game_derived.derived_files(list_game_derived.DEFAULT_GAME_DIR)}
+    built_by_installer = list_game_derived.builder_output_names(list_game_derived.DEFAULT_GAME_DIR)
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for parts, arcname in FILES:
             full = os.path.join(REPO_ROOT, *parts)
@@ -381,6 +411,9 @@ def main():
                         left_out += 1
                         continue
                     full = os.path.join(root, fname)
+                    if os.path.normcase(full) in derived_in_source or (arc_root == "dist/Override" and fname.lower() in built_by_installer):
+                        left_out += 1
+                        continue
                     rel = os.path.relpath(full, full_root).replace(os.sep, "/")
                     zf.write(full, f"{arc_root}/{rel}")
                     included += 1

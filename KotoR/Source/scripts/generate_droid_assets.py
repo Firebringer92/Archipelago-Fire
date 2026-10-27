@@ -47,6 +47,9 @@ from pykotor.resource.generics.utc import UTCClass, dismantle_utc, read_utc
 from pykotor.resource.generics.uti import UTIProperty, dismantle_uti, read_uti
 from pykotor.resource.type import ResourceType
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import model_builders  # noqa: E402 -- the models are made on the player's machine from the game's own, see that module
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 RAW_OVERRIDE_DIR = os.path.join(REPO_ROOT, "extender", "raw_override_files")
@@ -391,18 +394,20 @@ def install(game_dir, override, rec, pc_droid, plan, gates_own_guard=False):
     # models + the appearance rows that host them
     appearance = _load_table(inst, override, "appearance")
     if pc_droid:
+        hk_dir = model_builders.ensure("hk47", game_dir)       # made from the player's own HK-47 model (model_builders.py)
         for ext in ("mdl", "mdx"):
-            rec.copy(os.path.join(RAW_OVERRIDE_DIR, f"{HK_VARIANT_MODEL}.{ext}"), f"{HK_VARIANT_MODEL}.{ext}")
-        rec.copy(os.path.join(RAW_OVERRIDE_DIR, "ap_hk47v_01.tga"), "ap_hk47v_01.tga")
+            rec.copy(os.path.join(hk_dir, f"{HK_VARIANT_MODEL}.{ext}"), f"{HK_VARIANT_MODEL}.{ext}")
+        rec.copy(os.path.join(hk_dir, "ap_hk47v_01.tga"), "ap_hk47v_01.tga")
         _clone_row(rec, appearance, "appearance", HK_VARIANT_ROW, HK47_ROW, "AP_HK47_Variant", HK_VARIANT_MODEL)
     if plan:
+        droid_dir = model_builders.ensure("droids", game_dir)
         for model, row, source in ((WAR_MODEL, WAR_ROW, WAR_SOURCE_ROW), (ASSASSIN_MODEL, ASSASSIN_ROW, ASSASSIN_SOURCE_ROW)):
             for ext in ("mdl", "mdx"):
-                rec.copy(os.path.join(RAW_OVERRIDE_DIR, f"{model}.{ext}"), f"{model}.{ext}")
+                rec.copy(os.path.join(droid_dir, f"{model}.{ext}"), f"{model}.{ext}")
             _clone_row(rec, appearance, "appearance", row, source, f"AP_{model}", model, modeltype="F")
         # Mark Two has no ranged attack of its own; the fixed model aliases its melee clips as ranged ones
         for ext in ("mdl", "mdx"):
-            rec.copy(os.path.join(RAW_OVERRIDE_DIR, f"c_drdmktwo.{ext}"), f"c_drdmktwo.{ext}")
+            rec.copy(os.path.join(droid_dir, f"c_drdmktwo.{ext}"), f"c_drdmktwo.{ext}")
     _write_table(appearance, override, "appearance")
 
     # companion templates
@@ -424,9 +429,10 @@ def _signature(pc_droid, plan, gates_own_guard=False):
     sizes = {"alertsith": os.path.getsize(ALERTSITH_WRAPPER_NCS)}
     for name in PERSUADE_OVERRIDES:
         sizes[name] = os.path.getsize(os.path.join(REPO_ROOT, "extender", "scripts_src", f"{name}_droid.ncs"))
-    for name in sorted(os.listdir(RAW_OVERRIDE_DIR)):
-        if name.startswith(("ap_hk47v", "ap_drd", "c_drdmktwo")):
-            sizes[name] = os.path.getsize(os.path.join(RAW_OVERRIDE_DIR, name))
+    for kind in ("hk47", "droids"):      # the built models, once they exist (they are made on first use, model_builders.py)
+        folder = os.path.join(model_builders.CACHE_DIR, kind)
+        for name in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+            sizes[name] = os.path.getsize(os.path.join(folder, name))
     return json.dumps({"v": VERSION, "pc": pc_droid, "plan": plan, "assets": sizes, "gates_guard": gates_own_guard, "gear": DROID_GEAR}, sort_keys=True)
 
 

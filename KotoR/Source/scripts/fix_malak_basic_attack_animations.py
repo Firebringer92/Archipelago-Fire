@@ -63,7 +63,7 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-RAW_OVERRIDE_DIR = os.path.join(REPO_ROOT, "extender", "raw_override_files")
+RAW_OVERRIDE_DIR = os.environ.get("KOTOR_AP_MODEL_OUT") or os.path.join(REPO_ROOT, "extender", "raw_override_files")
 MDLOPS_DIR = os.path.join(REPO_ROOT, "tools", "mdlops")
 MDLOPS_EXE = os.path.join(MDLOPS_DIR, "mdlops.exe")
 WORK_DIR = os.path.join(MDLOPS_DIR, "work")
@@ -195,6 +195,8 @@ def build(game_dir: str) -> None:
     print(f"  wrote {out_mdl_path} ({os.path.getsize(out_mdl_path)} bytes)")
     print(f"  wrote {out_mdx_path} ({os.path.getsize(out_mdx_path)} bytes)")
 
+    if os.environ.get("KOTOR_AP_MODEL_OUT"):
+        return      # build_game_assets.py collects the files from the output folder and writes them to Override itself
     override_dir = os.path.join(game_dir, "Override")
     for ext in ("mdl", "mdx"):
         shutil.copy2(os.path.join(RAW_OVERRIDE_DIR, f"{TARGET_MODEL}.{ext}"),

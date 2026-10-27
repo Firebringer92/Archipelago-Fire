@@ -1,0 +1,636 @@
+{
+ "apo_0001": {
+  "from": "end_m01aa_s.rim",
+  "resref": "k_pend_area01"
+ },
+ "apo_0002": {
+  "from": "end_m01ab_s.rim",
+  "resref": "k_pend_1b_area"
+ },
+ "apo_0003": {
+  "from": "tar_m02aa_s.rim",
+  "resref": "k_ptar_02aa_en"
+ },
+ "apo_0004": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_13_area"
+ },
+ "apo_0005": {
+  "from": "danm14aa_s.rim",
+  "resref": "k_pdan_14a_area"
+ },
+ "apo_0006": {
+  "from": "danm14ab_s.rim",
+  "resref": "k_pdan_14b_area"
+ },
+ "apo_0007": {
+  "from": "danm14ac_s.rim",
+  "resref": "k_pdan_14c_area"
+ },
+ "apo_0008": {
+  "from": "danm14ad_s.rim",
+  "resref": "k_pdan_14d_area"
+ },
+ "apo_0009": {
+  "from": "danm15_s.rim",
+  "resref": "k_pdan_15_area"
+ },
+ "apo_0010": {
+  "from": "ebo_m12aa_s.rim",
+  "resref": "k_pebo_skybox"
+ },
+ "apo_0011": {
+  "from": "ebo_m41aa_s.rim",
+  "resref": "k_pebn_remove"
+ },
+ "apo_0012": {
+  "from": "kas_m22aa_s.rim",
+  "resref": "k_pkas22aa_enter"
+ },
+ "apo_0013": {
+  "from": "kas_m23aa_s.rim",
+  "resref": "k_pkas23aa_enter"
+ },
+ "apo_0014": {
+  "from": "kas_m23ad_s.rim",
+  "resref": "k_pkas22ad_enter"
+ },
+ "apo_0015": {
+  "from": "kas_m24aa_s.rim",
+  "resref": "k_pkas24aa_enter"
+ },
+ "apo_0016": {
+  "from": "kas_m25aa_s.rim",
+  "resref": "k_pkas25aa_enter"
+ },
+ "apo_0017": {
+  "from": "korr_m33aa_s.rim",
+  "resref": "k_pkor_33arenter"
+ },
+ "apo_0018": {
+  "from": "korr_m33ab_s.rim",
+  "resref": "k33b_openacademy"
+ },
+ "apo_0019": {
+  "from": "korr_m34aa_s.rim",
+  "resref": "k_pkor_areaenter"
+ },
+ "apo_0019b": {
+  "from": "korr_m39aa_s.rim",
+  "resref": "k_pkor_areaenter"
+ },
+ "apo_0020": {
+  "from": "korr_m35aa_s.rim",
+  "resref": "kor35_enter"
+ },
+ "apo_0021": {
+  "from": "korr_m36aa_s.rim",
+  "resref": "k36_pkor_enter"
+ },
+ "apo_0022": {
+  "from": "korr_m37aa_s.rim",
+  "resref": "k_pkor_37enter"
+ },
+ "apo_0023": {
+  "from": "korr_m38ab_s.rim",
+  "resref": "k_pkor_38b_enter"
+ },
+ "apo_0024": {
+  "from": "lev_m40aa_s.rim",
+  "resref": "k_plev_40aa_en"
+ },
+ "apo_0025": {
+  "from": "lev_m40ab_s.rim",
+  "resref": "k_plev_40ab_en"
+ },
+ "apo_0026": {
+  "from": "lev_m40ac_s.rim",
+  "resref": "lev40_area_enter"
+ },
+ "apo_0027": {
+  "from": "lev_m40ad_s.rim",
+  "resref": "k_plev_40ad_en"
+ },
+ "apo_0028": {
+  "from": "liv_m99aa_s.rim",
+  "resref": "yav50_en"
+ },
+ "apo_0030": {
+  "from": "manm26ab_s.rim",
+  "resref": "k_pman_26b_area"
+ },
+ "apo_0031": {
+  "from": "manm26ac_s.rim",
+  "resref": "k_pman_locked03"
+ },
+ "apo_0032": {
+  "from": "manm26ad_s.rim",
+  "resref": "k_pman26d_enter"
+ },
+ "apo_0033": {
+  "from": "manm26ae_s.rim",
+  "resref": "k_pman_area_26e"
+ },
+ "apo_0035": {
+  "from": "manm28aa_s.rim",
+  "resref": "k_pdan_28a_area"
+ },
+ "apo_0036": {
+  "from": "manm28ab_s.rim",
+  "resref": "k_pman_28b_area"
+ },
+ "apo_0037": {
+  "from": "manm28ac_s.rim",
+  "resref": "k_pman_28c_area"
+ },
+ "apo_0038": {
+  "from": "manm28ad_s.rim",
+  "resref": "k_pman_28ad_area"
+ },
+ "apo_0039": {
+  "from": "sta_m45aa_s.rim",
+  "resref": "k_psta_areaenter"
+ },
+ "apo_0039b": {
+  "from": "sta_m45ac_s.rim",
+  "resref": "k_psta_areaenter"
+ },
+ "apo_0039c": {
+  "from": "sta_m45ad_s.rim",
+  "resref": "k_psta_areaenter"
+ },
+ "apo_0040": {
+  "from": "tar_m02ab_s.rim",
+  "resref": "k_ptar_a02ab_en"
+ },
+ "apo_0041": {
+  "from": "tar_m02ac_s.rim",
+  "resref": "k_ptar_a02ac_en"
+ },
+ "apo_0042": {
+  "from": "tar_m02ab_s.rim",
+  "resref": "k_ptar_a02ab_en"
+ },
+ "apo_0043": {
+  "from": "tar_m02ae_s.rim",
+  "resref": "k_ptar_a02ae_en"
+ },
+ "apo_0044": {
+  "from": "tar_m02af_s.rim",
+  "resref": "k_ptar_02af_en"
+ },
+ "apo_0045": {
+  "from": "tar_m03aa_s.rim",
+  "resref": "k_ptar_03aa_en"
+ },
+ "apo_0046": {
+  "from": "tar_m02ab_s.rim",
+  "resref": "k_ptar_a02ab_en"
+ },
+ "apo_0047": {
+  "from": "tar_m02ab_s.rim",
+  "resref": "k_ptar_a02ab_en"
+ },
+ "apo_0048": {
+  "from": "tar_m03ae_s.rim",
+  "resref": "k_ptar_a03ae_en"
+ },
+ "apo_0049": {
+  "from": "tar_m03af_s.rim",
+  "resref": "k_ptar_03af_en"
+ },
+ "apo_0050": {
+  "from": "tar_m04aa_s.rim",
+  "resref": "k_ptar_a04aa_en"
+ },
+ "apo_0051": {
+  "from": "tar_m05aa_s.rim",
+  "resref": "k_ptar_a05aa_en"
+ },
+ "apo_0052": {
+  "from": "tar_m02ab_s.rim",
+  "resref": "k_ptar_a02ab_en"
+ },
+ "apo_0053": {
+  "from": "tar_m08aa_s.rim",
+  "resref": "k_ptar_08aa_en"
+ },
+ "apo_0054": {
+  "from": "tar_m09ab_s.rim",
+  "resref": "k_ptar_09ab_en"
+ },
+ "apo_0055": {
+  "from": "tar_m10aa_s.rim",
+  "resref": "k_ptar_a10aa_en"
+ },
+ "apo_0056": {
+  "from": "tar_m10ab_s.rim",
+  "resref": "k_ptar_a10ab_en"
+ },
+ "apo_0057": {
+  "from": "tar_m10ac_s.rim",
+  "resref": "k_ptar_a10ac_en"
+ },
+ "apo_0058": {
+  "from": "tar_m11aa_s.rim",
+  "resref": "k_ptar_a11aa_en"
+ },
+ "apo_0059": {
+  "from": "tar_m11ab_s.rim",
+  "resref": "k_ptar_a11ab_en"
+ },
+ "apo_0060": {
+  "from": "tat_m17aa_s.rim",
+  "resref": "k_ptat17_enter"
+ },
+ "apo_0061": {
+  "from": "tat_m17ab_s.rim",
+  "resref": "k_ptat17ab_enter"
+ },
+ "apo_0062": {
+  "from": "tat_m17ad_s.rim",
+  "resref": "k_ptat17ad_enter"
+ },
+ "apo_0063": {
+  "from": "tat_m17ae_s.rim",
+  "resref": "k_ptat_17ae_area"
+ },
+ "apo_0064": {
+  "from": "tat_m18aa_s.rim",
+  "resref": "k_ptat18aa_enter"
+ },
+ "apo_0065": {
+  "from": "tat_m18ab_s.rim",
+  "resref": "k_ptat18ab_enter"
+ },
+ "apo_0066": {
+  "from": "tat_m18ac_s.rim",
+  "resref": "k_ptat18ac_enter"
+ },
+ "apo_0067": {
+  "from": "tat_m20aa_s.rim",
+  "resref": "k_ptat20aa_enter"
+ },
+ "apo_0068": {
+  "from": "unk_m41aa_s.rim",
+  "resref": "k_punk_41aa_en"
+ },
+ "apo_0069": {
+  "from": "unk_m41ab_s.rim",
+  "resref": "k_punk_41ab_en"
+ },
+ "apo_0070": {
+  "from": "unk_m41ac_s.rim",
+  "resref": "k_punk_41ac_en"
+ },
+ "apo_0071": {
+  "from": "unk_m41ad_s.rim",
+  "resref": "k_punk_41ad_en"
+ },
+ "apo_0072": {
+  "from": "unk_m42aa_s.rim",
+  "resref": "k_punk_42aa_en"
+ },
+ "apo_0073": {
+  "from": "unk_m43aa_s.rim",
+  "resref": "k_punk_43aa_en"
+ },
+ "apo_0074": {
+  "from": "unk_m44aa_s.rim",
+  "resref": "k_punk_44enter"
+ },
+ "apo_0075": {
+  "from": "unk_m44ac_s.rim",
+  "resref": "k_punk_44ac_en"
+ },
+ "apo_addbast_orig": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_addbast",
+  "patch": [
+   [
+    3695,
+    97
+   ],
+   [
+    3696,
+    112
+   ],
+   [
+    3697,
+    95
+   ],
+   [
+    3698,
+    97
+   ],
+   [
+    3699,
+    108
+   ],
+   [
+    3700,
+    104
+   ],
+   [
+    3701,
+    97
+   ],
+   [
+    3702,
+    110
+   ],
+   [
+    3703,
+    95
+   ],
+   [
+    3704,
+    115
+   ],
+   [
+    3705,
+    116
+   ],
+   [
+    3706,
+    97
+   ],
+   [
+    3707,
+    114
+   ],
+   [
+    3708,
+    116
+   ]
+  ]
+ },
+ "apo_addcarth_orig": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_addcarth"
+ },
+ "apo_bastila_orig": {
+  "from": "tar_m03af_s.rim",
+  "resref": "k_ptar_bastpart"
+ },
+ "apo_cand_orig": {
+  "from": "tar_m08aa_s.rim",
+  "resref": "k_ptar_candadd"
+ },
+ "apo_carbast_orig": {
+  "from": "tar_m02af_s.rim",
+  "resref": "k_ptar_carbas_en"
+ },
+ "apo_carth_orig": {
+  "from": "tar_m02aa_s.rim",
+  "resref": "k_ptar_addcarth"
+ },
+ "apo_dan14ab_c06": {
+  "from": "danm14ab_s.rim",
+  "resref": "k_pdan_cut06"
+ },
+ "apo_danm13_cut01_orig": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_cut01"
+ },
+ "apo_danm13_cut02_orig": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_cut02"
+ },
+ "apo_danm13_cut03_orig": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_cut03"
+ },
+ "apo_danm13_cut04_orig": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_cut04"
+ },
+ "apo_danm13_cut05_orig": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_cut05"
+ },
+ "apo_danm13_cut06_orig": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_cut06"
+ },
+ "apo_danm14ab_cut01_orig": {
+  "from": "danm14ab_s.rim",
+  "resref": "k_pdan_cut01"
+ },
+ "apo_danm14ab_cut02_orig": {
+  "from": "danm14ab_s.rim",
+  "resref": "k_pdan_cut02"
+ },
+ "apo_danm14ab_cut03_orig": {
+  "from": "danm14ab_s.rim",
+  "resref": "k_pdan_cut03"
+ },
+ "apo_danm14ab_cut04_orig": {
+  "from": "danm14ab_s.rim",
+  "resref": "k_pdan_cut04"
+ },
+ "apo_danm14ab_cut05_orig": {
+  "from": "danm14ab_s.rim",
+  "resref": "k_pdan_cut05"
+ },
+ "apo_danm14ab_cut06_orig": {
+  "from": "danm14ab_s.rim",
+  "resref": "k_pdan_cut06"
+ },
+ "apo_davatk_en_orig": {
+  "from": "tar_m08aa_s.rim",
+  "resref": "k_ptar_davatk_en"
+ },
+ "apo_galaxy_orig": {
+  "from": "chitin",
+  "resref": "k_pebn_galaxy"
+ },
+ "apo_hk47_orig": {
+  "from": "tat_m17ac_s.rim",
+  "resref": "k_ptat_hk47add"
+ },
+ "apo_jolee_orig": {
+  "from": "kas_m24aa_s.rim",
+  "resref": "k_pkas_joleejoin"
+ },
+ "apo_juhani_orig": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_vandar02"
+ },
+ "apo_levescape_orig": {
+  "from": "chitin",
+  "resref": "k_ren_levescape"
+ },
+ "apo_mission_orig": {
+  "from": "tar_m04aa_s.rim",
+  "resref": "k_ptar_addmissio"
+ },
+ "apo_openbase_orig": {
+  "from": "tar_m02ab_s.rim",
+  "resref": "k_ptar_openbase"
+ },
+ "apo_pod02_org": {
+  "from": "end_m01ab_s.rim",
+  "resref": "k_pend_pod02"
+ },
+ "apo_st00": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_droids"
+ },
+ "apo_st01": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_generals"
+ },
+ "apo_st02": {
+  "from": "danm13_s.rim",
+  "resref": "k_pdan_pazaak"
+ },
+ "apo_st03": {
+  "from": "danm14aa_s.rim",
+  "resref": "k_pdan_adum"
+ },
+ "apo_st04": {
+  "from": "kas_m22aa_s.rim",
+  "resref": "k_pkas_eli_store"
+ },
+ "apo_st05": {
+  "from": "kas_m22aa_s.rim",
+  "resref": "k_pkas_jan_store"
+ },
+ "apo_st06": {
+  "from": "kas_m22ab_s.rim",
+  "resref": "k_pkas_store22ab"
+ },
+ "apo_st07": {
+  "from": "korr_m33aa_s.rim",
+  "resref": "kor33_czerkstore"
+ },
+ "apo_st08": {
+  "from": "korr_m33aa_s.rim",
+  "resref": "k_pkor_mikastore"
+ },
+ "apo_st09": {
+  "from": "korr_m33aa_s.rim",
+  "resref": "k_pkor_weapons"
+ },
+ "apo_st10": {
+  "from": "liv_m99aa_s.rim",
+  "resref": "yav47_suvam22"
+ },
+ "apo_st11": {
+  "from": "liv_m99aa_s.rim",
+  "resref": "yav47_suvam23"
+ },
+ "apo_st12": {
+  "from": "liv_m99aa_s.rim",
+  "resref": "yav47_suvam24"
+ },
+ "apo_st13": {
+  "from": "manm26aa_s.rim",
+  "resref": "k_pman_openstr"
+ },
+ "apo_st14": {
+  "from": "manm26ab_s.rim",
+  "resref": "k_pman_yortals"
+ },
+ "apo_st15": {
+  "from": "manm26ad_s.rim",
+  "resref": "k_pman_merchs"
+ },
+ "apo_st16": {
+  "from": "manm26ad_s.rim",
+  "resref": "k_pman_merchs"
+ },
+ "apo_st17": {
+  "from": "manm26ae_s.rim",
+  "resref": "k_pman_shady"
+ },
+ "apo_st18": {
+  "from": "manm26ae_s.rim",
+  "resref": "k_pman_tyvarks"
+ },
+ "apo_st19": {
+  "from": "tar_m02aa_s.rim",
+  "resref": "k_ptar_larrimsto"
+ },
+ "apo_st20": {
+  "from": "tar_m02ab_s.rim",
+  "resref": "k_ptar_janicesto"
+ },
+ "apo_st21": {
+  "from": "tar_m02ac_s.rim",
+  "resref": "k_ptar_keblastor"
+ },
+ "apo_st22": {
+  "from": "tar_m02ac_s.rim",
+  "resref": "k_ptar_zelkastor"
+ },
+ "apo_st23": {
+  "from": "tar_m03ae_s.rim",
+  "resref": "k_ptar_cardstore"
+ },
+ "apo_st24": {
+  "from": "tar_m04aa_s.rim",
+  "resref": "k_ptar_igearstor"
+ },
+ "apo_st25": {
+  "from": "tat_m17ab_s.rim",
+  "resref": "k_ptat_two_store"
+ },
+ "apo_st26": {
+  "from": "tat_m17ac_s.rim",
+  "resref": "k_ptat_yukastore"
+ },
+ "apo_st27": {
+  "from": "tat_m17ad_s.rim",
+  "resref": "k_ptat_fazzastor"
+ },
+ "apo_st28": {
+  "from": "tat_m17af_s.rim",
+  "resref": "k_ptat_junixstor"
+ },
+ "apo_st29": {
+  "from": "tat_m17ag_s.rim",
+  "resref": "k_ptat_czerkstor"
+ },
+ "apo_st30": {
+  "from": "tat_m17ag_s.rim",
+  "resref": "k_ptat_gaffistor"
+ },
+ "apo_stainit_cart_orig": {
+  "from": "sta_m45aa_s.rim",
+  "resref": "k_psta_init_cart"
+ },
+ "apo_startconv_orig": {
+  "from": "tar_m05aa_s.rim",
+  "resref": "k_ptar_startconv"
+ },
+ "apo_t3m4_orig": {
+  "from": "tar_m02ab_s.rim",
+  "resref": "k_ptar_addt3m4"
+ },
+ "apo_talkwall_orig": {
+  "from": "kas_m24aa_s.rim",
+  "resref": "k_pkas_talkwall"
+ },
+ "apo_taris03_orig": {
+  "from": "chitin",
+  "resref": "k_ren_taris03"
+ },
+ "apo_temple02_orig": {
+  "from": "unk_m41ad_s.rim",
+  "resref": "k_punk_temple02"
+ },
+ "apo_trigdoor_orig": {
+  "from": "tar_m05aa_s.rim",
+  "resref": "k_ptar_trigdoor"
+ },
+ "apo_unkturret_orig": {
+  "from": "chitin",
+  "resref": "k_ren_unkturret"
+ },
+ "apo_zaalbar_orig": {
+  "from": "tar_m05aa_s.rim",
+  "resref": "k_ptar_addzaal"
+ }
+}

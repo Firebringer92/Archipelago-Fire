@@ -281,7 +281,7 @@ def _pip_install_pykotor() -> None:
     print("Installing pykotor (needed by patch_loot_disturb.py/patch_item_suppression.py/"
           "patch_door_randomizer.py/patch_additional_enemies.py) ...")
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "setuptools<81", "pykotor"],
+        [sys.executable, "-m", "pip", "install", "setuptools<81", "pykotor", "numpy", "pillow"],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
@@ -289,10 +289,28 @@ def _pip_install_pykotor() -> None:
               "or a blocked download). Door randomization, item suppression and extra enemies need "
               "it and will not work until it is installed. To fix: connect to the internet, open a "
               "Command Prompt and run this line, then run Install.bat again:\n"
-              f"  \"{sys.executable}\" -m pip install \"setuptools<81\" pykotor\n"
+              f"  \"{sys.executable}\" -m pip install \"setuptools<81\" pykotor numpy pillow\n"
               f"Technical message:\n{result.stderr.strip()}")
     else:
         print("pykotor installed.")
+
+
+def _build_game_assets(game_dir: str) -> None:
+    """The download carries no copies of the game's own scripts, dialogs or art; build_game_assets.py makes the files that are
+    edits of them from the player's own KOTOR install (about half a minute)."""
+    print("Building the files that are made from your own copy of the game (about half a minute) ...")
+    result = subprocess.run(
+        [sys.executable, os.path.join(SCRIPT_DIR, "build_game_assets.py"), f"--game-dir={game_dir}"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        _warn("Some of the files that are made from your own copy of the game could not be built. The randomizer will not work "
+              "correctly until they are. Check that the KOTOR folder is complete (in Steam: right-click the game, Properties, "
+              "Installed Files, Verify integrity of game files), close KOTOR, and run Install.bat again. If the pykotor "
+              "library failed to install above, fix that first.\nTechnical message:\n"
+              + (result.stdout.strip() + "\n" + result.stderr.strip()).strip())
+    else:
+        print(result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "Built.")
 
 
 def _write_state(manifest: dict) -> None:
@@ -378,6 +396,8 @@ def install(game_dir: str) -> None:
     print()
     _pip_install_pykotor()
     print()
+    _build_game_assets(game_dir)
+    print()
 
     manifest = {
         "game_dir": game_dir,
@@ -444,7 +464,7 @@ def uninstall() -> None:
     # gate and droid asset patchers after them (gate scripts left in Override would keep gating a vanilla game).
     for name in ("patch_loot_disturb.py", "patch_item_suppression.py", "patch_door_randomizer.py", "patch_additional_enemies.py",
                  "patch_bazaar_tokens.py", "patch_boss_datapads.py", "patch_galactic_shop.py", "patch_area_poll_hooks.py", "patch_story_gates.py",
-                 "generate_droid_assets.py", "patch_party_console.py"):
+                 "generate_droid_assets.py", "patch_party_console.py", "build_game_assets.py"):
         result = subprocess.run(
             [sys.executable, os.path.join(SCRIPT_DIR, name), "--restore", f"--game-dir={game_dir}"],
             capture_output=True, text=True,

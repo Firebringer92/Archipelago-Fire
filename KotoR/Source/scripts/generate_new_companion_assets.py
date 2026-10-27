@@ -91,6 +91,7 @@ STARTING_POWERS = [
 # confirmed via subrace.2da). Bit 0x4 (subrace_id=2/Beast) is confirmed
 # unused anywhere in baseitems.2da today -- a genuinely clean, already-
 # defined slot to reuse rather than an arbitrary invented number.
+MALAK_FALLBACK_PORTRAIT_ROW = 32      # po_pmhb5 in the game's own portraits.2da, used when there is no po_malak.tpc
 MALAK_SUBRACE_ID = 2
 MALAK_DENYSUBRACE_BIT = 1 << MALAK_SUBRACE_ID  # 0x4
 
@@ -492,13 +493,19 @@ def write_malak_companion_template(override_dir: str, appearance_id: int, portra
     print(f"  wrote {path}")
 
 
-def deploy_vanilla_trigger(override_dir: str, new_companion: int) -> None:
+def deploy_vanilla_trigger(override_dir: str, new_companion: int, game_dir: str = None) -> None:
     """Copies the precompiled Tatooine trigger variant for `mode` to Override/apo_hk47_orig.ncs -- the exact filename the companion-suppression wrapper's
     ExecuteScript("apo_hk47_orig", OBJECT_SELF) call expects (see generate_companion_suppressors.py's WRAPPER_TEMPLATE). main() only ever asks for mode 0,
     the true vanilla trigger (nothing replaces HK-47 at his recruitment any more); it runs on every Connect so a trigger left by an older version is put back."""
-    src = _TRIGGER_NCS_BY_MODE[new_companion]
-    with open(src, "rb") as f:
-        data = f.read()
+    if new_companion == 0 and game_dir:
+        # the true vanilla trigger is the game's own k_ptat_hk47add, read from the player's copy (build_game_assets.py preserved_scripts does the same)
+        import build_game_assets
+        data = build_game_assets.GameData(game_dir).resource("tat_m17ac_s.rim", "k_ptat_hk47add", "ncs")
+        if data is None:
+            raise FileNotFoundError("the game has no k_ptat_hk47add.ncs in tat_m17ac_s.rim")
+    else:
+        with open(_TRIGGER_NCS_BY_MODE[new_companion], "rb") as f:
+            data = f.read()
     dest = os.path.join(override_dir, "apo_hk47_orig.ncs")
     with open(dest, "wb") as f:
         f.write(data)
@@ -1192,17 +1199,23 @@ def main():
     override_dir = os.path.join(game_dir, "Override")
     # 0.2.0: nothing replaces HK-47 at his recruitment any more. The Tatooine trigger is always the vanilla one; with the option on, the
     # ship's New Companion console (generate_new_companion_console.py) swaps him for any of the characters below.
-    deploy_vanilla_trigger(override_dir, 0)
+    deploy_vanilla_trigger(override_dir, 0, game_dir)
     if new_companion:
         write_new_companion_template(override_dir)
         write_placeholder_dlg(override_dir)
         # Malak: EffectDisguise(DISGUISE_TYPE_N_DARTHMALAK) on spawn (k_hmal_spawn01) over an ordinary party body (Juhani's row).
         deploy_malak_spawn_script(override_dir)
         appearance_id = _party_npc_juhani_appearance_row(game_dir)
-        portrait_id = ensure_malak_portrait_row(game_dir, appearance_id)
+        have_malak_portrait = os.path.isfile(os.path.join(RAW_OVERRIDE_DIR, "po_malak.tpc"))
+        # no portrait art of ours ships (it would be a picture of the game's own character): Malak borrows one of the game's own head portraits
+        portrait_id = ensure_malak_portrait_row(game_dir, appearance_id) if have_malak_portrait else MALAK_FALLBACK_PORTRAIT_ROW
         write_malak_companion_template(override_dir, appearance_id, portrait_id)
         write_malak_placeholder_dlg(override_dir)
-        deploy_malak_portrait(override_dir)
+        # Malak's weapon animations: his model is made from the player's own (build_game_assets.py keeps track of the file for Uninstall)
+        import build_game_assets
+        build_game_assets.build(game_dir, override_dir, only=["companion_models"])
+        if have_malak_portrait:
+            deploy_malak_portrait(override_dir)
         write_new_characters(override_dir, game_dir)
         ensure_malak_gear_restriction(game_dir)      # Head/Body/Hands gear is denied to the subrace those characters share
         if new_companion == 2:      # random_class: rewrite each character with the class the seed rolled for them (before the T3-M4 copies are made)

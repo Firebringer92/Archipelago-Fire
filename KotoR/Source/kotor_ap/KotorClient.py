@@ -357,6 +357,7 @@ PATCH_BOSS_DATAPADS = os.path.join(REPO_ROOT, "scripts", "patch_boss_datapads.py
 PATCH_PLAYER_ID = os.path.join(REPO_ROOT, "scripts", "patch_player_id.py")
 PATCH_NEW_COMPANION_ASSETS = os.path.join(REPO_ROOT, "scripts", "generate_new_companion_assets.py")
 PATCH_PARTY_CONSOLE = os.path.join(REPO_ROOT, "scripts", "patch_party_console.py")
+BUILD_GAME_ASSETS = os.path.join(REPO_ROOT, "scripts", "build_game_assets.py")
 PATCH_DROID_ASSETS = os.path.join(REPO_ROOT, "scripts", "generate_droid_assets.py")
 PATCH_SHOP_ITEM_COSTS = os.path.join(REPO_ROOT, "scripts", "patch_shop_item_costs.py")
 PATCH_AREA_POLL_HOOKS = os.path.join(REPO_ROOT, "scripts", "patch_area_poll_hooks.py")
@@ -880,13 +881,25 @@ def apply_new_companion_assets() -> tuple[bool, str]:
     try:
         result = subprocess.run(
             [sys.executable, PATCH_NEW_COMPANION_ASSETS, f"--game-dir={GAME_DIR}"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=600,      # the first run also makes Malak's model from the game's own (model_builders.py, about half a minute)
         )
         if result.returncode != 0:
             return False, f"generate_new_companion_assets.py failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
         return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
     except Exception as e:
         return False, f"apply_new_companion_assets raised: {e}"
+
+
+def apply_game_assets() -> tuple[bool, str]:
+    """build_game_assets.py: the Override files that are made from the player's own game (the original scripts the wrappers call, the edited scene dialogs,
+    the extra saber colours). Install.bat builds them; this runs on every Connect and only builds what is missing or changed."""
+    try:
+        result = subprocess.run([sys.executable, BUILD_GAME_ASSETS, f"--game-dir={GAME_DIR}"], capture_output=True, text=True, timeout=900)
+        if result.returncode != 0:
+            return False, f"build_game_assets.py failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+        return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
+    except Exception as e:
+        return False, f"apply_game_assets raised: {e}"
 
 
 def apply_party_console() -> tuple[bool, str]:
@@ -907,7 +920,7 @@ def apply_droid_assets(restore: bool = False) -> tuple[bool, str]:
     seed has no droid option. Override-only, idempotent (a manifest records what it wrote)."""
     try:
         cmd = [sys.executable, PATCH_DROID_ASSETS, f"--game-dir={GAME_DIR}"] + (["--restore"] if restore else [])
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
         if result.returncode != 0:
             return False, f"generate_droid_assets.py failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
         return True, result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "done"
@@ -3832,6 +3845,7 @@ class KotorContext(CommonContext):
                            "extra enemies from that seed are not removed automatically: if doors or enemies look wrong, run "
                            "/ap_restore_all, then reconnect (or run /ap_patch_all) before playing.")
         self._apply_player_id_and_log()
+        self._apply_game_assets_and_log()
         self._apply_loot_disturb_and_log(gate_key, force)
         self._apply_item_suppression_and_log(gate_key, force)
         self._apply_story_gates_and_log(gate_key, force)
@@ -3959,6 +3973,17 @@ class KotorContext(CommonContext):
         else:
             game_events_logger.warning(f"[new companion] PATCH FAILED -- {msg}\n"
                                        f"  (run /ap_apply_new_companion to retry once fixed)")
+
+    def _apply_game_assets_and_log(self) -> None:
+        """apply_game_assets() on every Connect, first of the game-file patches: they and the generated wrappers use the files it makes."""
+        ok, msg = apply_game_assets()
+        if ok:
+            game_events_logger.info(f"[game assets] {msg}")
+        else:
+            self._patch_failures += 1
+            game_events_logger.warning(f"[game assets] FAILED -- {msg}\n"
+                                       "  Some files made from your own copy of the game could not be built. Check that the KOTOR folder is "
+                                       "correct and complete (Steam: Verify integrity of game files), close the game, and connect again.")
 
     def _apply_party_console_and_log(self) -> None:
         """apply_party_console() on every Connect (not seed-gated: it is one row, added once)."""

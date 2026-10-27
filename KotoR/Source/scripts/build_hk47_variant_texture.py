@@ -22,7 +22,7 @@ from PIL import Image
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-OUT_DIR = os.path.join(REPO_ROOT, "extender", "raw_override_files")
+OUT_DIR = os.environ.get("KOTOR_AP_MODEL_OUT") or os.path.join(REPO_ROOT, "extender", "raw_override_files")
 SOURCE_TEXTURE = "p_hk47_01"
 OUT_TEXTURE = "ap_hk47v_01"
 

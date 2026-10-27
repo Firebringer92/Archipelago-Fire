@@ -30,7 +30,7 @@ import numpy as np
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
-RAW_OVERRIDE_DIR = os.path.join(REPO_ROOT, "extender", "raw_override_files")
+RAW_OVERRIDE_DIR = os.environ.get("KOTOR_AP_MODEL_OUT") or os.path.join(REPO_ROOT, "extender", "raw_override_files")
 MDLOPS_EXE = os.path.join(REPO_ROOT, "tools", "mdlops", "mdlops.exe")
 WORK_ROOT = os.path.join(REPO_ROOT, "tools", "mdlops")
 

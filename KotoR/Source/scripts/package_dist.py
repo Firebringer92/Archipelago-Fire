@@ -55,7 +55,6 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
-from add_saber_crystal_colors import list_deployed_filenames as _crystal_filenames
 from generate_companion_suppressors import COMPANIONS
 from generate_store_suppressors import STORES
 
@@ -104,24 +103,12 @@ EXTRA_RAW_FILES = [
     "m01aa_c01.dlg", "k_hjuh_dialog.dlg",
     # Unknown World, Bastila's final choice: the two branches now move the player to exactly 100 / 0 alignment.
     "k_punk_goodfinal.ncs", "k_punk_evilfinal.ncs",
-    # The 6 new lightsaber crystal colors (add_saber_crystal_colors.py) --
-    # static, seed-independent item/model/texture content, same category
-    # as the .dlg fixes above. upcrystals.2da is the row patch that makes
-    # the crystal templates resolvable at all; the model/uti/texture
-    # filenames are derived from that script's own PORTED_COLORS/PURPLE_*
-    # data (list_deployed_filenames()) instead of hand-listed here, so a
-    # future color addition can't silently ship without its assets.
+    # The extra lightsaber crystal colours (saber_colors.py) and the edited scene dialogs are made on the player's machine from the game's own files
+    # (build_game_assets.py), so none of them is listed here or shipped.
     #
-    # global.jrl is deliberately NOT included here -- see
-    # build_ap_tracker_quest.py: its stringrefs are baked against whatever
-    # install built it, which a real tester's own dialog.tlk entry count
-    # has no guarantee of matching. Shipping it as a static Override file
-    # would only be correct by coincidence. KotorClient.py's
-    # apply_ap_tracker_quest() runs this script per-install instead
-    # (every Connect), so each tester gets a global.jrl built against
-    # their own dialog.tlk.
-    "upcrystals.2da",
-] + _crystal_filenames()
+    # global.jrl is deliberately NOT included here -- see build_ap_tracker_quest.py: its stringrefs are baked against whatever
+    # install built it, so KotorClient.py's apply_ap_tracker_quest() runs that script per install on every Connect.
+] 
 
 # Hand-written companion-recruit guards (not generator-produced, so
 # collect_expected_resrefs() can't discover them from COMPANIONS/STORES --
@@ -342,7 +329,12 @@ def main():
     _check_shop_stock_clean()
 
     source_override = os.path.join(args.game_dir, "Override")
-    resrefs = collect_expected_resrefs()
+    # Files that are edits or copies of the game's own are never shipped: build_game_assets.py makes them on the player's machine.
+    import list_game_derived
+    # the names do not depend on which install is read; a staging copy that only holds an Override folder falls back to the default install
+    names_from = args.game_dir if os.path.isfile(os.path.join(args.game_dir, "chitin.key")) else DEFAULT_GAME_DIR
+    built_on_player_machine = list_game_derived.builder_output_names(names_from)
+    resrefs = [r for r in collect_expected_resrefs() if f"{r}.ncs".lower() not in built_on_player_machine]
     print(f"Expecting {len(resrefs)} files from {source_override}")
 
     os.makedirs(args.dist_dir, exist_ok=True)
@@ -361,6 +353,8 @@ def main():
     raw_copied = 0
     raw_missing = []
     for fname in EXTRA_RAW_FILES:
+        if fname.lower() in built_on_player_machine:
+            continue
         src = os.path.join(RAW_OVERRIDE_FILES_DIR, fname)
         if not os.path.exists(src):
             raw_missing.append(fname)

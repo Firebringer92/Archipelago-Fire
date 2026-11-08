@@ -436,6 +436,22 @@ def _save_patched_seed(key: str, gate_key: str | None) -> None:
         logger.warning(f"Could not update {PATCHED_SEEDS_MARKER_PATH}: {e}")
 
 
+# The option-set fingerprint of the last connect (see _slot_data_fingerprint). /ap_patch_all records what it applied under it, so the next
+# connect does not run the same patches a second time. None until a connect has happened.
+_last_patch_gate_key: str | None = None
+
+
+def _clear_patched_seeds() -> None:
+    """Drops the record of what was patched. Called after the game files are reverted, so the next connect patches them again instead of
+    trusting a record that describes files that are no longer there."""
+    try:
+        os.remove(PATCHED_SEEDS_MARKER_PATH)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        logger.warning(f"Could not remove {PATCHED_SEEDS_MARKER_PATH}: {e}")
+
+
 def _slot_data_fingerprint(slot_data: dict) -> str:
     """Hashes every field any of the 5 seed-gated patch scripts
     (loot_disturb/item_suppression/story_gates/door_randomizer/additional_enemies) actually reads,
@@ -806,6 +822,8 @@ def revert_all_game_files() -> tuple[bool, str]:
             total_restored += sum(int(n) for n in re.findall(r"(?:[Rr]estored|[Rr]emoved) (\d+)", result.stdout))
         except Exception:
             ok_all = False
+    # Even after a partial failure: some files were reverted, and the record would skip patching them again.
+    _clear_patched_seeds()
     if ok_all:
         return True, f"restored {total_restored} file(s) back from Override backups and module RIMs"
     return False, "one or more restore steps failed -- check the Heartbeat log for detail"
@@ -847,18 +865,24 @@ def apply_all_patches() -> tuple[bool, str]:
     locker_ok = loot_ok and "skipping starting-locker gear fix" not in loot_stdout
     lines.append(f"Patching Loot Mode - Starting Locker - Status: {'DONE' if locker_ok else 'FAILED'}")
     ok_all = ok_all and locker_ok
+    # What this applied is recorded the way a connect records it, so the next connect does not run it again. Only what succeeded is
+    # recorded, and only once a connect has given the option set a fingerprint.
+    if loot_ok and _last_patch_gate_key is not None:
+        _save_patched_seed("loot_disturb", _last_patch_gate_key)
 
-    for label, fn in [
-        ("Progression Checkpoints", apply_item_suppression),
-        ("Story Gates", apply_story_gates),
-        ("Randomize Areas", apply_door_randomizer),
-        ("Additional Enemies", apply_additional_enemies),
-        ("Bazaar Tokens", apply_bazaar_tokens),
-        ("Boss Datapads", apply_boss_datapads),
-        ("Droid Assets", apply_droid_assets),
+    for label, marker_key, fn in [
+        ("Progression Checkpoints", "item_suppression", apply_item_suppression),
+        ("Story Gates", "story_gates", apply_story_gates),
+        ("Randomize Areas", "door_randomizer", apply_door_randomizer),
+        ("Additional Enemies", "additional_enemies", apply_additional_enemies),
+        ("Bazaar Tokens", "bazaar_tokens", apply_bazaar_tokens),
+        ("Boss Datapads", None, apply_boss_datapads),
+        ("Droid Assets", None, apply_droid_assets),
     ]:
         ok, _msg = fn()
         ok_all = ok_all and ok
+        if ok and marker_key is not None and _last_patch_gate_key is not None:
+            _save_patched_seed(marker_key, _last_patch_gate_key)
         lines.append(f"Patching {label} - Status: {'DONE' if ok else 'FAILED'}")
 
     starting_class = 0
@@ -2121,6 +2145,10 @@ class KotorContext(CommonContext):
             _load_pc_class_settled()
         # Area entries seen this session, and when each pending Remove a Companion trap started waiting (in area entries).
         self._area_entries = 0
+        # Index of the area the player entered last (AP|CHECK|AREA|<idx>); None until the first entry is seen.
+        self._current_area_idx: typing.Optional[int] = None
+        # The heavy-queue entry's arm that is being held back or sent right now (it is no longer in the queue itself).
+        self._heavy_in_hand: typing.Optional[str] = None
         self._trap_wait_since: typing.Dict[typing.Tuple[str, str, int], int] = {}
         # The companion a Remove a Companion trap item already picked, so a retry after a missing acknowledgement repeats the same target
         # instead of picking (and removing) another one.
@@ -3020,6 +3048,9 @@ class KotorContext(CommonContext):
         self.reconciler.handle_event(event)
         if "AP|CHECK|AREA|" in event:
             self._area_entries += 1
+            area_match = re.search(r"AP\|CHECK\|AREA\|(\d+)", event)
+            if area_match:
+                self._current_area_idx = int(area_match.group(1))
 
         if "AP|SKILLREPORT|" in event:
             # Same "poll cycle complete" marker ReconciliationTracker uses
@@ -3455,6 +3486,8 @@ class KotorContext(CommonContext):
             # see _apply_module_rim_patches_in_order's own docstring for
             # the data-loss race this closes.
             patch_gate_key = _slot_data_fingerprint(slot_data)
+            global _last_patch_gate_key
+            _last_patch_gate_key = patch_gate_key
             asyncio.get_event_loop().run_in_executor(
                 None, self._apply_module_rim_patches_in_order, patch_gate_key, False)
 
@@ -4136,14 +4169,32 @@ class KotorContext(CommonContext):
             parts = arm_name.split(":", 2)
             if len(parts) == 3 and (self._heavy_queue_holds(arm_name) or self.dispatcher.has_unfinished("companion_class", f"{parts[1]}:{parts[2]}")):
                 return True
+        elif self._is_companion_recruit_arm(arm_name) and self._heavy_queue_holds(arm_name):
+            return True  # waiting in the heavy queue, or held back in the Endar Spire
         record = self.extender.deliveries.get(arm_name)
         if record is None or record.staged_at is None or record.applied_at is not None:
             return False
         return (time.time() - record.staged_at) < HEAVY_SEND_CONFIRM_TIMEOUT_SECONDS
 
     def _heavy_queue_holds(self, arm_name: str) -> bool:
-        """True while an entry for this arm is waiting in the heavy queue (entries are (label, arm_name, index, character, is_correction))."""
+        """True while an entry for this arm is waiting in the heavy queue (entries are (label, arm_name, index, character, is_correction)) or
+        is the one being held back or sent right now."""
+        if getattr(self, "_heavy_in_hand", None) == arm_name:
+            return True
         return any(len(entry) > 1 and entry[1] == arm_name for entry in list(getattr(self._heavy_queue, "_queue", ())))
+
+    # The two Endar Spire areas (area indexes 0 and 1, see generate_area_trampolines.py). Their scripts put Trask in the party and lock it for
+    # scripted fights, so a companion recruit there either takes his slot or leaves a loose creature, and the module's exit door refuses to
+    # open for a party it did not expect.
+    _PROLOGUE_AREA_IDXS = (0, 1)
+
+    @staticmethod
+    def _is_companion_recruit_arm(arm_name: str) -> bool:
+        """companion_<name> recruit arms; companion_class: sends are not recruits."""
+        return arm_name.startswith("companion_") and not arm_name.startswith("companion_class:")
+
+    def _in_prologue(self) -> bool:
+        return getattr(self, "_current_area_idx", None) in self._PROLOGUE_AREA_IDXS
 
     async def _guarded_send_apply(self, arm_name: str) -> bool:
         """Wraps ExtenderBridge.send_apply for ReconciliationTracker's own
@@ -4561,6 +4612,13 @@ class KotorContext(CommonContext):
         in _deliver_item for why."""
         while True:
             item_name, arm_name, index, character, is_correction = await self._heavy_queue.get()
+            self._heavy_in_hand = arm_name
+            # No companion joins while the player is still in the Endar Spire. The item stays pending (not logged as sent) and goes out in
+            # the first area after it; the reconciler does not expect the companion before then and does not queue a second copy.
+            if self._is_companion_recruit_arm(arm_name) and self._in_prologue():
+                game_events_logger.info(f"[held] {item_name} ({arm_name}) waits until you leave the Endar Spire.")
+                while self._is_companion_recruit_arm(arm_name) and self._in_prologue():
+                    await asyncio.sleep(1.0)
             # companion_class:<name>:<class> sends are tracked in the
             # extender's delivery table under just "companion_class:<name>"
             # (no class suffix) -- see kotor_extender_bridge.py's
@@ -4597,6 +4655,7 @@ class KotorContext(CommonContext):
             else:
                 game_events_logger.warning(f"[heavy queue] no confirmation for {arm_name} after 10 minutes, "
                                 f"proceeding to the next item anyway")
+            self._heavy_in_hand = None
             self._heavy_queue.task_done()
 
     def run_gui(self):

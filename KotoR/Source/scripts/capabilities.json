@@ -1,0 +1,54 @@
+{
+  "_about": "Which of our files may use a power, and why. scripts/check_capabilities.py fails on any use that is not listed here, on anything that is never allowed (eval, exec, pickle, marshal, ctypes, the registry, shell=True), and on any entry the code no longer needs. Add an entry only after a person has read the code that uses the power. Paths are as they are in the download.",
+  "allowed": {
+    "process": {
+      "KotorClient.py": "Starts only Python (sys.executable) running our own scripts, the patchers, generators and the asset builder, when the client connects. The arguments are the game folder and a few seed values (starting class, slot name, seed name, save id), passed as plain list items and never through a shell.",
+      "scripts/install_playerbundle.py": "Install.bat and Uninstall.bat: runs setup_game.py, build_game_assets.py and each patcher's --restore as separate Python processes, and 'pip install' for pykotor, numpy and pillow.",
+      "scripts/nwnnsscomp_path.py": "Runs the script compiler, tools/nwnsc/nwnsc.exe, on an .nss file (the one place a script is compiled).",
+      "scripts/model_builders.py": "Runs our own model-fix scripts (the Malak model) as a separate Python process and keeps the result in the KotorAP folder.",
+      "scripts/fix_malak_basic_attack_animations.py": "Runs tools/mdlops/mdlops.exe on the game's Malak model to decompile it and rebuild it with the animations added.",
+      "scripts/fix_droid_ranged_animations.py": "Runs tools/mdlops/mdlops.exe on a droid model to decompile it and rebuild it with the animations added.",
+      "scripts/add_saber_crystal_colors.py": "Developer tool for the saber crystal colours: runs tools/mdlops/mdlops.exe on model copies.",
+      "scripts/build_droid_human_rig.py": "Developer tool: runs tools/mdlops/mdlops.exe on model copies.",
+      "scripts/build_hk47_human_rig.py": "Developer tool: runs tools/mdlops/mdlops.exe on model copies.",
+      "scripts/arm_orchestrator.py": "Runs generate_trampoline_batch.py (ours) as a separate Python process with a fixed argument list and a 90 second timeout.",
+      "scripts/build_ap_tracker_quest.py": "Runs the Windows 'tasklist' command to see whether the game is running before it rewrites dialog.tlk.",
+      "scripts/release_gate.py": "Developer tool for releases: runs the test suite with pytest.",
+      "worlds/kotor/__init__.py": "Only when a player clicks the 'KOTOR Client' button in the Archipelago Launcher: starts the installed client in a new console window, and probes whether Kivy imports. Nothing runs while a seed is generated."
+    },
+    "network": {
+      "kotor_extender_bridge.py": "Opens one TCP connection from the client to the game's extender on 127.0.0.1 (this computer only; the host is a constant)."
+    },
+    "delete": {
+      "KotorClient.py": "/ap_restore_all: removes the client's own record of what it patched (extender/area_trampolines/_patched_seeds.json) once the game files are reverted, so the next connect patches them again. It removes that one file and nothing else.",
+      "scripts/client_files.py": "Uninstall and /ap_restore_all: removes the files the client wrote into Override, only while they are byte-for-byte what it wrote, and the shared 2DA tables that have become identical to the game's own.",
+      "scripts/build_game_assets.py": "Uninstall: removes the Override files this script built, and only while they are unchanged.",
+      "scripts/install_playerbundle.py": "Uninstall: puts the game's original binkw32.dll back, then removes its backup copy and the ap_repo_root.txt pointer, an old nwnnsscomp.exe that an earlier installer copied (only when its manifest says so), the Override files the installer added (never one that existed before) and its own marker files.",
+      "scripts/nwnnsscomp_path.py": "Removes its own temporary compiler output file, and a half-written one when a compile fails.",
+      "scripts/patch_additional_enemies.py": "--restore: removes the Override files this patcher wrote.",
+      "scripts/patch_area_poll_hooks.py": "--restore: removes the Override files this patcher wrote.",
+      "scripts/patch_bazaar_tokens.py": "--restore: removes the Override files this patcher wrote.",
+      "scripts/patch_boss_datapads.py": "--restore: removes the Override files this patcher wrote.",
+      "scripts/patch_galactic_shop.py": "--restore: removes the Override files this patcher wrote.",
+      "scripts/patch_item_suppression.py": "Removes two retired wrapper files that earlier versions wrote (the Sith papers gate and the Leviathan Carth wrapper).",
+      "scripts/patch_loot_disturb.py": "--restore removes the Override files and manifests it wrote. A run also removes files written for an earlier mode or seed that the new run no longer needs.",
+      "scripts/patch_party_console.py": "--restore: removes the Override files this patcher wrote.",
+      "scripts/patch_story_gates.py": "--restore, and each run: removes the gate scripts, aliases and dialog edits it wrote, and retired ones from earlier versions, when the option is turned off.",
+      "scripts/generate_droid_assets.py": "--restore: removes the droid asset files it installed, and its manifest.",
+      "scripts/arm_orchestrator.py": "Removes its own dropped-queue journal and notification file (the staged-queue bookkeeping under extender/area_trampolines).",
+      "scripts/build_ap_tracker_quest.py": "Uninstall: after dialog.tlk is put back from its backup, removes that backup file.",
+      "scripts/setup_game.py": "Removes the retired lev40_carth.dlg that release 0.1.8 put in Override, and only when it is byte-for-byte the copy the project shipped.",
+      "scripts/fix_malak_basic_attack_animations.py": "Cleans its own work folder under tools/mdlops before each build.",
+      "scripts/fix_droid_ranged_animations.py": "Clears its own work folder under tools/mdlops before each build, and on --restore removes the Override file it wrote.",
+      "scripts/add_saber_crystal_colors.py": "Developer tool: cleans its own work folder under tools/mdlops.",
+      "scripts/build_droid_human_rig.py": "Developer tool: clears its own output folder before a build, and on --restore removes the files it deployed and their backups.",
+      "scripts/build_hk47_human_rig.py": "Developer tool: clears its own work and output folders before a build.",
+      "scripts/build_hk47_variant_texture.py": "Developer tool: removes its own temporary file.",
+      "scripts/build_scripts.py": "Developer tool: removes its own temporary compiler output and its .building folder while it compiles every script.",
+      "scripts/ci_layout.py": "GitHub checks only: clears the temporary folders it lays the repository files out in on the build machine."
+    },
+    "dynamic_import": {
+      "scripts/patch_story_gates.py": "Imports the dialog builders named in its own fixed list (DIALOG_BUILDERS), all of them modules in this same scripts folder."
+    }
+  }
+}

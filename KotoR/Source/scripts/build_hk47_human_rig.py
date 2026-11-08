@@ -32,6 +32,8 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GAME_DIR = r"C:\Program Files (x86)\Steam\steamapps\common\swkotor"
 RAW_OVERRIDE_DIR = os.environ.get("KOTOR_AP_MODEL_OUT") or os.path.join(REPO_ROOT, "extender", "raw_override_files")
 MDLOPS_EXE = os.path.join(REPO_ROOT, "tools", "mdlops", "mdlops.exe")
+# MDLOps normally takes a second or two per model. It is run with no stdin (it can wait forever on an inherited one when the client launches it) and a timeout, so a stall fails the build instead of hanging the patch.
+MDLOPS_TIMEOUT = 300
 WORK_ROOT = os.path.join(REPO_ROOT, "tools", "mdlops")
 
 HK = "p_hk47"
@@ -172,7 +174,7 @@ def decompile(game_dir, resource, work_dir):
     p = os.path.join(work_dir, resource + ".mdl")
     open(p, "wb").write(mdl.data)
     open(os.path.join(work_dir, resource + ".mdx"), "wb").write(mdx.data)
-    subprocess.run([MDLOPS_EXE, "-k1", p], cwd=work_dir, check=True, capture_output=True, text=True)
+    subprocess.run([MDLOPS_EXE, "-k1", p], cwd=work_dir, check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=MDLOPS_TIMEOUT)
     return open(os.path.join(work_dir, resource + "-ascii.mdl"), "r", encoding="latin-1").read()
 
 
@@ -353,7 +355,7 @@ def build(game_dir):
     ascii_path = os.path.join(out_dir, NEW + "-ascii.mdl")
     open(ascii_path, "w", encoding="latin-1").write(text)
     stage_binaries(game_dir, out_dir)
-    res = subprocess.run([MDLOPS_EXE, "-k1", ascii_path], cwd=out_dir, capture_output=True, text=True)
+    res = subprocess.run([MDLOPS_EXE, "-k1", ascii_path], cwd=out_dir, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=MDLOPS_TIMEOUT)
     bins = glob.glob(os.path.join(out_dir, f"{NEW}-ascii-*bin.mdl"))
     if not bins:
         print(res.stdout[-1500:], res.stderr[-1500:])

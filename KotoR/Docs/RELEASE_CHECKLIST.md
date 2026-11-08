@@ -13,6 +13,9 @@ decide where a new file came from. That decision is always made by a person.
 - [ ] **Every new third-party file has its licence read by a person.** Record the download page, the licence name, the conditions on redistributing it and the date in the
   patch notes. Ship its licence text, add it to `THIRD_PARTY_NOTICES.txt` (in `package_playerbundle.py`), and credit it in `README.md`. A program also gets an entry (with its SHA-256)
   under `binaries` in `provenance.json`.
+- [ ] **Every new power has a reason.** If the code now runs a program, opens a connection, deletes files or imports by name where it did not before, a person reads that code and adds the file
+  and the reason to `Source/scripts/capabilities.json`. The gate and the GitHub checks fail until it is there, and nothing in `SECURITY.md` should say something the manifest contradicts.
+  `eval`, `exec`, `pickle`, `ctypes`, the registry and `shell=True` are never allowed.
 - [ ] **Nothing was copied out of the game.** Anything that is a copy or an edit of a game file is built on the player's machine by `build_game_assets.py`, never stored in the
   repository or in a zip (see `PROVENANCE.md`).
 - [ ] **The poll script in `extender/scripts_src` is the release baseline.** The client rewrites it for whichever seed was connected last. The gate (step 3) checks this.
@@ -28,8 +31,8 @@ decide where a new file came from. That decision is always made by a person.
 ## 3. The gate (automatic)
 
 - [ ] `python scripts/release_gate.py --previous <the last release's PlayerBundle zip>` ends with **RESULT: PASS**. It checks the poll baseline, runs the whole test suite with the game
-  installed, checks that the repository copy holds nothing derived from the game, runs the provenance check on the repository copy and on both release zips, and lists the
-  non-code files the release adds or changes. Its report is saved in `docs/release_reports/`; keep the file name for the sign-off.
+  installed, checks that the repository copy holds nothing derived from the game, runs the provenance check on the repository copy and on both release zips, checks that no code
+  uses a power `capabilities.json` does not list, and lists the non-code files the release adds or changes. Its report is saved in `docs/release_reports/`; keep the file name for the sign-off.
 - [ ] The repository copy is synced, pushed, and the **"KotoR checks" run on GitHub is green** (both jobs: *Provenance* and *World tests*). Link the run in the patch notes.
 
 ## 4. By a person

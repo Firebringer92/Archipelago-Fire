@@ -278,7 +278,7 @@ def build(key, game_dir):
     ascii_path = os.path.join(out_dir, new + "-ascii.mdl")
     open(ascii_path, "w", encoding="latin-1").write(text)
     stage(game_dir, out_dir, new)
-    res = subprocess.run([MDLOPS_EXE, "-k1", ascii_path], cwd=out_dir, capture_output=True, text=True)
+    res = subprocess.run([MDLOPS_EXE, "-k1", ascii_path], cwd=out_dir, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=rig.MDLOPS_TIMEOUT)
     bins = glob.glob(os.path.join(out_dir, f"{new}-ascii-*bin.mdl"))
     if not bins:
         print(res.stdout[-1500:], res.stderr[-1500:])

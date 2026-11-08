@@ -916,15 +916,21 @@ class ReconciliationTracker:
         return self._classes_known
 
     def has_class(self, arm_name: str) -> bool:
-        """True if the character already has the Jedi class this arm_name
-        would grant, per real reported game state (not delivery
-        bookkeeping) -- see CLASS_ARM_TO_KEY and generate_poll_shared.py's
-        CheckClasses(). Safe to call for non-class arm_names too (always
-        False for those, harmless)."""
+        """True if the character's first class slot already is the Jedi class
+        this arm_name would grant, per real reported game state (not
+        delivery bookkeeping) -- see CLASS_ARM_TO_KEY and
+        generate_poll_shared.py's CheckClasses(). Only the first slot counts:
+        the class arms overwrite that slot and nothing else, so a Jedi class
+        sitting in any other slot does not mean the grant has landed. Safe to
+        call for non-class arm_names too (always False for those, harmless)."""
         key = CLASS_ARM_TO_KEY.get(arm_name)
         if key is None:
             return False
-        return self.current_classes.get(key, 0) > 0
+        base = self.current_classes.get("baseclass", -1)
+        if base == -1:
+            # The poll build in use does not report the first slot; fall back to the any-slot level count.
+            return self.current_classes.get(key, 0) > 0
+        return base == _ARM_TO_PC_CLASS_CONST[arm_name]
 
 #BK As noted elsewhere we should create native function to log the action taken by delivery arms.
     def note_item_received(self, arm_name: str) -> None:

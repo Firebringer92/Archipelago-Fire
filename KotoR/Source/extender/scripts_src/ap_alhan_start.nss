@@ -6,10 +6,14 @@
 // runs. With nobody left on the roster the game probably has no screen to show and runs the exit script at once, while Vandar's closing
 // conversation is still open, and Ahlan's order to start a conversation is dropped. The signal is therefore sent two seconds later.
 // Skipped once the quest has started (DAN_ROMANCE_PLOT is set to 1 by his first conversation).
+// This is only the first attempt: CheckAhlanStart in ap_poll_shared.nss sends the same signal again while the quest has still not started.
+#include "kse"
+
 void main()
 {
     if (GetGlobalNumber("DAN_ROMANCE_PLOT") > 0) return;
     object oAhlan = GetObjectByTag("dan13_ahlan");
     if (!GetIsObjectValid(oAhlan)) return;
     DelayCommand(2.0, SignalEvent(oAhlan, EventUserDefined(30)));
+    KSE_Diag(162, "AP|SAFEGUARD|ahlan_start_exit_script");
 }

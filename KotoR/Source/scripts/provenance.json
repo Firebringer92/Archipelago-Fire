@@ -194,6 +194,10 @@
       "origin": "authored: this rules file"
     },
     {
+      "glob": "Source/scripts/capabilities.json",
+      "origin": "authored: which of our files may run programs, open connections, delete files or import by name, and why (checked by check_capabilities.py)"
+    },
+    {
       "glob": "Source/scripts/preserved_originals.json",
       "origin": "recipe: names of the game's scripts and byte offsets to patch; contains no game bytes"
     },

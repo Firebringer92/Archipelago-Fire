@@ -1,7 +1,8 @@
 name: KotoR checks
 
 # Runs on every push and pull request that touches KotoR/. Two independent jobs, both must pass:
-#   provenance  - no copy of the game's data is in the repository, and every file is accounted for (KotoR/Source/scripts/provenance.json)
+#   provenance  - no copy of the game's data is in the repository, every file is accounted for (KotoR/Source/scripts/provenance.json), and no code gains a power
+#                 (running a program, a connection, deleting files) without being listed with a reason (KotoR/Source/scripts/capabilities.json)
 #   world-tests - the world's test suite, run against a stock Archipelago 0.6.8 with no KOTOR install present
 # Neither job has the game, so the tests that read the game are skipped here; the release checklist (KotoR/Docs/RELEASE_CHECKLIST.md) covers those on a machine that has it.
 
@@ -30,6 +31,8 @@ jobs:
           python-version: "3.12"
       - name: Check every file in KotoR/
         run: python KotoR/Source/scripts/check_provenance.py --root KotoR
+      - name: Check what the code is allowed to do
+        run: python KotoR/Source/scripts/check_capabilities.py --root KotoR
 
   world-tests:
     name: World tests (no game installed)

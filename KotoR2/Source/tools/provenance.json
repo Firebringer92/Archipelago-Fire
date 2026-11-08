@@ -1,0 +1,47 @@
+{
+  "description": "What may be published in the KotoR2 repository folder and in the release zips, and where each kind of file comes from. tools/check_provenance.py enforces it (the same checker and rules as KotOR 1). Add a rule here, with its origin, in the same commit as any new kind of file. The repository holds source only: compiled scripts (.ncs) and the extender DLL are built into the release zips. Nothing derived from the game is published: models, textures, tables, archives, audio, templates copied from the game, the game's scripts and nwscript.nss. tools/stage_publish.py builds the candidate repository folder from the project and runs this check on it before anything is copied to the GitHub folder.",
+  "banned_extensions": [
+    ".mdl", ".mdx", ".wok", ".pwk", ".dwk", ".tga", ".tpc", ".txi", ".dds", ".lip", ".ssf", ".wav", ".mp3", ".ogg", ".bik", ".bk2",
+    ".2da", ".tlk", ".bif", ".key", ".erf", ".rim", ".mod", ".sav", ".jrl", ".lyt", ".vis", ".are", ".git", ".ifo", ".gic", ".fac", ".gui"
+  ],
+  "gff_extensions": [".uti", ".utc", ".utp", ".dlg", ".utt", ".ute", ".utm", ".utw", ".utd", ".uts"],
+  "gff_name_prefix": "ap_",
+  "prose_keys_forbidden_in_data": ["description", "desc", "text", "dialogue", "dialog", "lines", "flavor", "flavour", "lore"],
+  "data_tables_checked_for_prose": [
+    "Source/data/*.json",
+    "Source/worlds/kotor2/data/*.json"
+  ],
+  "zip_exempt_from_banned_extensions": [],
+  "zip_forbidden_names": ["nwscript.nss", "nwscript_k2_vanilla.nss", "nwscript_k2se.nss", "k_inc_utility.nss", "k_inc_debug.nss"],
+  "zip_own_apo_files": [],
+  "allowed": [
+    {"glob": "Docs/*.md", "origin": "authored: project documentation (a document that quotes the game's text must be reviewed by a person before it is added)"},
+    {"glob": "Docs/*.yaml", "origin": "authored: the player YAML templates"},
+    {"glob": "Source/client/*.py", "origin": "authored: the Archipelago client (AI-assisted, human-reviewed); no game data inside"},
+    {"glob": "Source/tools/*.py", "origin": "authored: build and check tools; no game data inside"},
+    {"glob": "Source/tools/*.json", "origin": "authored: the rules of the provenance check"},
+    {"glob": "Source/worlds/kotor2/*.py", "origin": "authored: the apworld"},
+    {"glob": "Source/worlds/kotor2/test/*.py", "origin": "authored: apworld tests"},
+    {"glob": "Source/worlds/kotor2/data/*.json", "origin": "authored: tables of identifiers (tags, ids, gate ids, short location names); the check refuses prose fields"},
+    {"glob": "Source/data/*.json", "origin": "authored: tables of identifiers; the check refuses prose fields"},
+    {"glob": "Source/data/*.csv", "origin": "authored: tables of identifiers and addresses (facts about the game, no game text)"},
+    {"glob": "Source/nss/*.nss", "origin": "authored: our NWScript source (generated or hand-written). The game's own scripts and nwscript.nss are never stored here; a script that reuses the name of a game script is our own text written for that slot"},
+    {"glob": "Source/extender/CMakeLists.txt", "origin": "authored: build file of the extender"},
+    {"glob": "Source/extender/src/*.cpp", "origin": "authored: the K2 extender (ours)"},
+    {"glob": "Source/extender/src/*.h", "origin": "authored: the K2 extender (ours)"},
+    {"glob": "Source/extender/src/*.inc", "origin": "authored: the K2 extender (ours)"},
+    {"glob": "Source/extender/src/*.def", "origin": "authored: the K2 extender export list"},
+    {"glob": "Source/extender/tests/*.cpp", "origin": "authored: extender tests"},
+    {"glob": "Source/tools/nwnsc/LICENSE.txt", "origin": "third-party licence text: nwnsc (MIT) and its compiler library (BSD-3)"},
+    {"glob": "Source/tools/nwnsc/CREDITS.txt", "origin": "third-party credits: nwnsc"}
+  ],
+  "binaries": [
+    {
+      "zip_path": "tools/nwnsc/nwnsc.exe",
+      "sha256": "11219870c747f748fe1956f275921c74ad0867a996fc2d3c197513bb7e8f5b12",
+      "origin": "nwnsc 1.1.5, downloaded unchanged from https://github.com/nwneetools/nwnsc/releases (nwnsc-win-v1.1.5.zip), the same file KotOR 1 ships. Added to the release zip when it is built; the repository does not hold it",
+      "licence_zip_path": "tools/nwnsc/LICENSE.txt",
+      "notice_must_mention": ["nwnsc", "Skywing"]
+    }
+  ]
+}

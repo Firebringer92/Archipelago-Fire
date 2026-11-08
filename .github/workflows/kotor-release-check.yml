@@ -1,6 +1,7 @@
 name: KotoR release check
 
-# When a release is published, downloads its zips and runs the provenance check on them (including the .apworld inside the world zip).
+# When a release is published, downloads its zips and runs two checks on them, each its own named check: provenance (including the .apworld inside the world zip), and the capability check
+# (what the Python code in the zips is allowed to do; it reads the PlayerBundle's files, and does not open the .apworld inside the world zip).
 # A red result here means a release contains something it must not; fix it and publish a corrected release.
 # Can also be run by hand from the Actions tab against any existing release tag.
 
@@ -17,8 +18,8 @@ permissions:
   contents: read
 
 jobs:
-  release-files:
-    name: Release zips (no game files)
+  release-provenance:
+    name: Release zips - provenance, no game files
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -32,3 +33,19 @@ jobs:
         run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.zip" --dir assets
       - name: Check them
         run: python KotoR/Source/scripts/check_provenance.py --zip assets/*.zip
+
+  release-capabilities:
+    name: Release zips - capabilities, PlayerBundle code limited to its listed powers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Download the release's zips
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.zip" --dir assets
+      - name: Check what the code in them is allowed to do
+        run: python KotoR/Source/scripts/check_capabilities.py --zip assets/*.zip

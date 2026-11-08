@@ -1,0 +1,145 @@
+{
+  "variant": "short_hallway",
+  "source": "docs/PERAGUS_CONDENSED.md section 7 (variant A) and research/peragus/hand_ops.csv; the identifiers below are the game's tags, globals and module names",
+  "decisions": {
+    "revan": "chat",
+    "xp": "none",
+    "pacify_droids": false,
+    "precognition": false,
+    "open_medlab": false,
+    "mystery_flags": true,
+    "harbinger": "open_doors"
+  },
+  "skipped_modules": ["102PER", "104PER", "105PER"],
+  "removed_locations": [
+    "Visited: Peragus - Mining Tunnels",
+    "Visited: Peragus - Asteroid Exterior",
+    "Visited: Peragus - Dormitories",
+    "Quest: Rescue FullName",
+    "Quest: Turbolift Lockdown",
+    "Quest: Voiceprint Protocol"
+  ],
+  "ops_doc": {
+    "unlock": "SetLocked(tag, 0)",
+    "global": "SetGlobalNumber(name, value)",
+    "journal": "AddJournalQuestEntry(tag, stage)",
+    "spell": "GrantSpell(id) on the player",
+    "npc_add": "AddAvailableNPCByObject(slot, object with tag)",
+    "npc_hide": "SetNPCSelectability(slot, 0)",
+    "destroy": "DestroyObject(object with tag)",
+    "faction_all": "ChangeToStandardFaction(every object with tag, faction)",
+    "item": "CreateItemOnObject(resref, player, count)",
+    "spawn": "destroy the object with replace_tag, then CreateObject(template) at the waypoint",
+    "load": "StartNewModule(module, waypoint, movie)"
+  },
+  "hooks": [
+    {
+      "id": "start",
+      "module": "101PER",
+      "replaces": "a_hatchopen",
+      "run": "after the original, once",
+      "ops": [
+        {"op": "unlock", "tag": "PrisonRoomDr"},
+        {"op": "global", "name": "101PER_Switch", "value": 2},
+        {"op": "global", "name": "101PER_Kreia_Telepath", "value": 1}
+      ],
+      "optional": {
+        "pacify_droids": [{"op": "faction_all", "tag": "g_assassindrd01", "faction": 5}],
+        "precognition": [{"op": "spell", "id": 178}],
+        "open_medlab": [{"op": "unlock", "tag": "MedBayDoor"}]
+      }
+    },
+    {
+      "id": "jump",
+      "module": "101PER",
+      "replaces": "a_106perjump",
+      "run": "instead of the original; the Telos copy of the script keeps its own body",
+      "ops": [
+        {"op": "npc_add", "slot": 8, "tag": "T3M4"},
+        {"op": "npc_hide", "slot": 8},
+        {"op": "destroy", "tag": "T3M4"},
+        {"op": "global", "name": "105PER_T3_End", "value": 2},
+        {"op": "global", "name": "101PER_Open_Hatch", "value": 1},
+        {"op": "global", "name": "106PER_Hang_Comp", "value": 1},
+        {"op": "global", "name": "101PER_Sion_Arrives", "value": 1},
+        {"op": "load", "module": "101PER", "waypoint": "From_105PER", "movie": "permov03"}
+      ],
+      "optional": {
+        "mystery_flags": [
+          {"op": "global", "name": "101PER_Know_Sedatives", "value": 1},
+          {"op": "global", "name": "101PER_Med_Bay_Mur", "value": 2},
+          {"op": "global", "name": "103PER_HK50_Voice", "value": 1},
+          {"op": "global", "name": "103PER_HK50_Code", "value": 1},
+          {"op": "global", "name": "103PER_Talk_HK50", "value": 1},
+          {"op": "journal", "tag": "MedBayMur", "stage": 40}
+        ]
+      }
+    },
+    {
+      "id": "act2",
+      "module": "101PER",
+      "replaces": "a_hatchopen",
+      "run": "after the original, when 101PER_Sion_Arrives is 1 and 101PER_Kreia_Spawn is below 3",
+      "ops": [
+        {"op": "global", "name": "101PER_Kreia_Spawn", "value": 3},
+        {"op": "spawn", "template": "p_kreia", "waypoint": "WP_KREIA_SPAWN2", "replace_tag": "kreia"}
+      ]
+    },
+    {
+      "id": "navicomputer",
+      "module": "151HAR",
+      "replaces": "a_kreiafordlg151",
+      "run": "after the original (idempotent)",
+      "when": "harbinger == open_doors",
+      "ops": [
+        {"op": "unlock", "tag": "TO_152HAR"},
+        {"op": "global", "name": "151HAR_Asteroid_Chart", "value": 1},
+        {"op": "global", "name": "151HAR_Nav_Comp_Fixed", "value": 1}
+      ]
+    },
+    {
+      "id": "engine_deck",
+      "module": "153HAR",
+      "replaces": "tr_atton_precog",
+      "run": "after the original (idempotent)",
+      "when": "harbinger == open_doors",
+      "ops": [
+        {"op": "unlock", "tag": "152HARMaintDoor"},
+        {"op": "unlock", "tag": "152HAREngDoor"},
+        {"op": "global", "name": "152HAR_Maint_Console", "value": 1},
+        {"op": "global", "name": "152HAR_Maint_Door", "value": 1},
+        {"op": "global", "name": "152HAR_Engine_Door", "value": 1},
+        {"op": "journal", "tag": "OrbitalDriftCharts", "stage": 99}
+      ]
+    },
+    {
+      "id": "hangar",
+      "module": "106PER",
+      "replaces": "a_transformt3m4",
+      "run": "after the original (idempotent)",
+      "when": "harbinger == open_doors",
+      "ops": [
+        {"op": "global", "name": "106PER_Hang_Comp", "value": 1},
+        {"op": "unlock", "tag": "TrafficEastDoor"},
+        {"op": "global", "name": "106PER_Hangar_Door", "value": 1}
+      ]
+    },
+    {
+      "id": "supplies",
+      "module": "151HAR",
+      "replaces": "a_kreiafordlg151",
+      "run": "after the original, once",
+      "when": "harbinger == hand_items",
+      "ops": [
+        {"op": "item", "resref": "g_i_progspike01", "count": 3},
+        {"op": "item", "resref": "g_i_parts01", "count": 3}
+      ]
+    }
+  ],
+  "xp_grants": {
+    "journal": [
+      {"op": "journal", "tag": "RescuePC", "stage": 99},
+      {"op": "journal", "tag": "RescueT3", "stage": 20}
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "_doc": "The Archipelago Bazaar (nss/k2ap_bazaar.nss, client/k2_bazaar.py). Numbers only. Prices: first_price, then price_step more for each further purchase.",
+  "purchases": 5,
+  "first_price": 1000,
+  "price_step": 2000,
+  "exchanges": 20,
+  "tokens_per_exchange": 5,
+  "tokens_total": 100,
+  "tokens_per_module": 10,
+  "hawk_module": "003EBO",
+  "hawk_spot": "WP_cargo",
+  "jawa_source": "c_jawa",
+  "item_base": "g_i_pltuseitm01"
+}

@@ -1,0 +1,20 @@
+{
+  "_doc": "The Archipelago Vendor (nss/k2ap_vendor.nss, client/k2_vendor.py, tools/build_vendor.py). Numbers only. A category is unlocked by its pass item.",
+  "hawk_module": "003EBO",
+  "hawk_spot": "WP_cargo",
+  "offset": 1.8,
+  "npc_source": "c_jawa",
+  "skills": ["Computer Use", "Demolitions", "Stealth", "Awareness", "Persuade", "Repair", "Security", "Treat Injury"],
+  "abilities": ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"],
+  "skill_price": 1000,
+  "skill_limit": 5,
+  "ability_price": 4000,
+  "ability_limit": 5,
+  "alignment_step": 10,
+  "dark_pays": 1000,
+  "light_costs": 5000,
+  "dark_refused_at_or_below": 10,
+  "light_refused_at_or_above": 90,
+  "bundles": [[10, 300], [50, 1200], [200, 4000]],
+  "passes": ["skill", "abil", "align", "supply"]
+}

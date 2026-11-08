@@ -1,10 +1,11 @@
 name: KotoR checks
 
-# Runs on every push and pull request that touches KotoR/. Two independent jobs, both must pass:
-#   provenance  - no copy of the game's data is in the repository, every file is accounted for (KotoR/Source/scripts/provenance.json), and no code gains a power
-#                 (running a program, a connection, deleting files) without being listed with a reason (KotoR/Source/scripts/capabilities.json)
-#   world-tests - the world's test suite, run against a stock Archipelago 0.6.8 with no KOTOR install present
-# Neither job has the game, so the tests that read the game are skipped here; the release checklist (KotoR/Docs/RELEASE_CHECKLIST.md) covers those on a machine that has it.
+# Runs on every push and pull request that touches KotoR/. Three independent jobs, all must pass; each shows as its own check, named for what it proves:
+#   provenance   - no copy of the game's data is in the repository, and every file is accounted for (KotoR/Source/scripts/provenance.json)
+#   capabilities - no Python file gains a power (running a program, a connection, deleting files, importing code by name) without being listed with a reason
+#                  (KotoR/Source/scripts/capabilities.json), and nothing never-allowed (eval, exec, pickle, ctypes, the registry, shell=True) is used
+#   world-tests  - the world's test suite, run against a stock Archipelago 0.6.8 with no KOTOR install present
+# None of the jobs has the game, so the tests that read the game are skipped here; the release checklist (KotoR/Docs/RELEASE_CHECKLIST.md) covers those on a machine that has it.
 
 on:
   push:
@@ -22,7 +23,7 @@ permissions:
 
 jobs:
   provenance:
-    name: Provenance (no game files)
+    name: Provenance - no game files, every file accounted for
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -31,11 +32,20 @@ jobs:
           python-version: "3.12"
       - name: Check every file in KotoR/
         run: python KotoR/Source/scripts/check_provenance.py --root KotoR
+
+  capabilities:
+    name: Capabilities - code limited to its listed powers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
       - name: Check what the code is allowed to do
         run: python KotoR/Source/scripts/check_capabilities.py --root KotoR
 
   world-tests:
-    name: World tests (no game installed)
+    name: World tests - the world's test suite, no game installed
     runs-on: windows-latest
     env:
       KOTOR_GAME_DIR: C:\no\kotor\install

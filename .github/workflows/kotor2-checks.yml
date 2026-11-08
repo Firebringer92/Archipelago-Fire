@@ -1,0 +1,108 @@
+name: KotoR2 checks
+
+# Runs on every push and pull request that touches KotoR2/. Independent jobs, all must pass; each shows as its own check, named for what it proves:
+#   provenance   - no copy of the game's data is in the repository, and every file is accounted for (KotoR2/Source/tools/provenance.json)
+#   capabilities - no Python file gains a power (running a program, a connection, deleting files, importing code by name) without being listed with a reason
+#                  (KotoR2/Source/tools/capabilities.json), and nothing never-allowed (eval, exec, pickle, ctypes, the registry, shell=True) is used
+#   world-tests  - the world's test suite, run against a stock Archipelago 0.6.8 with no KOTOR 2 install present
+#   client-tests - the client's test suite (dispatcher, patcher, journal, randomizers), same setup
+# None of the jobs has the game, so the tests that read the game are skipped here; the release checklist (KotoR2/Docs/RELEASE_CHECKLIST.md) covers those on a machine that has it.
+
+on:
+  push:
+    paths:
+      - "KotoR2/**"
+      - ".github/workflows/kotor2-checks.yml"
+  pull_request:
+    paths:
+      - "KotoR2/**"
+      - ".github/workflows/kotor2-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    name: Provenance - no game files, every file accounted for
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Check every file in KotoR2/
+        run: python KotoR2/Source/tools/check_provenance.py --root KotoR2
+
+  capabilities:
+    name: Capabilities - code limited to its listed powers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Check what the code is allowed to do
+        run: python KotoR2/Source/tools/check_capabilities.py --root KotoR2
+
+  world-tests:
+    name: World tests - the world's test suite, no game installed
+    runs-on: windows-latest
+    env:
+      K2_GAME_DIR: C:\no\kotor2\install
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          path: repo
+      - uses: actions/checkout@v6.0.2
+        with:
+          repository: ArchipelagoMW/Archipelago
+          ref: 0.6.8
+          path: work/Archipelago
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: work/Archipelago
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ci-requirements.txt
+          python ModuleUpdate.py --yes --force --append "WebHostLib/requirements.txt"
+          python Launcher.py --update_settings
+          pip install pykotor numpy pillow
+      - name: Put the repository files where the tests expect them
+        run: python repo/KotoR2/Source/tools/ci_layout.py --source repo/KotoR2/Source --work work
+      - name: Run the tests
+        working-directory: work/Archipelago
+        run: python -m pytest worlds/kotor2/test -q -rs
+
+  client-tests:
+    name: Client tests - the client's test suite, no game installed
+    runs-on: windows-latest
+    env:
+      K2_GAME_DIR: C:\no\kotor2\install
+      K2_CORE: ${{ github.workspace }}\work\Archipelago
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          path: repo
+      - uses: actions/checkout@v6.0.2
+        with:
+          repository: ArchipelagoMW/Archipelago
+          ref: 0.6.8
+          path: work/Archipelago
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: work/Archipelago
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ci-requirements.txt
+          python ModuleUpdate.py --yes --force --append "WebHostLib/requirements.txt"
+          python Launcher.py --update_settings
+          pip install pykotor numpy pillow
+      - name: Put the repository files where the tests expect them
+        run: python repo/KotoR2/Source/tools/ci_layout.py --source repo/KotoR2/Source --work work
+      - name: Run the tests
+        run: python work/tools/run_client_tests.py

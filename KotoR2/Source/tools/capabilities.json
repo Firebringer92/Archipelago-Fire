@@ -1,0 +1,43 @@
+{
+  "_about": "Which of our files may use a power, and why. tools/check_capabilities.py fails on any use that is not listed here, on anything that is never allowed (eval, exec, pickle, marshal, ctypes, the registry, shell=True), and on any entry the code no longer needs. Add an entry only after a person has read the code that uses the power. Paths are as they are in the repository under Source/.",
+  "allowed": {
+    "process": {
+      "client/k2_patch.py": "Runs the Windows 'tasklist' command (fixed arguments, 10 second limit) to see whether the game is running before the client rewrites game files.",
+      "worlds/kotor2/ClientLauncher.py": "Only when a player clicks the 'KOTOR 2 Client' button in the Archipelago Launcher: probes whether Kivy imports in the chosen Python, and starts the installed client in a new console window. Nothing runs while a seed is generated.",
+      "tools/k2compile.py": "The one place a game script is compiled: runs tools/nwnsc/nwnsc.exe (or the old nwnnsscomp.exe when present) on an .nss file with a fixed argument list and a time limit.",
+      "tools/build_payload.py": "Developer tool: runs our own builder scripts as separate Python processes (sys.executable, fixed argument lists) to collect the files the client carries.",
+      "tools/prepare_game_scripts.py": "Developer tool: runs our own generator scripts (class tables, gate wrappers, Bazaar, Vendor, extra companion assets) as separate Python processes with the game folder as an argument.",
+      "tools/build_class_script.py": "Developer tool: runs our class-rebuild generator and the script compiler on the result.",
+      "tools/check_yamls.py": "Developer tool: runs Archipelago's Generate.py on test YAML files in a scratch folder.",
+      "tools/package_world.py": "Developer tool: runs Python to build the .apworld archive from the world folder.",
+      "tools/run_client_tests.py": "Developer tool: runs the client test files, one Python process each.",
+      "tools/run_world_tests.py": "Developer tool: runs the world's unit tests in a Python process inside the Archipelago folder.",
+      "tools/stage_publish.py": "Developer tool: runs the provenance check on the staged repository folder."
+    },
+    "network": {},
+    "delete": {
+      "client/k2_patch.py": "Revert: removes an Override file the client wrote (only one it recorded as its own), or puts the saved original back.",
+      "client/k2_files.py": "Removes the client's own dispatcher inbox file once the game has read it.",
+      "client/k2_journal.py": "Revert: after dialog.tlk is put back from the client's backup, removes that backup and its record.",
+      "client/k2_modules.py": "Revert: after a module file is put back from the client's backup, removes the backup; a backup whose module was changed by something else since is dropped too, so it can never overwrite the newer file.",
+      "client/test_context.py": "Tests only: remove the scratch folders the test created.",
+      "client/test_dialogues.py": "Tests only: remove a scratch copy of a module archive the test created.",
+      "client/test_dispatcher.py": "Tests only: remove the scratch folders the test created.",
+      "client/test_modules.py": "Tests only: remove a scratch module file the test created.",
+      "client/test_patch.py": "Tests only: remove the scratch folders the test created.",
+      "client/test_payload.py": "Tests only: remove the scratch folders the test created.",
+      "tools/build_area_hooks.py": "Developer tool, --remove: removes the area files this tool wrote.",
+      "tools/build_area_wrappers.py": "Developer tool, --remove: removes the wrapper files this tool wrote and its manifest.",
+      "tools/build_class_script.py": "Developer tool: removes the old compiled class script before it is compiled again.",
+      "tools/build_gate_wrappers.py": "Developer tool: removes the old compiled wrapper before it is compiled again.",
+      "tools/build_payload.py": "Developer tool: clears its own work folder and removes files of an earlier build that are no longer made.",
+      "tools/check_yamls.py": "Developer tool: removes its own scratch folders.",
+      "tools/k2_dispatch_send.py": "Developer tool: 'clear' removes the dispatcher inbox and outbox files.",
+      "tools/k2compile.py": "Removes its own compiler output files before and after a compile.",
+      "tools/ci_layout.py": "GitHub checks only: clears the temporary folders it lays the repository files out in on the build machine.",
+      "tools/package_world.py": "Developer tool: clears the build folder before it packs the world.",
+      "tools/run_world_tests.py": "Developer tool: replaces the copy of the world inside the Archipelago folder before running the tests."
+    },
+    "dynamic_import": {}
+  }
+}

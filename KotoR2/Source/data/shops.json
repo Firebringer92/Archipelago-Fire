@@ -1,0 +1,155 @@
+{
+ "planets": [
+  "Telos",
+  "Nar Shaddaa",
+  "Dxun",
+  "Onderon",
+  "Dantooine"
+ ],
+ "stores": [
+  {
+   "module": "202TEL",
+   "utm": "m_202_001",
+   "tag": "m_202_001",
+   "planet": "Telos",
+   "leave_alone": false
+  },
+  {
+   "module": "202TEL",
+   "utm": "m_202_002",
+   "tag": "m_202_002",
+   "planet": "Telos",
+   "leave_alone": false
+  },
+  {
+   "module": "202TEL",
+   "utm": "m_202_003",
+   "tag": "m_202_003",
+   "planet": "Telos",
+   "leave_alone": false
+  },
+  {
+   "module": "203TEL",
+   "utm": "m_chano",
+   "tag": "m_Chano",
+   "planet": "Telos",
+   "leave_alone": false
+  },
+  {
+   "module": "207TEL",
+   "utm": "m_202_004",
+   "tag": "m_207_001",
+   "planet": "Telos",
+   "leave_alone": true
+  },
+  {
+   "module": "301NAR",
+   "utm": "kexsstore",
+   "tag": "OondarStore",
+   "planet": "Nar Shaddaa",
+   "leave_alone": false
+  },
+  {
+   "module": "301NAR",
+   "utm": "kexsstore001",
+   "tag": "GeedaStore",
+   "planet": "Nar Shaddaa",
+   "leave_alone": false
+  },
+  {
+   "module": "301NAR",
+   "utm": "kexsstore002",
+   "tag": "TiennStore",
+   "planet": "Nar Shaddaa",
+   "leave_alone": false
+  },
+  {
+   "module": "301NAR",
+   "utm": "kodinstore",
+   "tag": "KodinStore",
+   "planet": "Nar Shaddaa",
+   "leave_alone": false
+  },
+  {
+   "module": "306NAR",
+   "utm": "kexsstore003",
+   "tag": "DahniStore",
+   "planet": "Nar Shaddaa",
+   "leave_alone": true
+  },
+  {
+   "module": "403DXN",
+   "utm": "kexsstore",
+   "tag": "kexsstore",
+   "planet": "Dxun",
+   "leave_alone": false
+  },
+  {
+   "module": "501OND",
+   "utm": "margar_store",
+   "tag": "margar_store",
+   "planet": "Onderon",
+   "leave_alone": false
+  },
+  {
+   "module": "502OND",
+   "utm": "store_geg",
+   "tag": "store_geg",
+   "planet": "Onderon",
+   "leave_alone": false
+  },
+  {
+   "module": "512OND",
+   "utm": "store_128",
+   "tag": "store_128",
+   "planet": "Onderon",
+   "leave_alone": false
+  },
+  {
+   "module": "601DAN",
+   "utm": "patostore",
+   "tag": "patostore",
+   "planet": "Dantooine",
+   "leave_alone": true
+  },
+  {
+   "module": "601DAN",
+   "utm": "store_adum001",
+   "tag": "store_akkere",
+   "planet": "Dantooine",
+   "leave_alone": false
+  },
+  {
+   "module": "602DAN",
+   "utm": "store_adum",
+   "tag": "store_adum",
+   "planet": "Dantooine",
+   "leave_alone": false
+  },
+  {
+   "module": "605DAN",
+   "utm": "store_daraala",
+   "tag": "store_daraala",
+   "planet": "Dantooine",
+   "leave_alone": false
+  }
+ ],
+ "stock_scripts": [
+  "a_stock_128",
+  "a_stock_adum",
+  "a_stock_akkere",
+  "a_stock_daraala",
+  "a_stock_geeda",
+  "a_stock_geedaond",
+  "a_stock_geg",
+  "a_stock_kex",
+  "a_stock_kodin",
+  "a_stock_margar",
+  "a_stock_oondar",
+  "a_stock_tienn",
+  "a_stockstore",
+  "a_stockstore_01",
+  "a_stockstore_02",
+  "a_stockstore_03"
+ ]
+}

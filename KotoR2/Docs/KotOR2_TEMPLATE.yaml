@@ -1,0 +1,430 @@
+# KOTOR 2 (TSL) Archipelago Randomizer -- player options template
+#
+# *** NOT READY TO PLAY. ***  This world is in development and has not been released. Every option below exists in the
+# world and generates a seed, but the game side has only been tested in part, and a few options do nothing in the game
+# yet (each says so in its own text). This file is published so the options can be read and discussed.
+#
+# When it is released: back up your saves and your game's Modules and Override folders before playing a randomized
+# seed. Many options (shops, loot, enemies, doors, the Bazaar, crafting, the journal) change the game's files when the
+# KOTOR 2 Client connects, and /k2_unpatch puts them back.
+#
+# To use this for your own playthrough: copy this file to a new name under Players\ (for example my_game.yaml), then
+# edit `name:` below and delete this original -- Generate.py builds one seed slot per .yaml file it finds in Players\,
+# so leaving both means two slots get generated. Every option below is documented inline, and every value shown is
+# that option's default.
+#
+# General YAML notes: `true`/`false` switch a Yes/No option on or off. A named option (like `ap_gated` or
+# `defeat_kreia`) picks one choice from a list -- the valid choices are listed in a comment above each option. A plain
+# number sets a Range option to that exact value. A list in square brackets picks several named things at once.
+# Don't quote any of these values. Leave `game:` below exactly as it is -- it is the fixed internal name Archipelago
+# uses to find this world, not a display name.
+
+name: TestPlayer
+game: KotOR 2 TSL
+description: KOTOR 2 TSL Archipelago randomizer -- development template, not ready to play
+requires:
+  version: 0.6.7        # the oldest Archipelago version this world was made for
+KotOR 2 TSL:
+
+  # --- Archipelago standard options ----------------------------------------------
+
+
+  # How aggressively Archipelago keeps your own progression items away from other players'
+  # early spheres. 0 = off, higher = more aggressive. Not KOTOR-specific.
+  # Range: 0-99
+  progression_balancing: 50
+
+  # Which of your own locations must be reachable for the seed to be valid.
+  #   full:    every location can be reached and every item acquired (Archipelago's default).
+  #   items:   every item can be acquired, but some locations may be unreachable.
+  #   minimal: only the goal needs to be reachable.
+  # Not KOTOR-specific. Valid: full, items, minimal
+  accessibility: full
+
+  # --- Goal ----------------------------------------------------------------------
+
+
+  # What ends the run.
+  #
+  # defeat_kreia (default): finish the game -- Kreia is defeated and the ending plays.
+  #
+  # defeat_nihilus: defeat Darth Nihilus on the Ravager. A shorter run that ends before Malachor.
+  #
+  # high_level: reach the level set by goal_level.
+  #
+  # influence_crew: bring influence_goal_count companions to the high end (75 or more) or the low end (25 or less)
+  # of influence. Needs companions (not `none`).
+  #
+  # cult_leader: recruit every companion your seed offers -- every recruit check, and in ap_gated every companion
+  # item. Needs companions (not `none`).
+  #
+  # Game side: only defeat_kreia is detected in the game today. The others are built in the world and the client.
+  #
+  # Valid: defeat_kreia, defeat_nihilus, high_level, influence_crew, cult_leader
+  goal: defeat_kreia
+
+  # The level to reach when goal is high_level. The story alone gives roughly level 20 to 25 (level 20 = 190,000 XP,
+  # level 25 = 300,000 XP), so the experience options must be able to supply this level; the generator checks that.
+  # Range: 10-50
+  goal_level: 25
+
+  # How many companions must reach the high or low end of influence when goal is influence_crew.
+  # Range: 1-12
+  influence_goal_count: 6
+
+  # The highest level that gets a level check (a location, not a goal). The game's maximum is 50; story content gives
+  # roughly level 20 to 25, so higher targets need experience supplied by the experience options.
+  # Range: 5-50
+  level_target: 20
+
+  # --- Story progression ---------------------------------------------------------
+
+
+  # Hold the story beats listed in the gates table until you own enough progression items of the right family.
+  # Progression is kept in the Journal: one quest per planet ("Archipelago Progress: Telos" and so on), and every
+  # progression item you receive moves that quest one stage forward. A loaded older save brings back the stage it had.
+  # An "Archipelago Tracker" quest shows how far along your checks you are.
+  #
+  # true (default): the gates are enforced.
+  # false: no gates and no progression items.
+  story_gates: true
+
+  # Gate ids to switch off for this seed. A disabled gate needs no progression items and is not enforced in the game.
+  # The 19 gates are TEL1-3 (Telos and the Citadel), NAR1-3 (Nar Shaddaa), DXN1-3 (Dxun), DAN1-3 (Dantooine),
+  # KOR1-3 (Korriban) and FIN1-4 (the endgame).
+  #
+  # Example: disabled_gates: [NAR1, DXN2]
+  # Valid: any of the 19 ids above
+  disabled_gates: []
+
+  # Condenses the Peragus opening (the "short hallway"): Atton is freed at once; the T3-M4 trip, the mining tunnels,
+  # the outside walk and the dormitories are cut; the Sith arrive by a docking movie; and the Harbinger's locked doors
+  # and the hangar door are opened for you. Kept: Kreia, the HK-50 scene, Atton and T3-M4 joining, the Sion duel, the
+  # turret scene and the first Ebon Hawk visit.
+  #
+  # The checks that only exist in the cut parts (the Mining Tunnels, Asteroid Exterior and Dormitories visits, and the
+  # Rescue, Turbolift Lockdown and Voiceprint Protocol quests) leave the seed.
+  #
+  # NOT BUILT IN THE GAME YET: the seed carries the plan and removes those checks, but nothing is cut in the game.
+  shortened_peragus: false
+
+  # --- Companions ----------------------------------------------------------------
+
+
+  # How companions work. A companion that is unlocked can be chosen for the active party; the others stay out of the
+  # party selection (they can still be met on the Ebon Hawk).
+  #
+  # default: story joins stay as in the base game. Recruit and influence checks are used.
+  #
+  # ap_gated: companions arrive as items from the multiworld and become selectable for the party when received.
+  #
+  # ap_limited: no companion items. The next companion unlocks after each companion_unlock_step percent of your own
+  # completed checks (the twelve base companions first, then the extra ones).
+  #
+  # none: no companions at all, and no recruit or influence checks.
+  #
+  # Valid: default, ap_gated, ap_limited, none
+  companions: default
+
+  # With companions ap_limited: the percent of your own checks that unlocks each further companion. Base companions
+  # come first, then the extra ones. At 5 percent the twelve base companions are all out at 60 percent and four
+  # extras by 80 percent.
+  # Range: 1-20
+  companion_unlock_step: 5
+
+  # Extra companions on the new party slots (12 to 31), in the modes ap_gated and ap_limited. They have no recruit or
+  # influence checks, no conversation, and are never required. Each is a generic companion body with the character's
+  # name, class and look (the look is a disguise). The KotOR 1 characters need your own KotOR 1 install for their real
+  # look and portrait; without it they get a generic look and a portrait of the same sex.
+  #
+  # Built, but not yet tried in the game.
+  #
+  # Example: extra_companions: [Carth Onasi, Juhani]
+  # Valid: Bastila Shan, Canderous Ordo, Carth Onasi, Darth Nihilus, Darth Sion, Jolee Bindo, Juhani, Kavar,
+  #        Mission Vao, Vrook Lamar, Zaalbar, Zez-Kai Ell
+  extra_companions: []
+
+  # How many generated companions (a different race and look each, named after players of this multiworld) are offered
+  # as items in the modes ap_gated and ap_limited. The looks are Twi'lek, Devaronian, human and alien (Rodian, Duros,
+  # Sullustan, Trandoshan, Quarren, Gran, Bith) characters, never a story companion's look. Armour shows on the first
+  # three kinds only; gear can be equipped on all of them.
+  #
+  # Built, but not yet tried in the game.
+  # Range: 0-8
+  ap_companions: 0
+
+  # How companion classes are handled. The seed decides each companion's class (the three droids are never changed)
+  # and the game applies it when the companion arrives.
+  #
+  # default: untouched.
+  #
+  # jedi_companion: every non-Jedi companion becomes a base Jedi class when they arrive.
+  #
+  # no_jedi: Jedi companions become non-Jedi.
+  #
+  # droid: every companion who is not a droid becomes a Combat or Expert Droid -- class and race droid, with the droid
+  # look through a changed copy of their own creature template. (A companion who already joined in an old save keeps
+  # the look the save stored.)
+  #
+  # randomize_base: each companion gets a random base class (never a prestige class).
+  #
+  # Built, but not yet tried in the game.
+  #
+  # Valid: default, jedi_companion, no_jedi, droid, randomize_base
+  companion_class: default
+
+  # A second class for companions.
+  #
+  # off (default): none.
+  #
+  # prestige: an item upgrades a companion who can be a Jedi to a Jedi prestige class (needs level 15). The side
+  # follows the alignment when the item is used.
+  #
+  # random_class: a random second class once the companion is level 15, decided by the seed.
+  #
+  # Built, but not yet tried in the game.
+  #
+  # Valid: off, prestige, random_class
+  multiclass_companion: off
+
+  # --- Your character ------------------------------------------------------------
+
+
+  # How your character's class is handled. All values are built; none has been tried in the game yet.
+  #
+  # default: as chosen in character creation.
+  #
+  # non_force_user: your class is swapped for Soldier, Scout or Scoundrel, with the Jedi content removed.
+  #
+  # random_class: a random base class (Soldier, Scout, Scoundrel, Jedi Guardian, Consular or Sentinel).
+  #
+  # prestige_start: you begin as a random prestige class.
+  #
+  # prestige_gated: a "Prestige Class" item is in the pool. When it arrives (and you are level 15) you gain a light or
+  # dark prestige class of one pair chosen by the seed -- Vanguard / Marauder, Shadow / Assassin or Sage / Sorcerer --
+  # the side following your alignment (a random side when it is exactly neutral).
+  #
+  # droid: you start as a Combat or Expert Droid and your race is droid (no Force). Your appearance is not changed.
+  #
+  # Valid: default, non_force_user, random_class, prestige_start, prestige_gated, droid
+  starting_class: default
+
+  # Your abilities and skills at the start of the run.
+  #
+  # default: as character creation made them.
+  #
+  # randomized: each of the six abilities and each of the eight skills is set to a random value from 1 to 20, decided
+  # by the seed and set once when the game starts. The level-up screen and the ability and skill items build on those
+  # values.
+  #
+  # Valid: default, randomized
+  starting_stats: default
+
+  # --- Experience and credits ----------------------------------------------------
+
+
+  # How AP-driven experience reaches you.
+  #
+  # off (default): untouched. No experience items.
+  #
+  # ap_limited: no items. Each completed check of yours grants experience_limiter XP.
+  #
+  # ap_gated: "Experience Points" items are in the pool, each worth experience_item XP.
+  #
+  # In both ap modes the client keeps your XP at the total the seed entitles you to: XP from kills and quests is
+  # brought back to it at each area change.
+  #
+  # Valid: off, ap_limited, ap_gated
+  experience_mode: off
+
+  # XP granted per completed check of yours when experience_mode is ap_limited.
+  # Range: 500-20000
+  experience_limiter: 1000
+
+  # XP each "Experience Points" item grants when experience_mode is ap_gated.
+  # Range: 500-20000
+  experience_item: 8000
+
+  # How AP-driven credits reach you. The same three modes as experience_mode.
+  # Valid: off, ap_limited, ap_gated
+  credit_mode: off
+
+  # Credits granted per completed check of yours when credit_mode is ap_limited.
+  # Range: 1-20000
+  credit_limiter: 100
+
+  # Credits each "Republic Credits" item grants when credit_mode is ap_gated.
+  # Range: 1-20000
+  credit_item: 5000
+
+  # --- Checks (locations) --------------------------------------------------------
+
+
+  # The first visit to each of 53 areas is a check.
+  area_visit_checks: true
+
+  # 16 checks for alignment thresholds (the same list as the KotOR 1 world). These never hold progression items.
+  alignment_checks: true
+
+  # Holding a listed quest item for the first time is a check. Off by default: the current list is a draft taken from
+  # the game's data and is being replaced by a list built from play-through logs of main-story items.
+  quest_item_checks: false
+
+  # The Archipelago Bazaar: a Jawa trader in the cargo hold of the Ebon Hawk.
+  #   - 5 purchase checks, bought with credits (1,000 for the first, then 2,000 more for each);
+  #   - 20 token-exchange checks, bought with Bazaar tokens (5 each) that are hidden in containers as you explore
+  #     (100 tokens in all).
+  # These checks never hold progression items. Built, but not yet tried in the game.
+  bazaar: true
+
+  # --- Traps and links -----------------------------------------------------------
+
+
+  # Percent of the filler items that are traps.
+  # Range: 0-100
+  trap_percentage: 10
+
+  # Which traps may appear.
+  #   lose_credits           a tenth of your credits
+  #   dark_side_push         10 alignment points toward the dark side
+  #   light_side_push        10 alignment points toward the light side
+  #   lose_influence         8 influence with one companion
+  #   reduce_skill           one known skill halved
+  #   cut_max_health         constitution lowered towards half your maximum health
+  #   remove_companion       a random companion in your party goes back to the Ebon Hawk
+  #   remove_half_inventory  half of the backpack that is not quest gear
+  #   halve_strength, halve_dexterity, halve_intelligence, halve_wisdom, halve_charisma
+  #                          that score halved, never below 3
+  # A trap with nothing to take does nothing.
+  # Valid: any of the thirteen names above
+  trap_types:
+    - lose_credits
+    - dark_side_push
+    - light_side_push
+    - lose_influence
+    - reduce_skill
+    - cut_max_health
+    - remove_companion
+    - remove_half_inventory
+    - halve_strength
+    - halve_dexterity
+    - halve_intelligence
+    - halve_wisdom
+    - halve_charisma
+
+  # When a trap item hits you, every other TrapLink player gets a trap too, and the reverse. Each player rolls their
+  # own trap type from the ones listed in trap_types. A trap that arrives through the link is never sent on.
+  trap_link: false
+
+  # A death in the game sends a death to every DeathLink player, and the reverse. A death that came from the link is
+  # not sent on.
+  death_link: false
+
+  # --- Gear and crafting ---------------------------------------------------------
+
+
+  # The share of the filler items that are pieces of gear (360 different ones: armor, robes, belts, gloves, masks,
+  # implants, droid parts, ranged and melee weapons, lightsabers). With crafting_mode off, a gear item is simply
+  # given. With a crafting_mode it unlocks that piece's workbench recipe (hidden until then) and gives Components
+  # worth about a tenth of the build cost. 0 puts none in the pool.
+  # Range: 0-100
+  gear_items: 20
+
+  # Crafting mode. In any mode other than off, the workbench can build every ordinary piece of gear in the game (360
+  # recipes) on top of the recipes it already has. The cost in Components comes from the item's value and the skill
+  # rank from the recipe. A console item you carry (opened from the inventory) opens the workbench with the seed's
+  # table. Gear items and the Archipelago Vendor's supply menu go with it.
+  #
+  # off (default): normal.
+  #
+  # simple: gear recipes ask for a rank that follows the item's value, and cost their normal amount.
+  #
+  # complex: every rank 6 higher (the game's own recipes too, at most 32) and gear costs double.
+  #
+  # random_requirements: every rank random from 1 to 32 and every gear cost a random multiple (half to four times).
+  #
+  # Built, but not yet tried in the game. Not built: loot turning into crafting materials.
+  #
+  # Valid: off, simple, complex, random_requirements
+  crafting_mode: off
+
+  # Each crafting type is locked until its own item arrives: the five workbench tabs (armor and robes, ranged weapons,
+  # melee weapons, lightsabers, belts and gloves and other gear -- only with a crafting_mode), the game's own upgrade
+  # parts and upgrade screen, and the chemical lab. Seven items go into the pool (two without a crafting_mode, which
+  # gate the game's own crafting). The recipes and console entries of a locked type are hidden.
+  # Whether the game reads a rewritten recipe table while it runs, or only after a restart, is not yet known.
+  crafting_gated: false
+
+  # The Archipelago Vendor: stands in the Ebon Hawk's cargo hold next to the Bazaar's Jawa. Each of his menus is
+  # hidden until you find its pass item in the multiworld:
+  #   - Skill Training: 1,000 credits a rank, 5 in all;
+  #   - Ability Training: 4,000 credits a point, 5 in all;
+  #   - Alignment Change: 10 points toward the dark side for 1,000 credits (paid to you), or toward the light side for
+  #     5,000 credits; no limit, refused near the ends of the scale;
+  #   - Crafting Supplies (only with a crafting_mode): bundles of Components or Chemicals for credits, no limit.
+  # The passes are useful items, never required, and take the place of ordinary filler.
+  # Not in it yet: feat and Force power training, and the character respec of KotOR 1's vendor.
+  archipelago_vendor: false
+
+  # --- Randomizers (they change the game's files when the client connects) --------
+
+
+  # Every shop that is not a Pazaak dealer is restocked, one list per planet. Each planet's list is shop_count items
+  # drawn at random for this seed, plus medpacs, droid repair kits and spikes so healing can always be bought. The
+  # Pazaak dealers are left alone, and the game's own random stock scripts are silenced.
+  # With crafting_gated, shops will sell crafting supplies only (the seed carries the flag; the game side is not built).
+  shop_randomizer: false
+
+  # Items drawn for each planet's shops when shop_randomizer is on (the staples come on top). How many items a store
+  # holds before the interface breaks is not measured yet, so the top of the range is a guess.
+  # Range: 1-60
+  shop_count: 30
+
+  # The gear lying in containers and dropped by creatures is changed as loot_mode says. Only fixed loot is changed:
+  # the random treasure the game rolls when a container or creature first appears is left alone, and the opening
+  # module (the Peragus tanks and medlab) is skipped.
+  loot_randomizer: false
+
+  # What loot_randomizer does to the ordinary gear in containers and dropped by creatures. Quest items, credits and the
+  # like are never touched.
+  #
+  # replace (default): each piece of gear becomes a random piece from the shop pool. A creature keeps and uses its own
+  # gear, but drops the random piece instead.
+  #
+  # bonus: everything stays, and every container that holds gear -- and every creature that carries something -- gets
+  # one more random piece.
+  #
+  # With a crafting mode, the same two words will decide whether materials replace the gear or come on top (the seed
+  # carries the flag; the game side is not built).
+  #
+  # Valid: replace, bonus
+  loot_mode: replace
+
+  # Adds new hostile creatures to the combat areas (27 of them, 311 fixed spots chosen to be walkable and clear of
+  # objects). Nothing that is already there is touched, removed or replaced; the extra creatures only come on top.
+  # Which creature stands at each spot is decided per seed by enemy_mode. Story set pieces (the yacht fight, Vash, the
+  # vision modules, Nihilus and the Malachor proving ground) get none.
+  enemy_randomizer: false
+
+  # How enemy_randomizer picks the creature for each spot.
+  #
+  # area_appropriate: the kind of creature that dominates the area (beasts, Sith soldiers, droids, ...), matched to
+  # that area's own difficulty.
+  #
+  # random_sane (default): any creature from the safe pool, still matched to that area's own difficulty.
+  #
+  # fully_random: any creature from the safe pool with no difficulty limit. A very strong creature can land in an
+  # early area.
+  #
+  # Valid: area_appropriate, random_sane, fully_random
+  enemy_mode: random_sane
+
+  # The doors and walk-through exits between the areas of Telos and the Citadel, Nar Shaddaa, Dxun, Onderon and
+  # Dantooine are re-linked in coupled pairs (walk back through the door you came by and you are where you were).
+  # Every area stays reachable from the landing of its planet. The opening (Peragus and the Harbinger), the Ebon Hawk,
+  # the Ravager, Korriban's duel and visions, Malachor and the minigames keep their doors, and so do travel by the
+  # galaxy map, the shuttles and the guides. The way to a place is part of the logic, so its checks need the progression
+  # items that the route needs.
+  #
+  # Built, but the one feature that is not tested in the first round.
+  area_randomizer: false

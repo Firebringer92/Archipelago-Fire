@@ -1,0 +1,11 @@
+nwnsc 1.1.5 (https://github.com/nwneetools/nwnsc), the open source NWScript compiler.
+Downloaded unchanged from the project's GitHub releases (nwnsc-win-v1.1.5.zip). Its licence is LICENSE.txt in this folder.
+
+From the project's README (CREDITS):
+  Copyright (C) 2008-2011 Ken Johnson (Skywing).
+  Portions of NWN2DataLib's TRX handling are based on information from Tero Kivinen.
+  Major portions of NWNScriptCompilerLib were written by Edward T. Smith (Torlack).
+  Portions of NWNScriptCompilerLib were contributed by OpenKnights.
+
+KOTOR AP runs it as a separate program to compile the scripts it generates. It reads the game's own nwscript.nss, which the installer writes from
+the player's copy of the game; none of the game's files are part of this download.

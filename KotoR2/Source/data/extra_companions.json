@@ -1,0 +1,297 @@
+{
+ "_doc": "The extra companions of the KotOR 2 world (slots 12 to 31). Ids only: table rows and class ids, no game text. Every extra is built from ONE generic creature template, 'base' (a vetted companion body: it equips, unequips, levels up and saves like a companion), with the name, class, sex, portrait and look from here; the character's own leftover template is never used. 'look_method' says how the look reaches the game: 'disguise' (the template keeps its body and a permanent disguise effect with the look's appearance.2da row is applied by the dispatcher's tick, ap_look_<slot> in the seed) or 'template' (the row is written into the template's Appearance_Type). 'k1' characters are the KotOR 1 companions: their K2 appearance and portrait rows already exist (appearance 4-10, portraits 14, 33-39) and name models that are only missing from the files, so the player's own KotOR 1 install supplies them (tools/build_extra_assets.py); without it they use the generic fallback look and a player-head portrait of the same sex. 'k2' characters are story characters whose look is their own appearance row. 'ap' companions are generated: a look drawn from 'ap_looks' (none of the story companions' looks), a portrait drawn from 'portraits' by sex. 'armor' says whether the look's model shows armour (appearance modeltype B); gear can be equipped on every look either way. 'class' is the base class of the level-1 shell the rebuild raises to the player's level.",
+ "base": "p_atton",
+ "look_method": "disguise",
+ "portraits": {
+  "female": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   15,
+   16,
+   17,
+   58,
+   59
+  ],
+  "male": [
+   18,
+   19,
+   20,
+   21,
+   23,
+   24,
+   25,
+   26,
+   27,
+   28,
+   29,
+   30,
+   31,
+   32,
+   45,
+   60
+  ]
+ },
+ "extras": [
+  {
+   "name": "Bastila Shan",
+   "kind": "k1",
+   "appearance": 4,
+   "portrait": 33,
+   "gender": 1,
+   "class": 5,
+   "fallback_appearance": 30,
+   "fallback_portrait": 1
+  },
+  {
+   "name": "Carth Onasi",
+   "kind": "k1",
+   "appearance": 6,
+   "portrait": 14,
+   "gender": 0,
+   "class": 0,
+   "fallback_appearance": 38,
+   "fallback_portrait": 24
+  },
+  {
+   "name": "Jolee Bindo",
+   "kind": "k1",
+   "appearance": 7,
+   "portrait": 38,
+   "gender": 0,
+   "class": 4,
+   "fallback_appearance": 31,
+   "fallback_portrait": 25
+  },
+  {
+   "name": "Juhani",
+   "kind": "k1",
+   "appearance": 8,
+   "portrait": 37,
+   "gender": 1,
+   "class": 5,
+   "fallback_appearance": 47,
+   "fallback_portrait": 2
+  },
+  {
+   "name": "Mission Vao",
+   "kind": "k1",
+   "appearance": 10,
+   "portrait": 35,
+   "gender": 1,
+   "class": 1,
+   "fallback_appearance": 270,
+   "fallback_portrait": 3
+  },
+  {
+   "name": "Zaalbar",
+   "kind": "k1",
+   "appearance": 9,
+   "portrait": 36,
+   "gender": 0,
+   "class": 1,
+   "fallback_appearance": 464,
+   "fallback_portrait": 26
+  },
+  {
+   "name": "Canderous Ordo",
+   "kind": "k1",
+   "appearance": 5,
+   "portrait": 39,
+   "gender": 0,
+   "class": 0,
+   "fallback_appearance": 35,
+   "fallback_portrait": 27
+  },
+  {
+   "name": "Darth Sion",
+   "kind": "k2",
+   "appearance": 458,
+   "portrait": 18,
+   "gender": 0,
+   "class": 3,
+   "fallback_appearance": 458,
+   "fallback_portrait": 18
+  },
+  {
+   "name": "Darth Nihilus",
+   "kind": "k2",
+   "appearance": 463,
+   "portrait": 19,
+   "gender": 0,
+   "class": 4,
+   "fallback_appearance": 463,
+   "fallback_portrait": 19
+  },
+  {
+   "name": "Kavar",
+   "kind": "k2",
+   "appearance": 648,
+   "portrait": 20,
+   "gender": 0,
+   "class": 3,
+   "fallback_appearance": 648,
+   "fallback_portrait": 20
+  },
+  {
+   "name": "Vrook Lamar",
+   "kind": "k2",
+   "appearance": 670,
+   "portrait": 21,
+   "gender": 0,
+   "class": 4,
+   "fallback_appearance": 670,
+   "fallback_portrait": 21
+  },
+  {
+   "name": "Zez-Kai Ell",
+   "kind": "k2",
+   "appearance": 641,
+   "portrait": 23,
+   "gender": 0,
+   "class": 5,
+   "fallback_appearance": 641,
+   "fallback_portrait": 23
+  }
+ ],
+ "ap_looks": [
+  {
+   "appearance": 47,
+   "gender": 1,
+   "group": "twilek",
+   "armor": true
+  },
+  {
+   "appearance": 270,
+   "gender": 1,
+   "group": "twilek",
+   "armor": true
+  },
+  {
+   "appearance": 366,
+   "gender": 1,
+   "group": "twilek",
+   "armor": true
+  },
+  {
+   "appearance": 280,
+   "gender": 1,
+   "group": "twilek",
+   "armor": true
+  },
+  {
+   "appearance": 48,
+   "gender": 0,
+   "group": "twilek",
+   "armor": true
+  },
+  {
+   "appearance": 269,
+   "gender": 0,
+   "group": "twilek",
+   "armor": true
+  },
+  {
+   "appearance": 365,
+   "gender": 0,
+   "group": "twilek",
+   "armor": true
+  },
+  {
+   "appearance": 570,
+   "gender": 0,
+   "group": "devaronian",
+   "armor": true
+  },
+  {
+   "appearance": 14,
+   "gender": 1,
+   "group": "human",
+   "armor": true
+  },
+  {
+   "appearance": 30,
+   "gender": 1,
+   "group": "human",
+   "armor": true
+  },
+  {
+   "appearance": 17,
+   "gender": 0,
+   "group": "human",
+   "armor": true
+  },
+  {
+   "appearance": 31,
+   "gender": 0,
+   "group": "human",
+   "armor": true
+  },
+  {
+   "appearance": 27,
+   "gender": 0,
+   "group": "human",
+   "armor": true
+  },
+  {
+   "appearance": 39,
+   "gender": 0,
+   "group": "rodian",
+   "armor": false
+  },
+  {
+   "appearance": 24,
+   "gender": 0,
+   "group": "duros",
+   "armor": false
+  },
+  {
+   "appearance": 601,
+   "gender": 0,
+   "group": "sullustan",
+   "armor": false
+  },
+  {
+   "appearance": 464,
+   "gender": 0,
+   "group": "trandoshan",
+   "armor": false
+  },
+  {
+   "appearance": 537,
+   "gender": 0,
+   "group": "quarren",
+   "armor": false
+  },
+  {
+   "appearance": 565,
+   "gender": 1,
+   "group": "gran",
+   "armor": false
+  },
+  {
+   "appearance": 12,
+   "gender": 0,
+   "group": "bith",
+   "armor": false
+  }
+ ],
+ "ap_classes": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  9
+ ]
+}

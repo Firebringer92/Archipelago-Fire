@@ -91,8 +91,11 @@ class TestReleaseZipRules(unittest.TestCase):
             found = problems_for_zip({self.NOTICES: "x", name: b"x"})
             self.assertTrue(any(name in p for p in found), name)
 
-    def test_the_two_own_apo_stubs_are_allowed(self):
-        self.assertEqual(problems_for_zip({self.NOTICES: "x", "dist/Override/apo_0029.ncs": b"x", "dist/Override/apo_0034.ncs": b"x"}), [])
+    def test_no_apo_file_is_allowed_in_a_zip(self):
+        # Two stubs of our own once shipped under these names in place of the game's scripts; every apo_* file is built on the player's machine now.
+        for name in ("dist/Override/apo_0029.ncs", "dist/Override/apo_0034.ncs"):
+            found = problems_for_zip({self.NOTICES: "x", name: b"x"})
+            self.assertTrue(any(name in p for p in found), name)
 
     def test_an_unregistered_program_in_a_zip_fails(self):
         found = problems_for_zip({self.NOTICES: "x", "tools/other/tool.exe": b"MZ"})

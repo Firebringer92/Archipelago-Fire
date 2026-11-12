@@ -4,12 +4,12 @@ DEVELOPMENT_HISTORY.md's Archipelago Vendor section and section 16 for the
 full design and decision history.
 
 Phase 1: Train Skill (8-way picker) and Train Ability (6-way picker),
-both credit-gated and capped at 5 total uses each. Phase 2 (this
+both credit-gated, with no limit on how often each can be bought. Phase 2 (this
 revision): Train Feat (18-way picker, the same curated feats the companions' feat
 training offers) and Train Force Power (15-way
 picker, curated straight from spells.2da's own prerequisites/class-level
 columns -- every entry is genuinely base-tier, no dependency on an
-earlier power). Neither is purchase-count capped like Skill/Ability --
+earlier power). Neither has a use limit either --
 each specific feat/power can only ever be bought once, enforced per-item
 via GetHasFeat/GetHasSpell dedup on that item's own picker reply. Train
 Force Power as a whole is gated on the PC having real Force levels; the
@@ -37,12 +37,11 @@ Engine constraints this design works around:
 - Every DLGEntry/DLGReply explicitly sets plot_index = -1 (pykotor
   defaults to 0, a real plot/quest node that grants XP on reach).
 
-Purchase-count storage: KOTOR's GetLocalNumber/SetLocalNumber are
-INDEX-based, not string-keyed (a real K1 API difference from NWN).
-Indices 60-63 on the PC object are reserved for this feature (60 = Train
-Skill, 61 = Train Ability, 62 = Character Reset, 63 = Alignment Change
-purchase count) -- no other use of PC-object-scoped LocalNumber/
-LocalBoolean exists elsewhere in this project.
+Purchase counts: a count of Skill, Ability and Reset purchases is kept in PC-object LocalNumber slots (KOTOR's GetLocalNumber/SetLocalNumber
+are INDEX-based, not string-keyed, a real K1 API difference from NWN) -- 60 = Train Skill, 61 = Train Ability, 62 = Character Reset -- and
+written to the log (count=), but nothing is limited by it: a PC-object LocalNumber is not stored by this engine, so a count kept there cannot
+enforce a cap, and the vendor offers no use limit. Those indices are reserved for this feature; no other use of PC-object-scoped
+LocalNumber/LocalBoolean exists elsewhere in this project.
 
 Alignment Change (added later): a real native AdjustAlignment(oSubject,
 nAlignment, nShift) call -- not KSE_SetCreatureField -- same as every
@@ -112,7 +111,6 @@ def has_token_expr(category):
 SKILL_COUNT_IDX = 60
 ABILITY_COUNT_IDX = 61
 RESET_COUNT_IDX = 62
-PURCHASE_CAP = 5
 
 SKILL_PRICE = 1000
 ABILITY_PRICE = 4000
@@ -369,14 +367,14 @@ int StartingConditional()
 
 int StartingConditional()
 {{
-    return {has_token_expr("skill")} && GetLocalNumber(GetPCSpeaker(), {SKILL_COUNT_IDX}) < {PURCHASE_CAP};
+    return {has_token_expr("skill")};
 }}
 ''')
     ok &= write_and_compile("ap_vab_cap", f'''#include "kse"
 
 int StartingConditional()
 {{
-    return {has_token_expr("ability")} && GetLocalNumber(GetPCSpeaker(), {ABILITY_COUNT_IDX}) < {PURCHASE_CAP};
+    return {has_token_expr("ability")};
 }}
 ''')
     ok &= write_and_compile("ap_vg3000y", f'''#include "kse"
@@ -490,7 +488,7 @@ int StartingConditional()
 
 int StartingConditional()
 {{
-    return GetLocalNumber(GetPCSpeaker(), {RESET_COUNT_IDX}) < {PURCHASE_CAP} && {NOT_DROID_EXPR};
+    return {NOT_DROID_EXPR};
 }}
 ''')
 
@@ -777,8 +775,8 @@ def build_dlg():
         "Welcome to the Archipelago Vendor. What can I help you with today?"
     )
     entry_not_enough = new_entry("You don't seem to have enough credits for that.")
-    entry_skill_picker = new_entry(f"Which skill? {SKILL_PRICE} credits each, up to {PURCHASE_CAP} total.")
-    entry_ability_picker = new_entry(f"Which ability? {ABILITY_PRICE} credits each, up to {PURCHASE_CAP} total.")
+    entry_skill_picker = new_entry(f"Which skill? {SKILL_PRICE} credits each.")
+    entry_ability_picker = new_entry(f"Which ability? {ABILITY_PRICE} credits each.")
 
     # KOTOR dialogue graphs must strictly alternate Entry -> Reply -> Entry
     # -- an Entry can never link directly to another Entry (confirmed via
@@ -790,12 +788,12 @@ def build_dlg():
     reply_continue.links.append(DLGLink(entry_greet))
     entry_not_enough.links.append(DLGLink(reply_continue))
 
-    reply_skill = new_reply(f"Train Skill -- {SKILL_PRICE} credits (up to {PURCHASE_CAP} total)")
+    reply_skill = new_reply(f"Train Skill -- {SKILL_PRICE} credits")
     reply_skill.links.append(DLGLink(entry_skill_picker))
     reply_skill_link = DLGLink(reply_skill)
     reply_skill_link.active1 = ResRef("ap_vsk_cap")
 
-    reply_ability = new_reply(f"Train Ability -- {ABILITY_PRICE} credits (up to {PURCHASE_CAP} total)")
+    reply_ability = new_reply(f"Train Ability -- {ABILITY_PRICE} credits")
     reply_ability.links.append(DLGLink(entry_ability_picker))
     reply_ability_link = DLGLink(reply_ability)
     reply_ability_link.active1 = ResRef("ap_vab_cap")
@@ -952,7 +950,7 @@ def build_dlg():
     # Character Reset -- no sub-choice, so reply_reset's own links go
     # straight to the credit-check split, same shape as Skill/Ability but
     # skipping the "which one?" picker entry since there's nothing to pick.
-    reply_reset = new_reply(f"Character Reset -- {RESET_PRICE} credits (up to {PURCHASE_CAP} total)")
+    reply_reset = new_reply(f"Character Reset -- {RESET_PRICE} credits")
     reply_reset_link = DLGLink(reply_reset)
     reply_reset_link.active1 = ResRef("ap_vrs_cap")
 

@@ -279,11 +279,65 @@ ORIGINAL_ENTER_GUARDS = {
     "k_pdan_15_area": [("NPC_BASTILA", "bastila")],
 }
 
+# OnEnter scripts whose vanilla body starts a conversation. A conversation started from a script reached through ExecuteScript silently does not
+# start (the fade is held and the screen stays black), so the trampoline starts it itself, after the original has done its setup.
+# k_pman_26a_area (manm26aa, Ahto West) has two such scenes. When MAN_TRIAL2_START is set the original clears it, moves the two advocates to their
+# places and has man26_trialobj2 start the trial conversation with the player. While MAN_SITHBASE_SEALED is set, the first visit (area local
+# boolean 9, which only this branch sets) takes both companions out of the party, destroys them and has the arbiter (man26_selarb) start his
+# conversation; with the conversation lost, the player is left alone behind a held fade. The trampoline notes both conditions before the original
+# runs and starts the conversation itself once the original has done its part. If the arbiter is not standing there, the original has taken
+# the companions out of the party for a scene that cannot happen and the end script that returns them never runs, so the trampoline returns
+# them as that script does. Keep in sync with the copy in generate_trampoline_batch.py /
+# generate_area_trampolines.py.
+ORIGINAL_ENTER_NATIVE_STARTS = {
+    "k_pman_26a_area": (
+        '    int bTrialPending = GetGlobalBoolean("MAN_TRIAL2_START");\n'
+        '    int bArbiterDue = GetGlobalBoolean("MAN_SITHBASE_SEALED") && !GetLocalBoolean(OBJECT_SELF, 9);\n',
+        '    if (bTrialPending && !GetGlobalBoolean("MAN_TRIAL2_START") && GetIsPC(GetEnteringObject()))\n'
+        '    {\n'
+        '        AssignCommand(GetObjectByTag("man26_trialobj2"), ActionStartConversation(GetFirstPC(), "", FALSE, CONVERSATION_TYPE_CINEMATIC, TRUE));\n'
+        '        KSE_Diag(162, "AP|SAFEGUARD|manaan_trial_conversation|trialobj=" + IntToString(GetIsObjectValid(GetObjectByTag("man26_trialobj2"))));\n'
+        '    }\n'
+        '    if (bArbiterDue && GetLocalBoolean(OBJECT_SELF, 9) && GetIsPC(GetEnteringObject()))\n'
+        '    {\n'
+        '        object oArbiter = GetObjectByTag("man26_selarb");\n'
+        '        if (GetIsObjectValid(oArbiter))\n'
+        '        {\n'
+        '            AssignCommand(oArbiter, ActionStartConversation(GetFirstPC(), "", FALSE, CONVERSATION_TYPE_CINEMATIC, TRUE));\n'
+        '            KSE_Diag(162, "AP|SAFEGUARD|manaan_arbiter_conversation|selarb=1");\n'
+        '        }\n'
+        '        else if (GetGlobalBoolean("K_PARTY_STORED"))\n'
+        '        {\n'
+        '            // No arbiter to speak: nothing would run the end script that gives the party back. Do what that script does.\n'
+        '            int nStore1 = GetGlobalNumber("K_PARTY_STORE1");\n'
+        '            int nStore2 = GetGlobalNumber("K_PARTY_STORE2");\n'
+        '            if (nStore1 >= 0 && nStore1 <= 8 && !GetIsObjectValid(GetPartyMemberByIndex(1)))\n'
+        '            {\n'
+        '                object oBack1 = SpawnAvailableNPC(nStore1, GetLocation(GetFirstPC()));\n'
+        '                if (GetIsObjectValid(oBack1)) AddPartyMember(nStore1, oBack1);\n'
+        '            }\n'
+        '            if (nStore2 >= 0 && nStore2 <= 8 && !GetIsObjectValid(GetPartyMemberByIndex(2)))\n'
+        '            {\n'
+        '                object oBack2 = SpawnAvailableNPC(nStore2, GetLocation(GetFirstPC()));\n'
+        '                if (GetIsObjectValid(oBack2)) AddPartyMember(nStore2, oBack2);\n'
+        '            }\n'
+        '            SetGlobalNumber("K_PARTY_STORE1", 254);\n'
+        '            SetGlobalNumber("K_PARTY_STORE2", 254);\n'
+        '            SetGlobalBoolean("K_PARTY_STORED", FALSE);\n'
+        '            KSE_Diag(162, "AP|SAFEGUARD|manaan_party_restored|slot1=" + IntToString(nStore1) + "|slot2=" + IntToString(nStore2));\n'
+        '        }\n'
+        '    }\n',
+    ),
+}
+
 
 def original_enter_guard(onenter):
     """(lines before, lines after) the ExecuteScript of the preserved
     original, as ready-to-embed text. Both empty for an unguarded OnEnter so
     its generated trampoline is unchanged."""
+    native = ORIGINAL_ENTER_NATIVE_STARTS.get(onenter)
+    if native:
+        return native
     guards = ORIGINAL_ENTER_GUARDS.get(onenter)
     if not guards:
         return "", ""

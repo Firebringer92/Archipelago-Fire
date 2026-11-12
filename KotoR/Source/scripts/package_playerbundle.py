@@ -34,7 +34,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # on the client or game side (this bundle) is a hotfix: only this version moves (0.1.9 -> 0.1.9.1) and the world zip keeps its version. The
 # bundle works with any world of the same x.y.z, so a hotfix is published as a bundle alone. No shared constant between the two scripts on
 # purpose; each script's default is updated by hand when its own version changes.
-BUNDLE_VERSION = "0.2.0.1"
+BUNDLE_VERSION = "0.2.0.2"
 
 # REMINDER: this list does not update itself. Every time a NEW file (not
 # just an edit to an existing one) becomes something a tester needs to run

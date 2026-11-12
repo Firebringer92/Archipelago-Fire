@@ -76,10 +76,7 @@
     "k_inc_utility.nss",
     "k_inc_debug.nss"
   ],
-  "zip_own_apo_files": [
-    "apo_0029.ncs",
-    "apo_0034.ncs"
-  ],
+  "zip_own_apo_files": [],
   "allowed": [
     {
       "glob": "Docs/*.md",

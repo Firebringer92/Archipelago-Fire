@@ -115,6 +115,10 @@
   "from": "liv_m99aa_s.rim",
   "resref": "yav50_en"
  },
+ "apo_0029": {
+  "from": "chitin",
+  "resref": "k_pman_26a_area"
+ },
  "apo_0030": {
   "from": "manm26ab_s.rim",
   "resref": "k_pman_26b_area"
@@ -130,6 +134,10 @@
  "apo_0033": {
   "from": "manm26ae_s.rim",
   "resref": "k_pman_area_26e"
+ },
+ "apo_0034": {
+  "from": "chitin",
+  "resref": "k_pman_27_area"
  },
  "apo_0035": {
   "from": "manm28aa_s.rim",

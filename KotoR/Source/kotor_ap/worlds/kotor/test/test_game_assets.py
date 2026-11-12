@@ -19,8 +19,8 @@ sys.path.insert(0, SCRIPTS)
 # What may never appear in a release zip (outside tools/mdlops, which is the model tool itself): game-format models, textures, portraits,
 # the journal and 2DA tables.
 BANNED_EXTENSIONS = (".mdl", ".mdx", ".tga", ".tpc", ".txi", ".jrl", ".2da")
-# Compiled stubs of our own that happen to carry the preserved-script prefix.
-OWN_APO_FILES = {"apo_0029.ncs", "apo_0034.ncs"}
+# No file with the preserved-script prefix may ship: every apo_* script is built from the player's own game files (preserved_originals.json).
+OWN_APO_FILES = set()
 
 
 class TestRecipes(unittest.TestCase):
@@ -71,7 +71,13 @@ class TestRecipes(unittest.TestCase):
 
 class TestPackagedZips(unittest.TestCase):
     def _zips(self):
-        return glob.glob(os.path.join(REPO_ROOT, "dist", "KOTOR-AP-PlayerBundle-v0.2*.zip"))
+        # The newest bundle only, as the release gate does: an earlier release is already published and cannot be changed.
+        found = glob.glob(os.path.join(REPO_ROOT, "dist", "KOTOR-AP-PlayerBundle-v0.2*.zip"))
+
+        def version(path):
+            stem = os.path.basename(path)[len("KOTOR-AP-PlayerBundle-v"):-len(".zip")]
+            return tuple(int(x) if x.isdigit() else 0 for x in stem.split("."))
+        return [max(found, key=version)] if found else []
 
     def test_bundle_has_no_game_format_files(self):
         zips = self._zips()

@@ -141,9 +141,9 @@ ORIGINAL_ENTER_GUARDS = {
 # places and has man26_trialobj2 start the trial conversation with the player. While MAN_SITHBASE_SEALED is set, the first visit (area local
 # boolean 9, which only this branch sets) takes both companions out of the party, destroys them and has the arbiter (man26_selarb) start his
 # conversation; with the conversation lost, the player is left alone behind a held fade. The trampoline notes both conditions before the original
-# runs and starts the conversation itself once the original has done its part. If the arbiter is not standing there, the original has taken
-# the companions out of the party for a scene that cannot happen and the end script that returns them never runs, so the trampoline returns
-# them as that script does. Keep in sync with the copy in generate_trampoline_batch.py /
+# runs and starts the conversation itself once the original has done its part. If the arbiter is not standing there, or the trial conversation
+# starts at the same moment, the original has taken the companions out of the party for a scene that cannot happen first and the end script that
+# returns them never runs, so the trampoline returns them as that script does. Keep in sync with the copy in generate_trampoline_batch.py /
 # generate_area_trampolines.py.
 ORIGINAL_ENTER_NATIVE_STARTS = {
     "k_pman_26a_area": (
@@ -157,14 +157,15 @@ ORIGINAL_ENTER_NATIVE_STARTS = {
         '    if (bArbiterDue && GetLocalBoolean(OBJECT_SELF, 9) && GetIsPC(GetEnteringObject()))\n'
         '    {\n'
         '        object oArbiter = GetObjectByTag("man26_selarb");\n'
-        '        if (GetIsObjectValid(oArbiter))\n'
+        '        if (GetIsObjectValid(oArbiter) && !bTrialPending)\n'
         '        {\n'
         '            AssignCommand(oArbiter, ActionStartConversation(GetFirstPC(), "", FALSE, CONVERSATION_TYPE_CINEMATIC, TRUE));\n'
         '            KSE_Diag(162, "AP|SAFEGUARD|manaan_arbiter_conversation|selarb=1");\n'
         '        }\n'
         '        else if (GetGlobalBoolean("K_PARTY_STORED"))\n'
         '        {\n'
-        '            // No arbiter to speak: nothing would run the end script that gives the party back. Do what that script does.\n'
+        '            // No arbiter conversation will run (he is absent, or the trial conversation starts first): nothing would run the end script that gives\n'
+        '            // the party back. Do what that script does.\n'
         '            int nStore1 = GetGlobalNumber("K_PARTY_STORE1");\n'
         '            int nStore2 = GetGlobalNumber("K_PARTY_STORE2");\n'
         '            if (nStore1 >= 0 && nStore1 <= 8 && !GetIsObjectValid(GetPartyMemberByIndex(1)))\n'
@@ -180,9 +181,38 @@ ORIGINAL_ENTER_NATIVE_STARTS = {
         '            SetGlobalNumber("K_PARTY_STORE1", 254);\n'
         '            SetGlobalNumber("K_PARTY_STORE2", 254);\n'
         '            SetGlobalBoolean("K_PARTY_STORED", FALSE);\n'
-        '            KSE_Diag(162, "AP|SAFEGUARD|manaan_party_restored|slot1=" + IntToString(nStore1) + "|slot2=" + IntToString(nStore2));\n'
+        '            KSE_Diag(162, "AP|SAFEGUARD|manaan_party_restored|slot1=" + IntToString(nStore1) + "|slot2=" + IntToString(nStore2) + "|arbiter=" + IntToString(GetIsObjectValid(oArbiter)) + "|trial=" + IntToString(bTrialPending));\n'
         '        }\n'
         '    }\n',
+    ),
+}
+
+
+# k_punk_41aa_en (unk_m41aa, the Unknown World beach): when the player is back from the temple after the final choice (G_FinalChoice above 0) and the crew
+# has not been spawned yet (UNK_PARTYSHOWDOWN 0), the original spawns Carth, Canderous, Mission and T3-M4 at their start markers without asking whether
+# they are available, and Zaalbar when he is. The confrontation conversation (unk41_carth) has lines for Carth, Canderous, Mission and Zaalbar, each
+# spoken by the creature with that tag; a companion who was never made available is not spawned, nobody speaks his lines and the scene stops. The
+# trampoline makes each of them available first (the call the recruit scripts make), so the original spawns him. Zaalbar is left alone when the story took
+# him (tat_ZaalbarTaken), as the original does. Anyone added this way holds no AP entitlement, so the roster cleanup removes them again later. Keep in
+# sync with the copy in generate_trampoline_batch.py / generate_area_trampolines.py.
+ORIGINAL_ENTER_BACKFILL = {
+    "k_punk_41aa_en": (
+        '    if (GetIsPC(GetEnteringObject()) && GetGlobalNumber("G_FinalChoice") > 0 && GetGlobalNumber("UNK_PARTYSHOWDOWN") == 0)\n'
+        '    {\n'
+        '        int bFillCarth = !IsAvailableCreature(NPC_CARTH);\n'
+        '        int bFillCand = !IsAvailableCreature(NPC_CANDEROUS);\n'
+        '        int bFillMission = !IsAvailableCreature(NPC_MISSION);\n'
+        '        int bFillT3 = !IsAvailableCreature(NPC_T3_M4);\n'
+        '        int bFillZaalbar = !IsAvailableCreature(NPC_ZAALBAR) && !GetGlobalBoolean("tat_ZaalbarTaken");\n'
+        '        if (bFillCarth) AddAvailableNPCByTemplate(NPC_CARTH, "p_carth");\n'
+        '        if (bFillCand) AddAvailableNPCByTemplate(NPC_CANDEROUS, "p_cand");\n'
+        '        if (bFillMission) AddAvailableNPCByTemplate(NPC_MISSION, "p_mission");\n'
+        '        if (bFillT3) AddAvailableNPCByTemplate(NPC_T3_M4, "p_t3m4");\n'
+        '        if (bFillZaalbar) AddAvailableNPCByTemplate(NPC_ZAALBAR, "p_zaalbar");\n'
+        '        KSE_Diag(141, "AP|SAFEGUARD|unk41_showdown_backfill|carth=" + IntToString(bFillCarth) + "|cand=" + IntToString(bFillCand)\n'
+        '            + "|mission=" + IntToString(bFillMission) + "|t3m4=" + IntToString(bFillT3) + "|zaalbar=" + IntToString(bFillZaalbar));\n'
+        '    }\n',
+        "",
     ),
 }
 
@@ -194,6 +224,9 @@ def original_enter_guard(onenter):
     native = ORIGINAL_ENTER_NATIVE_STARTS.get(onenter)
     if native:
         return native
+    backfill = ORIGINAL_ENTER_BACKFILL.get(onenter)
+    if backfill:
+        return backfill
     guards = ORIGINAL_ENTER_GUARDS.get(onenter)
     if not guards:
         return "", ""

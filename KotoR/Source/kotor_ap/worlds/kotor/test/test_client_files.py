@@ -93,6 +93,66 @@ class TestTracking(unittest.TestCase):
             self.assertEqual(cf.restore_group(g.dir, "nothing"), 0)
             self.assertTrue(g.has("keep.uti"))
 
+    def test_scripts_finishing_at_the_same_time_all_keep_their_records(self):
+        """The client runs several of these scripts at once on connect. They used to share one temporary file, so one could replace the record while another had
+        it open (WinError 32), and each wrote back a record that did not hold the others' files."""
+        import threading
+        with Game() as g:
+            errors = []
+            start = threading.Event()
+
+            def run(i):
+                try:
+                    tracker = cf.start(f"group{i}", g.dir)
+                    g.write(f"file{i}.ncs", b"x%d" % i)
+                    start.wait()
+                    tracker.finish()
+                except Exception as e:        # noqa: BLE001
+                    errors.append(repr(e))
+
+            threads = [threading.Thread(target=run, args=(i,)) for i in range(12)]
+            for t in threads:
+                t.start()
+            start.set()
+            for t in threads:
+                t.join()
+            self.assertEqual(errors, [])
+            recorded = cf._load()[g.override.lower()]
+            self.assertEqual(sorted(recorded), sorted(f"group{i}" for i in range(12)))
+            self.assertFalse(os.path.exists(cf.STATE_PATH + ".lock"))
+
+    def test_a_replace_refused_for_a_moment_is_retried(self):
+        with Game() as g:
+            real, calls = os.replace, []
+
+            def flaky(src, dst):
+                calls.append(1)
+                if len(calls) < 3:
+                    raise PermissionError(32, "in use")
+                return real(src, dst)
+
+            os.replace = flaky
+            try:
+                with cf.tracked("shop", g.dir):
+                    g.write("ap_new.uti", b"new")
+            finally:
+                os.replace = real
+            self.assertGreaterEqual(len(calls), 3)
+            self.assertEqual(cf.restore_group(g.dir, "shop"), 1)
+
+    def test_a_lock_left_by_a_script_that_died_is_taken_over(self):
+        with Game() as g:
+            os.makedirs(cf.STATE_DIR, exist_ok=True)
+            lock = cf.STATE_PATH + ".lock"
+            with open(lock, "w") as f:
+                f.write("x")
+            old = os.path.getmtime(lock) - 3600
+            os.utime(lock, (old, old))
+            with cf.tracked("shop", g.dir):
+                g.write("ap_new.uti", b"new")
+            self.assertEqual(cf.restore_group(g.dir, "shop"), 1)
+            self.assertFalse(os.path.exists(lock))
+
 
 class TestTables(unittest.TestCase):
     @staticmethod

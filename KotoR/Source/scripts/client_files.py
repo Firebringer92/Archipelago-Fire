@@ -15,6 +15,8 @@ import hashlib
 import json
 import os
 import sys
+import threading
+import time
 
 STATE_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "KotorAP")
 STATE_PATH = os.path.join(STATE_DIR, "client_files.json")
@@ -46,11 +48,59 @@ def _load():
 
 
 def _save(state):
+    """Writes the record through a temporary file of this process's own and replaces the record with it. The client runs several of these scripts at
+    the same time on connect, so a shared temporary name let one script replace the record while another still had the file open (WinError 32); a
+    replace that is refused for that reason is retried for a few seconds."""
     os.makedirs(STATE_DIR, exist_ok=True)
-    tmp = STATE_PATH + ".tmp"
+    tmp = f"{STATE_PATH}.{os.getpid()}.{threading.get_ident()}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=1, sort_keys=True)
-    os.replace(tmp, STATE_PATH)
+    refused = None
+    for _ in range(100):
+        try:
+            os.replace(tmp, STATE_PATH)
+            return
+        except PermissionError as e:
+            refused = e
+            time.sleep(0.1)
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass
+    raise refused
+
+
+@contextlib.contextmanager
+def _locked(timeout=20.0, stale=60.0):
+    """Holds the record's lock file while a script reads the record, changes it and writes it back, so two scripts running at once cannot each
+    write a record that is missing the other's entries. A lock older than `stale` seconds belongs to a script that died and is taken over; if the
+    lock cannot be had within `timeout` seconds the work goes ahead without it rather than losing the entries."""
+    os.makedirs(STATE_DIR, exist_ok=True)
+    lock_path = STATE_PATH + ".lock"
+    fd = None
+    deadline = time.time() + timeout
+    while fd is None:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except OSError:
+            try:
+                if time.time() - os.path.getmtime(lock_path) > stale:
+                    os.remove(lock_path)
+                    continue
+            except OSError:
+                pass
+            if time.time() > deadline:
+                break
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)
+            try:
+                os.remove(lock_path)
+            except OSError:
+                pass
 
 
 class Tracker:
@@ -62,14 +112,15 @@ class Tracker:
     def finish(self):
         """Records the files that appeared since start(), and keeps the digest of the files already recorded current (a rerun may rewrite them)."""
         after = _snapshot(self.override_dir)
-        state = _load()
-        mine = state.setdefault(self.override_dir.lower(), {}).setdefault(self.group, {})
-        for name, digest in after.items():
-            if name not in self.before:
-                mine[name] = digest                       # appeared during this run: ours
-            elif name in mine and self.before[name] != digest:
-                mine[name] = digest                       # we rewrote a file we already own; a file another script changed is left as it was recorded
-        _save(state)
+        with _locked():
+            state = _load()
+            mine = state.setdefault(self.override_dir.lower(), {}).setdefault(self.group, {})
+            for name, digest in after.items():
+                if name not in self.before:
+                    mine[name] = digest                       # appeared during this run: ours
+                elif name in mine and self.before[name] != digest:
+                    mine[name] = digest                       # we rewrote a file we already own; a file another script changed is left as it was recorded
+            _save(state)
         return len(mine)
 
 
@@ -89,30 +140,31 @@ def tracked(group, game_dir):
 def restore_group(game_dir, group):
     """Removes the files recorded for `group` that are still byte-for-byte what was written. Returns how many were removed."""
     override_dir = os.path.join(game_dir, "Override")
-    state = _load()
-    per_dir = state.get(override_dir.lower(), {})
-    mine = per_dir.get(group, {})
-    removed = 0
-    kept = {}
-    for name, digest in mine.items():
-        path = os.path.join(override_dir, name)
-        if not os.path.isfile(path):
-            continue
-        if _sha(path) == digest:
-            os.remove(path)
-            removed += 1
+    with _locked():
+        state = _load()
+        per_dir = state.get(override_dir.lower(), {})
+        mine = per_dir.get(group, {})
+        removed = 0
+        kept = {}
+        for name, digest in mine.items():
+            path = os.path.join(override_dir, name)
+            if not os.path.isfile(path):
+                continue
+            if _sha(path) == digest:
+                os.remove(path)
+                removed += 1
+            else:
+                kept[name] = digest
+                print(f"  left {name}: it has been changed since it was written")
+        if kept:
+            per_dir[group] = kept
         else:
-            kept[name] = digest
-            print(f"  left {name}: it has been changed since it was written")
-    if kept:
-        per_dir[group] = kept
-    else:
-        per_dir.pop(group, None)
-    if per_dir:
-        state[override_dir.lower()] = per_dir
-    else:
-        state.pop(override_dir.lower(), None)
-    _save(state)
+            per_dir.pop(group, None)
+        if per_dir:
+            state[override_dir.lower()] = per_dir
+        else:
+            state.pop(override_dir.lower(), None)
+        _save(state)
     return removed
 
 

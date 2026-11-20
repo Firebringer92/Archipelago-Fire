@@ -1319,6 +1319,9 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         would block the whole client (network heartbeat included) for the
         full subprocess runtime -- same reasoning as /ap_patch_all's own
         dispatch below."""
+        if self.ctx._patching_depth > 0:
+            self.output("The game files are still being patched. Wait for the 'finished' message in the log, then run this again.")
+            return False
         self.output("Admin: restoring all per-seed game files to vanilla in the background (watch the Heartbeat log for completion) ...")
         asyncio.get_event_loop().run_in_executor(None, self._revert_all_game_files_and_log)
         return True
@@ -1354,6 +1357,9 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
         (loot_disturb first, in a plain for-loop) -- see
         _apply_module_rim_patches_in_order's docstring for the Connect-
         time ordering this relies on."""
+        if self.ctx._patching_depth > 0:
+            self.output("The game files are still being patched. Wait for the 'finished' message in the log, then run this again.")
+            return False
         self.output("Admin: applying all 4 per-seed patches fresh in the background (watch the Heartbeat log for completion) ...")
         asyncio.get_event_loop().run_in_executor(None, self._apply_all_patches_and_log)
         return True

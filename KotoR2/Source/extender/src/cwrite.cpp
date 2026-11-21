@@ -33,8 +33,9 @@ constexpr int kMaxClassLevel = 50;
 constexpr int kMaxCredits = 999999999;
 constexpr int kMaxSaveBonus = 100;
 
-// classes.2da has rows 0..16; row 10 is the cut Bounty Hunter and is refused.
-bool ValidClass(int id) { return id >= 0 && id <= 16 && id != 10; }
+// classes.2da has rows 0..16. Row 10 is the game's cut Bounty Hunter; the Archipelago project turns it into the Battle Droid (client/k2_droid.py), so it is accepted: only a script
+// that was told to use it asks for it, and an unpatched game's row 10 is a working copy of the Soldier's tables.
+bool ValidClass(int id) { return id >= 0 && id <= 16; }
 
 void* StatsOf(uint32_t objectId) {
     void* creature = gameobj::CreatureFromObjectId(objectId);

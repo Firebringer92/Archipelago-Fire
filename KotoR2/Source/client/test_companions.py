@@ -55,7 +55,7 @@ class TestAssignedClass(unittest.TestCase):
 class TestExperienceRaising(unittest.TestCase):
     def test_default_companions_follow_the_players_level_when_experience_is_on(self):
         p = planner(options={"experience_mode": 2})
-        self.assertEqual(p.orders({1: (9, 4, 255, 0)}, 10, 50), [(1, "1:0:9:10:0:0:0")])
+        self.assertEqual(p.orders({1: (9, 4, 255, 0)}, 10, 50), [(1, "1:3:9:10:0:0:0")])
 
     def test_not_when_it_is_off(self):
         p = planner(options={"experience_mode": 0})
@@ -103,9 +103,33 @@ class TestExtras(unittest.TestCase):
     def test_an_extra_is_raised_to_the_players_level_and_keeps_its_class(self):
         p = planner(extras=[{"slot": 12}, {"slot": 13}])
         self.assertTrue(p.active())
-        self.assertEqual(p.orders({12: (5, 1, 255, 0)}, 7, 50), [(12, "12:0:5:7:0:0:0")])
+        self.assertEqual(p.orders({12: (5, 1, 255, 0)}, 7, 50), [(12, "12:3:5:7:0:0:0")])
         self.assertEqual(p.orders({12: (5, 7, 255, 0)}, 7, 50), [])
         self.assertEqual(p.orders({13: (0, 9, 255, 0)}, 7, 50), [])
+
+
+class TestOrderThrottle(unittest.TestCase):
+    def test_a_report_that_flips_between_two_states_does_not_order_for_ever(self):
+        import KotorTwoClient as K
+
+        class Dispatcher:
+            def __init__(self):
+                self._queue, self.current, self.sent = [], None, []
+
+            def submit(self, action, args, message="", item_name=""):
+                self.sent.append(args)
+
+        class Stub:
+            pass
+
+        stub = Stub()
+        stub.planner = planner(companion_classes={"6": {"class": 7, "mode": 1, "race": 5}})
+        stub.game_level, stub.game_alignment, stub.recorder = 5, 50, None
+        stub.dispatcher, stub._comp_attempts = Dispatcher(), {}
+        for n in range(20):                       # the report alternates: class 4 level 3 (the other object), class 7 level 4 (the party's)
+            stub.party_info = {6: (4, 3, 255, 0)} if n % 2 == 0 else {6: (7, 4, 255, 0)}
+            K.KotorTwoContext._plan_companions(stub)
+        self.assertEqual(len(stub.dispatcher.sent), 3)            # both states want the same order: three in all (it was 20 before), then none
 
 
 if __name__ == "__main__":

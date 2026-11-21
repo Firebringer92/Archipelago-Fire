@@ -1,7 +1,7 @@
 """Shared read-only access to the Steam/Aspyr TSL install's game data, for the
 KOTOR 2 research scripts. Never writes to the game folder.
 
-    import sys; sys.path.insert(0, r"C:\\Users\\User\\KOTOR2 AP\\tools")
+    import sys; sys.path.insert(0, "tools")      # run from the project folder
     import tsl_data as T
 
 Facts this module bakes in (all verified against the real install):

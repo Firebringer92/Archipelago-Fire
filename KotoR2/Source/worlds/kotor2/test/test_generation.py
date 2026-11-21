@@ -57,6 +57,34 @@ class TestNoCompanions(KotorTwoTestBase):
         self.assertBeatable(True)
 
 
+class TestPartyConsole(KotorTwoTestBase):
+    """The Party Console is one item in every seed that has companions (default, ap_gated, ap_limited) and in none without."""
+
+    def test_default_mode_has_one(self):
+        self.assertEqual(pool_counts(self).get("Party Console"), 1)
+
+
+class TestPartyConsoleGated(KotorTwoTestBase):
+    options = {"companions": 2}
+
+    def test_gated_mode_has_one(self):
+        self.assertEqual(pool_counts(self).get("Party Console"), 1)
+
+
+class TestPartyConsoleLimited(KotorTwoTestBase):
+    options = {"companions": 3}
+
+    def test_limited_mode_has_one(self):
+        self.assertEqual(pool_counts(self).get("Party Console"), 1)
+
+
+class TestPartyConsoleNone(KotorTwoTestBase):
+    options = {"companions": 0}
+
+    def test_no_companions_no_console(self):
+        self.assertNotIn("Party Console", pool_counts(self))
+
+
 class TestNoGates(KotorTwoTestBase):
     options = {"story_gates": 0}
 
@@ -264,8 +292,10 @@ class TestDroidStart(KotorTwoTestBase):
 
     def test_a_droid_class_and_race(self):
         data = self.world.fill_slot_data()["start_class"]
-        self.assertIn(data["class"], (6, 7))
+        self.assertEqual(data["class"], 10)                      # the player is always the Battle Droid
         self.assertEqual((data["mode"], data["race"]), (1, 5))
+        from worlds.kotor2 import PLAYER_BATTLE_LOOKS
+        self.assertIn(data["look"], PLAYER_BATTLE_LOOKS)            # the assassin droid or the HK-50 body
 
 
 class TestCompanionClassModes(KotorTwoTestBase):
@@ -292,7 +322,19 @@ class TestCompanionClassModes(KotorTwoTestBase):
     def test_droid_mode_makes_every_non_droid_a_droid(self):
         out = self.assignments(value=3)
         self.assertEqual(set(out), {str(s) for s in range(12)} - self.DROIDS)
-        self.assertTrue(all(v["class"] in (6, 7) and v["race"] == 5 and v["mode"] == 1 for v in out.values()))
+        self.assertTrue(all(v["class"] in (6, 7, 10) and v["race"] == 5 and v["mode"] == 1 for v in out.values()))
+
+    def test_the_battle_droid_gets_a_look_that_can_swing_a_weapon(self):
+        from worlds.kotor2 import DROID_LOOK
+        seen = {}
+        for _ in range(30):
+            for v in self.assignments(value=3).values():
+                seen.setdefault(v["class"], set()).add(v["look"])
+        self.assertEqual(set(seen), {6, 7, 10})                                       # all three droid classes come up
+        for cls, looks in seen.items():
+            self.assertTrue(looks <= set(DROID_LOOK[cls]), cls)
+        self.assertEqual(seen[10], set(DROID_LOOK[10]))                              # and both of the Battle Droid's looks
+        self.assertTrue(set(DROID_LOOK[10]).isdisjoint({66, 63}))                    # none of them is a creature body without weapon animations
 
     def test_randomize_base_never_picks_a_prestige_class_and_includes_tech_specialist(self):
         seen = set()
@@ -399,11 +441,18 @@ class TestNoExtrasInDefaultMode(KotorTwoTestBase):
 
 class TestAllExtrasFit(KotorTwoTestBase):
     options = {"companions": "ap_limited", "extra_companions": ["Bastila Shan", "Carth Onasi", "Jolee Bindo", "Juhani", "Mission Vao", "Zaalbar", "Canderous Ordo",
-                                                                  "Darth Sion", "Darth Nihilus", "Kavar", "Vrook Lamar", "Zez-Kai Ell"], "ap_companions": 8}
+                                                                  "Darth Sion", "Darth Nihilus", "Kavar", "Vrook Lamar", "Zez-Kai Ell", "Vash", "Atris"], "ap_companions": 8}
 
     def test_twenty_slots_from_twelve_to_thirty_one(self):
         plan = self.world.fill_slot_data()["extras"]
-        self.assertEqual([e["slot"] for e in plan], list(range(12, 32)))
+        self.assertEqual([e["slot"] for e in plan], list(range(12, 32)))               # fourteen named extras leave room for six of the eight generated ones
+        self.assertEqual(sum(1 for e in plan if e["kind"] == "ap"), 6)
+
+    def test_vash_and_atris_are_named_extras_with_their_own_looks(self):
+        plan = {e["name"]: e for e in self.world.fill_slot_data()["extras"]}
+        self.assertEqual((plan["Vash"]["appearance"], plan["Vash"]["gender"]), (649, 1))
+        self.assertEqual((plan["Atris"]["appearance"], plan["Atris"]["portrait"]), (629, 46))
+        self.assertEqual(plan["Vash"]["item"], "Companion: Vash")
 
 
 
@@ -457,11 +506,27 @@ class TestLootPlan(KotorTwoTestBase):
         self.assertIsInstance(plan["seed"], int)
 
 
-class TestLootReplaceIsTheDefaultMode(KotorTwoTestBase):
+class TestLootDefaultModeChangesNothing(KotorTwoTestBase):
     options = {"loot_randomizer": True}
 
     def test_mode(self):
+        self.assertEqual(self.world.fill_slot_data()["loot_plan"], {})                      # default: no change, even with the randomizer on
+
+
+class TestLootReplaceMode(KotorTwoTestBase):
+    options = {"loot_randomizer": True, "loot_mode": "replace"}
+
+    def test_mode(self):
         self.assertEqual(self.world.fill_slot_data()["loot_plan"]["mode"], "replace")
+
+
+class TestLootCraftingMode(KotorTwoTestBase):
+    options = {"loot_randomizer": True, "loot_mode": "crafting"}
+
+    def test_mode(self):
+        plan = self.world.fill_slot_data()["loot_plan"]
+        self.assertEqual(plan["mode"], "crafting")
+        self.assertNotIn("materials", plan)
 
 
 class TestEnemiesOffByDefault(KotorTwoTestBase):
@@ -695,11 +760,11 @@ class TestPeragusOffByDefault(KotorTwoTestBase):
 class TestShortenedPeragus(KotorTwoTestBase):
     options = {"shortened_peragus": True}
 
-    def test_the_cut_checks_are_gone_and_the_kept_ones_stay(self):
+    def test_every_check_stays_the_cut_parts_are_given_out_on_leaving(self):
         names = location_names(self)
-        for gone in ("Visited: Peragus - Mining Tunnels", "Visited: Peragus - Asteroid Exterior", "Visited: Peragus - Dormitories",
+        for kept in ("Visited: Peragus - Mining Tunnels", "Visited: Peragus - Asteroid Exterior", "Visited: Peragus - Dormitories",
                      "Quest: Rescue FullName", "Quest: Turbolift Lockdown", "Quest: Voiceprint Protocol"):
-            self.assertNotIn(gone, names)
+            self.assertIn(kept, names)                 # the condensed route skips them; the client gives them out when the player leaves Peragus
         for kept in ("Visited: Peragus - Administration Level", "Visited: Peragus - Fuel Depot", "Visited: Peragus - Hangar Bay",
                      "Visited: Harbinger - Crew Quarters", "Quest: Rescue T3-M4", "Quest: Medical Bay Murders: Bonus Mission",
                      "Quest: Orbital Drift Charts", "Quest: Recover Ebon Hawk"):
@@ -710,7 +775,7 @@ class TestShortenedPeragus(KotorTwoTestBase):
         self.assertEqual(plan["variant"], "short_hallway")
         self.assertEqual(plan["skipped_modules"], ["102PER", "104PER", "105PER"])
         ids = [h["id"] for h in plan["hooks"]]
-        self.assertEqual(ids, ["start", "jump", "act2", "navicomputer", "engine_deck", "hangar"])
+        self.assertEqual(ids, ["start", "jump", "act2", "hk50", "supplies"])           # the Harbinger and hangar door hooks are not built: the player is handed the supplies
         jump = plan["hooks"][1]["ops"]
         self.assertEqual(jump[0], {"op": "npc_add", "slot": 8, "tag": "T3M4"})          # slot 8 is re-opened by the jump or the first Hawk scene is dead
         self.assertEqual(jump[-1]["op"], "load")                                           # the module change comes last
@@ -721,6 +786,13 @@ class TestShortenedPeragus(KotorTwoTestBase):
         from worlds.kotor2.Locations import LOCATION_NAME_TO_ID
         for name in self.world.fill_slot_data()["peragus_plan"]["removed_locations"]:
             self.assertIn(name, LOCATION_NAME_TO_ID)
+
+    def test_no_check_is_cut_the_client_gives_them_out_on_leaving(self):
+        listed = {v["name"] for v in self.world.fill_slot_data()["locations"].values()}
+        for name in ("Visited: Peragus - Mining Tunnels", "Visited: Peragus - Asteroid Exterior", "Visited: Peragus - Dormitories", "Quest: Rescue FullName",
+                     "Quest: Turbolift Lockdown", "Quest: Voiceprint Protocol"):
+            self.assertIn(name, listed)
+        self.assertTrue(self.world.fill_slot_data()["options"]["shortened_peragus"])
 
     def test_the_slot_data_holds_no_cut_check(self):
         listed = {v["name"] for v in self.world.fill_slot_data()["locations"].values()}
@@ -733,7 +805,7 @@ class TestPeragusHooksAreComplete(KotorTwoTestBase):
     def test_every_operation_has_its_fields(self):
         needs = {"unlock": {"tag"}, "global": {"name", "value"}, "journal": {"tag", "stage"}, "spell": {"id"}, "npc_add": {"slot", "tag"}, "npc_hide": {"slot"},
                  "destroy": {"tag"}, "faction_all": {"tag", "faction"}, "item": {"resref", "count"}, "spawn": {"template", "waypoint", "replace_tag"},
-                 "load": {"module", "waypoint", "movie"}}
+                 "load": {"module", "waypoint", "movie"}, "script": {"name"}}
         for hook in self.world.fill_slot_data()["peragus_plan"]["hooks"]:
             self.assertTrue({"id", "module", "replaces", "run", "ops"} <= set(hook))
             for op in hook["ops"]:
@@ -748,18 +820,85 @@ class TestPeragusWithGoalLevelStillGenerates(KotorTwoTestBase):
         self.assertTrue(self.world.fill_slot_data()["peragus_plan"])
 
 
-class TestLootMaterialsFlag(KotorTwoTestBase):
-    options = {"loot_randomizer": True, "crafting_mode": "simple"}
+class TestCraftingModeLeavesTheLootAlone(KotorTwoTestBase):
+    options = {"loot_randomizer": True, "loot_mode": "replace", "crafting_mode": "simple"}
 
-    def test_flag(self):
-        self.assertTrue(self.world.fill_slot_data()["loot_plan"]["materials"])
+    def test_mode(self):
+        plan = self.world.fill_slot_data()["loot_plan"]
+        self.assertEqual(plan["mode"], "replace")                                          # crafting mode does not change what loot does
+        self.assertNotIn("materials", plan)
 
 
-class TestLootMaterialsFlagOff(KotorTwoTestBase):
-    options = {"loot_randomizer": True}
+class TestAdditionalQuestChecksOffByDefault(KotorTwoTestBase):
+    def test_no_extra_checks(self):
+        self.assertFalse([n for n in self.multiworld.get_locations(1) if n.name.startswith("Additional Quest Check:")])
 
-    def test_flag(self):
-        self.assertFalse(self.world.fill_slot_data()["loot_plan"]["materials"])
+
+class TestAdditionalQuestChecks(KotorTwoTestBase):
+    options = {"additional_quest_checks": 2}
+
+    def test_the_number_asked_for_on_every_quest(self):
+        names = [l.name for l in self.multiworld.get_locations(1) if l.name.startswith("Additional Quest Check:")]
+        quests = [l.name for l in self.multiworld.get_locations(1) if l.name.startswith("Quest: ")]
+        self.assertEqual(len(names), 2 * len(quests))
+        self.assertEqual(len(names), len(set(names)))
+        self.assertIn("Additional Quest Check: A Doctor's Alibi #1", names)
+        self.assertIn("Additional Quest Check: Cave Crawling #2", names)
+        self.assertNotIn("Additional Quest Check: Cave Crawling #3", names)
+
+
+class TestAdditionalQuestChecksMaximum(KotorTwoTestBase):
+    options = {"additional_quest_checks": 3}
+
+    def test_three_on_every_quest(self):
+        names = [l.name for l in self.multiworld.get_locations(1) if l.name.startswith("Additional Quest Check:")]
+        quests = [l.name for l in self.multiworld.get_locations(1) if l.name.startswith("Quest: ")]
+        self.assertEqual(len(names), 3 * len(quests))
+        self.assertIn("Additional Quest Check: Cave Crawling #3", names)
+
+
+    def test_they_never_hold_progression_and_need_what_the_quest_needs(self):
+        from ..Locations import LOCATIONS
+        by_name = {l.name: l for l in LOCATIONS}
+        for loc in LOCATIONS:
+            if loc.type != "questextra":
+                continue
+            self.assertFalse(loc.progression, loc.name)
+            base = by_name["Quest: " + loc.name[len("Additional Quest Check: "):].rsplit(" #", 1)[0]]
+            self.assertEqual(loc.requires, base.requires, loc.name)
+            self.assertEqual(loc.spec["journal_tag"], base.spec["journal_tag"], loc.name)
+
+
+class TestProgressionOnlyInSafePlaces(KotorTwoTestBase):
+    def token(self):
+        return self.world.create_item("Telos Progression")
+
+    def test_a_missable_quest_cannot_hold_a_token_but_a_forced_one_can(self):
+        locations = {l.name: l for l in self.multiworld.get_locations(1)}
+        self.assertFalse(locations["Quest: Cave Crawling"].item_rule(self.token()))          # missable
+        self.assertFalse(locations["Quest: Khoonda: Recruiting"].item_rule(self.token()))    # needs a companion
+        self.assertTrue(locations["Quest: Arrested!"].item_rule(self.token()))               # the story forces it
+        self.assertTrue(locations["Visited: Peragus - Fuel Depot"].item_rule(self.token()))
+
+    def test_neither_of_an_exclusive_recruit_pair_can_hold_a_token(self):
+        locations = {l.name: l for l in self.multiworld.get_locations(1)}
+        for name in ("Mira", "Hanharr", "Handmaiden", "Disciple"):
+            self.assertFalse(locations["Companion Recruited: " + name].item_rule(self.token()), name)
+        self.assertTrue(locations["Companion Recruited: Kreia"].item_rule(self.token()))
+
+    def test_there_is_room_for_every_token(self):
+        capable = [l for l in self.multiworld.get_locations(1) if l.item_rule(self.token()) and l.name != "Defeat Kreia"]
+        self.assertGreater(len(capable), sum(self.world._counts().values()) + 20)
+
+
+class TestProgressionRoomWhenAreaVisitsAreOff(KotorTwoTestBase):
+    options = {"area_visit_checks": False}
+
+    def test_missable_quests_join_only_as_far_as_needed(self):
+        token = self.world.create_item("Telos Progression")
+        capable = [l for l in self.multiworld.get_locations(1) if l.item_rule(token) and l.name != "Defeat Kreia"]
+        self.assertGreaterEqual(len(capable), sum(self.world._counts().values()) + 6)
+        self.assertLess(len(capable), sum(self.world._counts().values()) + 12)             # not every missable quest
 
 
 class TestShopSuppliesOnlyFlag(KotorTwoTestBase):
@@ -767,3 +906,73 @@ class TestShopSuppliesOnlyFlag(KotorTwoTestBase):
 
     def test_flag(self):
         self.assertTrue(self.world.fill_slot_data()["shop_plan"]["supplies_only"])
+
+    def test_every_store_sells_only_the_two_supplies(self):
+        from worlds.kotor2 import SHOP_SUPPLY_STOCK
+        plan = self.world.fill_slot_data()["shop_plan"]
+        self.assertTrue(plan["stores"])
+        for store in plan["stores"]:
+            self.assertEqual(store["stock"], list(SHOP_SUPPLY_STOCK), store["tag"])
+        self.assertTrue(plan["silence"])                                        # the game's own random stock is silenced so nothing is piled on the supplies
+
+
+class TestCraftingGatedAloneRestocksTheShops(KotorTwoTestBase):
+    options = {"crafting_gated": True}
+
+    def test_the_shops_sell_supplies_even_without_the_shop_randomizer(self):
+        plan = self.world.fill_slot_data()["shop_plan"]
+        self.assertTrue(plan["supplies_only"])
+        self.assertTrue(all(s["stock"] == ["ap_shpcomp", "ap_shpchem"] for s in plan["stores"]))
+
+
+class TestBountyDatapadsNeedTheEnemyRandomizer(KotorTwoTestBase):
+    def test_no_datapad_checks_without_new_creatures(self):
+        self.assertFalse([n for n in location_names(self) if n.startswith("Bounty Datapad")])
+        self.assertEqual(self.world.bounty_carriers, [])
+
+
+class TestBountyDatapads(KotorTwoTestBase):
+    options = {"enemy_randomizer": True}
+
+    def test_forty_checks_and_forty_carriers(self):
+        from worlds.kotor2 import BOUNTY_MODULES, BOUNTY_TOTAL
+        names = [n for n in location_names(self) if n.startswith("Bounty Datapad")]
+        self.assertEqual(len(names), BOUNTY_TOTAL)
+        spawns = self.world.fill_slot_data()["enemy_plan"]["spawns"]
+        carriers = [s for s in spawns if s.get("bounty")]
+        self.assertEqual(len(carriers), BOUNTY_TOTAL)
+        self.assertEqual(len({(s["module"], s["x"], s["y"]) for s in carriers}), BOUNTY_TOTAL)       # every datapad on a creature of its own
+        per_module = {}
+        for s in carriers:
+            self.assertIn(s["module"], BOUNTY_MODULES)
+            per_module[s["module"]] = per_module.get(s["module"], 0) + 1
+        self.assertTrue(all(2 <= n <= 4 for n in per_module.values()), per_module)
+
+    def test_the_checks_hold_no_progression_and_the_seed_is_beatable(self):
+        self.collect_all_but([])
+        self.assertBeatable(True)
+        token = self.world.create_item("Telos Progression")
+        for name in location_names(self):
+            if name.startswith("Bounty Datapad"):
+                self.assertFalse(self.multiworld.get_location(name, self.player).item_rule(token), name)     # filler and useful items only
+
+    def test_more_datapads_never_need_fewer_tokens(self):
+        last = {}
+        for n in range(1, 41):
+            need = self.world._bounty_requirements(n)
+            for fam, k in last.items():
+                self.assertGreaterEqual(need.get(fam, 0), k, (n, fam))
+            last = need
+
+    def test_the_location_specs_reach_the_client(self):
+        locations = self.world.fill_slot_data()["locations"]
+        specs = sorted(v["count"] for v in locations.values() if v["type"] == "bounty")
+        self.assertEqual(specs, list(range(1, 41)))
+
+
+class TestBountyDatapadsSwitchedOff(KotorTwoTestBase):
+    options = {"enemy_randomizer": True, "bounty_cards": False}
+
+    def test_no_checks_and_no_carriers(self):
+        self.assertFalse([n for n in location_names(self) if n.startswith("Bounty Datapad")])
+        self.assertFalse([s for s in self.world.fill_slot_data()["enemy_plan"]["spawns"] if s.get("bounty")])

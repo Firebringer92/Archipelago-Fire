@@ -231,6 +231,25 @@ void PollCharacter(object oPC)
     if (IsAvailableCreature(10)) { PollReport("pr10", "1", "R|10"); sInf = sInf + "10=" + IntToString(GetInfluence(10)) + ","; }
     if (IsAvailableCreature(11)) { PollReport("pr11", "1", "R|11"); sInf = sInf + "11=" + IntToString(GetInfluence(11)) + ","; }
     if (sInf != "") PollReport("pi", sInf, "I|" + GetStringLeft(sInf, GetStringLength(sInf) - 1));
+    // the companion unlock set (nss/k2ap_comp.nss: player local numbers 5 and 6; the report puts slot n at bit n): the client compares it with the companion items it has received
+    int nUnlock = (GetLocalNumber(oPC, 5) & 127) | (((GetLocalNumber(oPC, 6) >> 4) & 1) << 7) | ((GetLocalNumber(oPC, 6) & 15) << 8);
+    PollReport("pul", IntToString(nUnlock), "UL|" + IntToString(nUnlock));
+}
+
+// The creature of a companion tag that is IN the party. A module can hold a second object with the story companion's tag (101PER's Kreia is a copy of the party template), and
+// GetObjectByTag returns whichever is first, which changes as areas load and objects come and go: the class report then flipped between the two and the class orders landed on the
+// wrong one. A party member is preferred; with none the first object is returned.
+object PollCompObject(string sTag)
+{
+    object oFirst = GetObjectByTag(sTag, 0);
+    int n;
+    for (n = 0; n < 6; n++)
+    {
+        object oThis = GetObjectByTag(sTag, n);
+        if (!GetIsObjectValid(oThis)) break;
+        if (IsObjectPartyMember(oThis)) return oThis;
+    }
+    return oFirst;
 }
 
 // Class report of the companions in the party: CC|slot:class1:level1:class2:level2,... (only when it changes). The client compares it with the seed's
@@ -238,23 +257,23 @@ void PollCharacter(object oPC)
 void PollCompanions(object oPC)
 {
     string s = "";
-    if (IsNPCPartyMember(0)) { object o0 = GetObjectByTag("Atton"); if (GetIsObjectValid(o0)) s = s + "0:" + IntToString(GetClassByPosition(1, o0)) + ":" + IntToString(GetLevelByPosition(1, o0)) + ":" + IntToString(GetClassByPosition(2, o0)) + ":" + IntToString(GetLevelByPosition(2, o0)) + ","; }
-    if (IsNPCPartyMember(1)) { object o1 = GetObjectByTag("BaoDur"); if (GetIsObjectValid(o1)) s = s + "1:" + IntToString(GetClassByPosition(1, o1)) + ":" + IntToString(GetLevelByPosition(1, o1)) + ":" + IntToString(GetClassByPosition(2, o1)) + ":" + IntToString(GetLevelByPosition(2, o1)) + ","; }
-    if (IsNPCPartyMember(2)) { object o2 = GetObjectByTag("Mand"); if (GetIsObjectValid(o2)) s = s + "2:" + IntToString(GetClassByPosition(1, o2)) + ":" + IntToString(GetLevelByPosition(1, o2)) + ":" + IntToString(GetClassByPosition(2, o2)) + ":" + IntToString(GetLevelByPosition(2, o2)) + ","; }
-    if (IsNPCPartyMember(3)) { object o3 = GetObjectByTag("G0T0"); if (GetIsObjectValid(o3)) s = s + "3:" + IntToString(GetClassByPosition(1, o3)) + ":" + IntToString(GetLevelByPosition(1, o3)) + ":" + IntToString(GetClassByPosition(2, o3)) + ":" + IntToString(GetLevelByPosition(2, o3)) + ","; }
-    if (IsNPCPartyMember(4)) { object o4 = GetObjectByTag("Handmaiden"); if (GetIsObjectValid(o4)) s = s + "4:" + IntToString(GetClassByPosition(1, o4)) + ":" + IntToString(GetLevelByPosition(1, o4)) + ":" + IntToString(GetClassByPosition(2, o4)) + ":" + IntToString(GetLevelByPosition(2, o4)) + ","; }
-    if (IsNPCPartyMember(5)) { object o5 = GetObjectByTag("HK47"); if (GetIsObjectValid(o5)) s = s + "5:" + IntToString(GetClassByPosition(1, o5)) + ":" + IntToString(GetLevelByPosition(1, o5)) + ":" + IntToString(GetClassByPosition(2, o5)) + ":" + IntToString(GetLevelByPosition(2, o5)) + ","; }
-    if (IsNPCPartyMember(6)) { object o6 = GetObjectByTag("Kreia"); if (GetIsObjectValid(o6)) s = s + "6:" + IntToString(GetClassByPosition(1, o6)) + ":" + IntToString(GetLevelByPosition(1, o6)) + ":" + IntToString(GetClassByPosition(2, o6)) + ":" + IntToString(GetLevelByPosition(2, o6)) + ","; }
-    if (IsNPCPartyMember(7)) { object o7 = GetObjectByTag("Mira"); if (GetIsObjectValid(o7)) s = s + "7:" + IntToString(GetClassByPosition(1, o7)) + ":" + IntToString(GetLevelByPosition(1, o7)) + ":" + IntToString(GetClassByPosition(2, o7)) + ":" + IntToString(GetLevelByPosition(2, o7)) + ","; }
-    if (IsNPCPartyMember(8)) { object o8 = GetObjectByTag("T3M4"); if (GetIsObjectValid(o8)) s = s + "8:" + IntToString(GetClassByPosition(1, o8)) + ":" + IntToString(GetLevelByPosition(1, o8)) + ":" + IntToString(GetClassByPosition(2, o8)) + ":" + IntToString(GetLevelByPosition(2, o8)) + ","; }
-    if (IsNPCPartyMember(9)) { object o9 = GetObjectByTag("VisasMarr"); if (GetIsObjectValid(o9)) s = s + "9:" + IntToString(GetClassByPosition(1, o9)) + ":" + IntToString(GetLevelByPosition(1, o9)) + ":" + IntToString(GetClassByPosition(2, o9)) + ":" + IntToString(GetLevelByPosition(2, o9)) + ","; }
-    if (IsNPCPartyMember(10)) { object o10 = GetObjectByTag("Hanharr"); if (GetIsObjectValid(o10)) s = s + "10:" + IntToString(GetClassByPosition(1, o10)) + ":" + IntToString(GetLevelByPosition(1, o10)) + ":" + IntToString(GetClassByPosition(2, o10)) + ":" + IntToString(GetLevelByPosition(2, o10)) + ","; }
-    if (IsNPCPartyMember(11)) { object o11 = GetObjectByTag("Disciple"); if (GetIsObjectValid(o11)) s = s + "11:" + IntToString(GetClassByPosition(1, o11)) + ":" + IntToString(GetLevelByPosition(1, o11)) + ":" + IntToString(GetClassByPosition(2, o11)) + ":" + IntToString(GetLevelByPosition(2, o11)) + ","; }
+    if (IsNPCPartyMember(0)) { object o0 = PollCompObject("Atton"); if (GetIsObjectValid(o0)) s = s + "0:" + IntToString(GetClassByPosition(1, o0)) + ":" + IntToString(GetLevelByPosition(1, o0)) + ":" + IntToString(GetClassByPosition(2, o0)) + ":" + IntToString(GetLevelByPosition(2, o0)) + ","; }
+    if (IsNPCPartyMember(1)) { object o1 = PollCompObject("BaoDur"); if (GetIsObjectValid(o1)) s = s + "1:" + IntToString(GetClassByPosition(1, o1)) + ":" + IntToString(GetLevelByPosition(1, o1)) + ":" + IntToString(GetClassByPosition(2, o1)) + ":" + IntToString(GetLevelByPosition(2, o1)) + ","; }
+    if (IsNPCPartyMember(2)) { object o2 = PollCompObject("Mand"); if (GetIsObjectValid(o2)) s = s + "2:" + IntToString(GetClassByPosition(1, o2)) + ":" + IntToString(GetLevelByPosition(1, o2)) + ":" + IntToString(GetClassByPosition(2, o2)) + ":" + IntToString(GetLevelByPosition(2, o2)) + ","; }
+    if (IsNPCPartyMember(3)) { object o3 = PollCompObject("G0T0"); if (GetIsObjectValid(o3)) s = s + "3:" + IntToString(GetClassByPosition(1, o3)) + ":" + IntToString(GetLevelByPosition(1, o3)) + ":" + IntToString(GetClassByPosition(2, o3)) + ":" + IntToString(GetLevelByPosition(2, o3)) + ","; }
+    if (IsNPCPartyMember(4)) { object o4 = PollCompObject("Handmaiden"); if (GetIsObjectValid(o4)) s = s + "4:" + IntToString(GetClassByPosition(1, o4)) + ":" + IntToString(GetLevelByPosition(1, o4)) + ":" + IntToString(GetClassByPosition(2, o4)) + ":" + IntToString(GetLevelByPosition(2, o4)) + ","; }
+    if (IsNPCPartyMember(5)) { object o5 = PollCompObject("HK47"); if (GetIsObjectValid(o5)) s = s + "5:" + IntToString(GetClassByPosition(1, o5)) + ":" + IntToString(GetLevelByPosition(1, o5)) + ":" + IntToString(GetClassByPosition(2, o5)) + ":" + IntToString(GetLevelByPosition(2, o5)) + ","; }
+    if (IsNPCPartyMember(6)) { object o6 = PollCompObject("Kreia"); if (GetIsObjectValid(o6)) s = s + "6:" + IntToString(GetClassByPosition(1, o6)) + ":" + IntToString(GetLevelByPosition(1, o6)) + ":" + IntToString(GetClassByPosition(2, o6)) + ":" + IntToString(GetLevelByPosition(2, o6)) + ","; }
+    if (IsNPCPartyMember(7)) { object o7 = PollCompObject("Mira"); if (GetIsObjectValid(o7)) s = s + "7:" + IntToString(GetClassByPosition(1, o7)) + ":" + IntToString(GetLevelByPosition(1, o7)) + ":" + IntToString(GetClassByPosition(2, o7)) + ":" + IntToString(GetLevelByPosition(2, o7)) + ","; }
+    if (IsNPCPartyMember(8)) { object o8 = PollCompObject("T3M4"); if (GetIsObjectValid(o8)) s = s + "8:" + IntToString(GetClassByPosition(1, o8)) + ":" + IntToString(GetLevelByPosition(1, o8)) + ":" + IntToString(GetClassByPosition(2, o8)) + ":" + IntToString(GetLevelByPosition(2, o8)) + ","; }
+    if (IsNPCPartyMember(9)) { object o9 = PollCompObject("VisasMarr"); if (GetIsObjectValid(o9)) s = s + "9:" + IntToString(GetClassByPosition(1, o9)) + ":" + IntToString(GetLevelByPosition(1, o9)) + ":" + IntToString(GetClassByPosition(2, o9)) + ":" + IntToString(GetLevelByPosition(2, o9)) + ","; }
+    if (IsNPCPartyMember(10)) { object o10 = PollCompObject("Hanharr"); if (GetIsObjectValid(o10)) s = s + "10:" + IntToString(GetClassByPosition(1, o10)) + ":" + IntToString(GetLevelByPosition(1, o10)) + ":" + IntToString(GetClassByPosition(2, o10)) + ":" + IntToString(GetLevelByPosition(2, o10)) + ","; }
+    if (IsNPCPartyMember(11)) { object o11 = PollCompObject("Disciple"); if (GetIsObjectValid(o11)) s = s + "11:" + IntToString(GetClassByPosition(1, o11)) + ":" + IntToString(GetLevelByPosition(1, o11)) + ":" + IntToString(GetClassByPosition(2, o11)) + ":" + IntToString(GetLevelByPosition(2, o11)) + ","; }
     int nX;
     for (nX = 12; nX < 32; nX++)
     {
         if (!IsNPCPartyMember(nX)) continue;
-        object oX = GetObjectByTag("apxc" + IntToString(nX));
+        object oX = PollCompObject("apxc" + IntToString(nX));
         if (!GetIsObjectValid(oX)) continue;
         s = s + IntToString(nX) + ":" + IntToString(GetClassByPosition(1, oX)) + ":" + IntToString(GetLevelByPosition(1, oX)) + ":" + IntToString(GetClassByPosition(2, oX)) + ":" + IntToString(GetLevelByPosition(2, oX)) + ",";
     }
@@ -284,43 +303,6 @@ void PollDeath(object oPC)
 void PollQuestItems(object oPC)
 {
     string s = "";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "800DRO_AccessCode52"))) s = s + "800DRO_AccessCode52,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "800DRO_AccessCode54"))) s = s + "800DRO_AccessCode54,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "800DRO_Software41"))) s = s + "800DRO_Software41,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "800DRO_Software42"))) s = s + "800DRO_Software42,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "800DRO_Software43"))) s = s + "800DRO_Software43,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "800DRO_Software44"))) s = s + "800DRO_Software44,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "Airspeeder41"))) s = s + "Airspeeder41,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "Airspeeder42"))) s = s + "Airspeeder42,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "Airspeeder43"))) s = s + "Airspeeder43,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "BeastTenderKeycard"))) s = s + "BeastTenderKeycard,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "Comlink"))) s = s + "Comlink,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "CzerkaDatapad"))) s = s + "CzerkaDatapad,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "DancersOutfit"))) s = s + "DancersOutfit,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "DroidTechCreds"))) s = s + "DroidTechCreds,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "IT31MemoryCore"))) s = s + "IT31MemoryCore,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "IthorianCreds"))) s = s + "IthorianCreds,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "JumaJuiceCanister"))) s = s + "JumaJuiceCanister,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "a_robe_x01"))) s = s + "a_robe_x01,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "akkere_spanner"))) s = s + "akkere_spanner,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "c1_key"))) s = s + "c1_key,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "d_t3m4_01"))) s = s + "d_t3m4_01,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "d_t3m4_03"))) s = s + "d_t3m4_03,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "dpad_fman"))) s = s + "dpad_fman,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "g_410demolitions"))) s = s + "g_410demolitions,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "g_i_asensors"))) s = s + "g_i_asensors,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "g_i_weapon_case"))) s = s + "g_i_weapon_case,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "g_w_hldoblstr01"))) s = s + "g_w_hldoblstr01,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "ith_key"))) s = s + "ith_key,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "ith_shield"))) s = s + "ith_shield,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "pc_visa"))) s = s + "pc_visa,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "pl_alibi_s0d3"))) s = s + "pl_alibi_s0d3,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "pl_iziz_security"))) s = s + "pl_iziz_security,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "pl_khoonda_key"))) s = s + "pl_khoonda_key,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "pl_visa_sliced"))) s = s + "pl_visa_sliced,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "qu_deadsalvager1"))) s = s + "qu_deadsalvager1,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "qu_deadwill"))) s = s + "qu_deadwill,";
-    if (GetIsObjectValid(GetItemPossessedBy(oPC, "qu_fakewill"))) s = s + "qu_fakewill,";
     if (s != "") PollReport("po", s, "O|" + GetStringLeft(s, GetStringLength(s) - 1));
 }
 
@@ -346,14 +328,18 @@ void PollBazaar(object oPC)
 {
     int nBuy = 0;
     int nSwap = 0;
+    int nCard = 0;
     object oItem = GetFirstItemInInventory(oPC);
     while (GetIsObjectValid(oItem))
     {
         if (GetTag(oItem) == "ap_bz_buy") nBuy += GetItemStackSize(oItem);
         else if (GetTag(oItem) == "ap_bz_swap") nSwap += GetItemStackSize(oItem);
+        else if (GetTag(oItem) == "ap_bounty_card") nCard += GetItemStackSize(oItem);
         oItem = GetNextItemInInventory(oPC);
     }
     if (nBuy + nSwap > 0) PollReport("pbz", IntToString(nBuy) + "," + IntToString(nSwap), "B|" + IntToString(nBuy) + "|" + IntToString(nSwap));
+    // the Bounty Datapads (bounty_cards): the count held, a plot item so it only goes up; the client fires the nth check when the count reaches n
+    if (nCard > 0) PollReport("pbc", IntToString(nCard), "BC|" + IntToString(nCard));
 }
 
 void PollAll(object oPC)

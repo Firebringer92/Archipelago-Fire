@@ -57,7 +57,7 @@ FORBIDDEN_IMPORTS = {"pickle", "cPickle", "marshal", "shelve", "ctypes", "cffi",
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "os.execv", "os.execl", "os.execve", "os.execvp", "os.execlp"}
 
 # A path as the zip names it. The repository and the development folder keep the same files under longer names.
-STRIP_PREFIXES = ("KotoR2/", "Source/", "Archipelago/")
+STRIP_PREFIXES = ("KotoR2/", "Source/", "Archipelago/", "core/")      # core/: the Archipelago files (and our world) that a bundle carries for the client
 SKIP_DIRS = {"__pycache__", ".git", "test", "tests", "backups", "node_modules", ".pytest_cache", "third_party", "work", "dist"}
 # Archipelago's own files, at the zip root and in its package folders: not ours, and not ours to list.
 AP_CORE_FILES = {"CommonClient.py", "NetUtils.py", "Utils.py", "settings.py", "ModuleUpdate.py", "kvui.py", "BaseClasses.py", "Fill.py", "Options.py", "entrance_rando.py",

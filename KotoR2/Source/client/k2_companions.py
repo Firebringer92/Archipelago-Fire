@@ -6,7 +6,7 @@ Nothing is stored: the plan is recomputed from the game's own report, so a loade
 
 Rules (user decisions 2026-11-07):
   * a companion with a class assignment (companion_class not default) is brought to the assigned class at the player's level (so there are no pending level-ups);
-  * with no assignment, a companion is raised to the player's level only when the experience mode is on (ap_limited or ap_gated); otherwise they level as in the game;
+  * with no assignment (and for every extra companion), a companion is given the experience of the player's level only when the experience mode is on (ap_limited or ap_gated) or they are an extra (order kind 3: class and levels stay, the player takes the level-ups on the Level Up screen); otherwise they level as in the game;
   * multiclass_companion random_class: once the companion has 15 character levels, the second class of the seed is added with one level (skipped when it equals the first);
   * multiclass_companion prestige: the companion's item adds the prestige class of the seed's pair for that companion, once they have 15 levels; the side follows the
     alignment (a neutral alignment picks a random side).
@@ -72,10 +72,11 @@ class CompanionPlanner:
     def _order_for(self, slot: int, info: Info, player_level: int, alignment: int) -> typing.Optional[str]:
         c1, l1, c2, l2 = info
         total = l1 + (l2 if c2 not in NO_CLASS else 0)
-        # 0. an extra companion is a level-one shell: raised to the player's level (their class stays)
+        # 0. an extra companion is a level-one shell: given the experience of the player's level (kind 3; their class stays and the player takes the level-ups
+        #    on the Level Up screen, choosing stats and feats)
         if slot in self.extra_slots:
             want = self.target_level(info, player_level)
-            return "%d:0:%d:%d:0:0:0" % (slot, c1, want) if l1 < want else None
+            return "%d:3:%d:%d:0:0:0" % (slot, c1, want) if l1 < want else None
         # 1. the assigned class (and the player's level), or the level alone
         plan = self.assigned.get(slot)
         want_level = self.target_level(info, player_level)
@@ -83,7 +84,7 @@ class CompanionPlanner:
             if c1 != plan["class"] or l1 < want_level:
                 return "%d:0:%d:%d:%d:%d:0" % (slot, plan["class"], want_level, plan.get("mode", 0), plan.get("race", 0))
         elif self.experience_on() and l1 < want_level:
-            return "%d:0:%d:%d:0:0:0" % (slot, c1, want_level)
+            return "%d:3:%d:%d:0:0:0" % (slot, c1, want_level)          # experience only: the player levels them on the Level Up screen
         # 2. the prestige class of the companion's item
         if slot in self.prestige_slots and slot in self.pairs and total >= PRESTIGE_LEVEL and not self._has_prestige(info):
             light, dark = self.pairs[slot]

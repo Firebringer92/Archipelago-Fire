@@ -33,12 +33,33 @@ STARTING_DEFAULT, STARTING_NON_FORCE, STARTING_RANDOM, STARTING_PRESTIGE_START, 
 COMPANION_CLASS_DEFAULT, COMPANION_CLASS_JEDI, COMPANION_CLASS_NO_JEDI, COMPANION_CLASS_DROID, COMPANION_CLASS_RANDOM_BASE = range(5)
 MULTICLASS_OFF, MULTICLASS_PRESTIGE, MULTICLASS_RANDOM = range(3)
 STATS_DEFAULT, STATS_RANDOM = range(2)
-# appearance.2da rows used as the droid look (placeholders until the in-game test): 66 Droid_War_01 for the Combat Droid, 63 Droid_Protocol_01 for the Expert Droid
-DROID_LOOK = {6: 66, 7: 63}
+# appearance.2da rows used as the droid look (placeholders until the in-game test): 66 Droid_War_01 for the Combat Droid, 63 Droid_Protocol_01 for the Expert Droid. The Battle Droid
+# (class 10, made by client/k2_droid.py) uses a body with two real hands (list below): the client builds the re-mounted droid models, which is what lets a droid swing a melee weapon, and writes their appearance rows.
+BATTLE_DROID = 10
+# A Battle Droid (the player's class with starting_class droid; a companion's with companion_class droid) holds weapons, melee weapons and lightsabers, so its look must be a body with
+# two real hands and nothing built into them. The pool: the war droid (row 29), the protocol droid (380) and the assassin droid (82) re-mounted on the human skeleton, the Mining Droid
+# Mk II (58, with a hand in place of its cannon arm), all made by the client (tools/build_droid_models.py), and the HK-50 body (538: the HK-47 skeleton with the HK-50 texture, a game
+# row with the weapon stances for ranged weapons). Combat and Expert Droids keep their creature looks (rows 66 and 63), whose guns are part of the body.
+PLAYER_BATTLE_LOOKS = (29, 380, 58, 82, 538)
+DROID_LOOK = {6: (66,), 7: (63,), BATTLE_DROID: PLAYER_BATTLE_LOOKS}
+DROID_CLASSES = (6, 7, BATTLE_DROID)
 # Modules whose loot the loot randomizer leaves alone: the opening module, where the first minutes of the game take their weapons from the containers and corpses.
 LOOT_SKIP_MODULES = ("101PER",)
 ENEMY_AREA, ENEMY_RANDOM_SANE, ENEMY_FULLY_RANDOM = range(3)
+LOOT_DEFAULT, LOOT_REPLACE, LOOT_BONUS, LOOT_CRAFTING = range(4)
+# The two items a crafting_gated store sells (client/k2_shop.py makes them: the game's Chemicals and Components with a price, same tag and base item so the workbench and
+# the chemical lab count them like the originals)
+SHOP_SUPPLY_STOCK = ("ap_shpcomp", "ap_shpchem")
+PROGRESSION_MARGIN = 6            # progression-capable locations kept beyond the number of tokens, so the fill always has room
 ENEMY_CR_TOLERANCE = 2.0          # a new creature may be this far below the area's lowest rating (K1 used the same)
+ENEMY_CR_HEADROOM = 1.0           # ... and at most this far above the area's AVERAGE rating (never above its strongest non-boss creature): one strong native enemy must not set the
+                                  # ceiling for every spot of the area
+ENEMY_FORCE_USER_EXTRA = 3.0      # a Force user (dark Jedi, Sith apprentice) fights harder than its rating says (lightsaber, Force powers, a full stat block): its rating counts this much higher
+ENEMY_WEIGHT_SLOPE = 0.5          # a candidate above the area's average rating is drawn less often: weight 1 / (1 + slope * (rating - average))
+# bounty_cards: forty Bounty Datapads on new creatures, only in the free-roam combat areas (never the prologue, the Malachor finale or the scenes the player cannot come back
+# to: the same rule as the Bazaar tokens), taken round by round so that every area carries two to four
+BOUNTY_TOTAL = 40
+BOUNTY_MODULES = ("231TEL", "232TEL", "233TEL", "401DXN", "402DXN", "410DXN", "411DXN", "506OND", "601DAN", "604DAN", "605DAN", "610DAN", "701KOR")
 # Droid mode: the player's droid look is a disguise effect (changing the player's model broke the 3D view, as in KotOR 1); EVERY companion gets it by a changed
 # template (user, 2026-11-07), so none of the twelve uses the disguise. The extra companions on slots 12-31 may need the disguise (companion work).
 DISGUISE_SLOTS: typing.Tuple[int, ...] = ()
@@ -76,6 +97,7 @@ class KotorTwoWorld(World):
     door_pairs: typing.List[typing.Tuple[str, str]] = []          # area_randomizer: the new coupled pairs of doors (keys of data/doors.json)
     door_path_reqs: typing.Dict[str, typing.Dict[str, int]] = {}  # area_randomizer: per module, what reaching it through the new pairs needs (family key -> tokens)
     guaranteed_xp_items: int = 0
+    bounty_carriers: typing.List[typing.Tuple[str, int]] = []     # bounty_cards: (module, index of the spawn point) of each creature that carries a datapad, easiest area first
 
     # ---- options in plain form ------------------------------------------------------------------------------------------
     def _gates_active(self) -> bool:
@@ -95,6 +117,10 @@ class KotorTwoWorld(World):
             return goal_token_counts(self._disabled(), ("FIN4",))
         return self._counts()
 
+    def _ap_companion_count(self) -> int:
+        """Generated companions: the option, but the extra party slots (12 to 31, twenty) are shared with the chosen named extras."""
+        return max(0, min(self.options.ap_companions.value, 20 - len(self.options.extra_companions.value)))
+
     def _offered_companions(self) -> typing.List[str]:
         """Companion items the seed offers, in unlock order: the twelve base companions, the chosen extras, then the generated ones."""
         mode = self.options.companions.value
@@ -102,7 +128,7 @@ class KotorTwoWorld(World):
             return []
         names = list(BASE_COMPANION_ITEMS)
         names += [EXTRA_COMPANION_ITEMS[c] for c in sorted(self.options.extra_companions.value)]
-        names += ["AP Companion"] * self.options.ap_companions.value
+        names += ["AP Companion"] * self._ap_companion_count()
         return names
 
     def _companion_pool_names(self) -> typing.List[str]:
@@ -119,7 +145,9 @@ class KotorTwoWorld(World):
             return False
         if loc.type == "bazaar" and not self.options.bazaar:
             return False
-        if loc.type == "questitem" and not self.options.quest_item_checks:
+        if loc.type == "bounty" and loc.spec["count"] > len(self.bounty_carriers):
+            return False
+        if loc.type == "questextra" and loc.spec["part"] > self.options.additional_quest_checks.value:
             return False
         if loc.type == "area" and not self.options.area_visit_checks:
             return False
@@ -130,8 +158,9 @@ class KotorTwoWorld(World):
         return True
 
     def _peragus_removed(self) -> typing.FrozenSet[str]:
-        """shortened_peragus: the checks that the condensed opening cannot produce (areas and quests that only exist in the parts it cuts)."""
-        return frozenset(peragus_data()["removed_locations"])
+        """shortened_peragus used to remove the checks the condensed opening cannot produce (the data file still lists them in removed_locations). None is removed any more:
+        the client gives out every Peragus check (areas, its own quests, the Atton, Kreia and T3-M4 recruits) when the player leaves Peragus (client/k2_tracker.py)."""
+        return frozenset()
 
     # ---- generation ------------------------------------------------------------------------------------------------------------
     def generate_early(self) -> None:
@@ -144,6 +173,7 @@ class KotorTwoWorld(World):
             except ShuffleError as e:
                 raise OptionError("KotOR 2 TSL: the area randomizer could not build a connected set of doors (%s)." % e)
             self.door_path_reqs = path_requirements(self.door_pairs, data)
+        self.bounty_carriers = self._pick_bounty_carriers() if (o.enemy_randomizer.value and o.bounty_cards.value) else []
         goal = o.goal.value
         self.level_cap = max(o.level_target.value, o.goal_level.value if goal == GOAL_HIGH_LEVEL else 0)
         if goal in (GOAL_INFLUENCE, GOAL_CULT) and o.companions.value == COMPANIONS_NONE:
@@ -200,7 +230,22 @@ class KotorTwoWorld(World):
             if o.companions.value == COMPANIONS_AP_GATED else ()
         return lambda state: all(l.can_reach(state) for l in recruits) and all(state.count(n, player) >= c for n, c in items)
 
+    def _spare_progression_ids(self) -> typing.Set[int]:
+        """Locations that join the progression-capable ones when the safe ones (the quests the story forces, area visits, recruits outside an exclusive pair; see
+        tools/build_world_data.py) are too few for the tokens, which happens when the area-visit checks are off: missable quests, never the companion-dependent ones, in the
+        order of the data file, enough to hold every token with a margin."""
+        used = [loc for loc in LOCATIONS if self._location_used(loc)]
+        capable = sum(1 for loc in used if loc.progression)
+        short = sum(self._counts().values()) + PROGRESSION_MARGIN - capable
+        if short <= 0:
+            return set()
+        spare = [loc.id for loc in used if not loc.progression and loc.type == "quest" and not loc.spec.get("companion_dependent")][:short]
+        logging.warning("KotOR 2 TSL (%s): too few locations that are safe for progression items (%d, tokens %d): %d missable quests may hold them too; turn the area-visit checks on to avoid this",
+                        self.player_name, capable, sum(self._counts().values()), len(spare))
+        return set(spare)
+
     def create_regions(self) -> None:
+        spare_ids = self._spare_progression_ids()
         menu = Region("Menu", self.player, self.multiworld)
         world = Region("Galaxy", self.player, self.multiworld)
         self.multiworld.regions += [menu, world]
@@ -211,9 +256,11 @@ class KotorTwoWorld(World):
             if not self._location_used(loc):
                 continue
             location = KotorTwoLocation(self.player, loc.name, loc.id, world)
-            if not loc.progression:
+            if not loc.progression and loc.id not in spare_ids:
                 location.item_rule = lambda item: not item.advancement
             needs = dict(loc.requires)
+            if loc.type == "bounty":
+                needs = self._bounty_requirements(loc.spec["count"])
             for fam, n in self._door_requirements(loc).items():       # area_randomizer: the way to the location's module is part of its logic
                 needs[fam] = max(needs.get(fam, 0), n)
             reqs = [(fam, min(n, counts.get(fam, 0))) for fam, n in needs.items() if counts.get(fam, 0) > 0]
@@ -270,6 +317,8 @@ class KotorTwoWorld(World):
         for name, n in self._counts().items():
             pool += [self.create_item(name) for _ in range(n)]
         pool += [self.create_item(n) for n in self._companion_pool_names()]
+        if o.companions.value != COMPANIONS_NONE:                                    # the Party Console (opens the party screen): in every seed that has companions
+            pool.append(self.create_item("Party Console"))
         if o.starting_class.value == STARTING_PRESTIGE_GATED:
             pool.append(self.create_item("Prestige Class"))
         if o.multiclass_companion.value == MULTICLASS_PRESTIGE and o.companions.value != COMPANIONS_NONE:
@@ -324,13 +373,12 @@ class KotorTwoWorld(World):
 
     def _start_class(self) -> typing.Optional[typing.Dict[str, int]]:
         """The class the player is converted to at the start of the run, decided here so the seed is reproducible. Class ids are the game's classes.2da rows:
-        0 Soldier, 1 Scout, 2 Scoundrel, 3 Jedi Guardian, 4 Jedi Consular, 5 Jedi Sentinel, 6 Combat Droid, 7 Expert Droid, 9 Tech Specialist, 11 Weapon Master
+        0 Soldier, 1 Scout, 2 Scoundrel, 3 Jedi Guardian, 4 Jedi Consular, 5 Jedi Sentinel, 6 Combat Droid, 7 Expert Droid, 9 Tech Specialist, 10 Battle Droid (the game's cut row), 11 Weapon Master
         (Vanguard), 12 Master (Sage), 13 Watchman (Shadow), 14 Sith Marauder, 15 Sith Lord (Sorcerer), 16 Sith Assassin. mode 1 strips the Jedi feats and powers
         (the new class cannot have them); race 5 makes the player a droid (the appearance is not changed: a player model change is not safe)."""
         value = self.options.starting_class.value
-        if value == STARTING_DROID:
-            cls = self.random.choice([6, 7])
-            return {"class": cls, "mode": 1, "race": 5, "look": DROID_LOOK[cls]}
+        if value == STARTING_DROID:                                  # the player is always the Battle Droid; the companions' droid classes are drawn (companion_class: droid)
+            return {"class": BATTLE_DROID, "mode": 1, "race": 5, "look": self.random.choice(PLAYER_BATTLE_LOOKS)}
         if value == 1:
             cls = self.random.choice([0, 1, 2])
         elif value == 2:
@@ -363,8 +411,8 @@ class KotorTwoWorld(World):
             elif value == COMPANION_CLASS_NO_JEDI and slot in jedi_slots:
                 out[str(slot)] = {"class": self.random.choice([0, 1, 2, 9]), "mode": 1}
             elif value == COMPANION_CLASS_DROID:
-                cls = self.random.choice([6, 7])
-                out[str(slot)] = {"class": cls, "mode": 1, "race": 5, "look": DROID_LOOK[cls], "look_method": "disguise" if slot in DISGUISE_SLOTS else "template"}
+                cls = self.random.choice(DROID_CLASSES)
+                out[str(slot)] = {"class": cls, "mode": 1, "race": 5, "look": self.random.choice(DROID_LOOK[cls]), "look_method": "disguise" if slot in DISGUISE_SLOTS else "template"}
             elif value == COMPANION_CLASS_RANDOM_BASE:
                 cls = self.random.choice([0, 1, 2, 3, 4, 5, 9])
                 out[str(slot)] = {"class": cls, "mode": 1 if cls in (0, 1, 2, 9) else 0}
@@ -388,7 +436,7 @@ class KotorTwoWorld(World):
         names = others + [self.player_name]
         # the generated companions take different looks from the pool (none of the story companions' looks); more companions than looks start the pool again
         looks: typing.List[dict] = []
-        for k in range(self.options.ap_companions.value):
+        for k in range(self._ap_companion_count()):
             if not looks:
                 looks = list(data["ap_looks"])
                 self.random.shuffle(looks)
@@ -404,14 +452,20 @@ class KotorTwoWorld(World):
     def _shop_plan(self) -> typing.Dict[str, typing.Any]:
         """shop_randomizer: what the client does to the game's stores. Each planet draws shop_count items from the pool with this player's random generator (so the
         planets differ) and every randomized store of the planet sells that list, plus the staples (medpacs, repair kits, spikes) that no pool draw would leave in.
-        {"stores": [{module, utm, tag, stock}], "silence": [the game's own stock scripts]}; empty when the option is off. The Pazaak dealers are not in it."""
-        if not self.options.shop_randomizer.value:
+        {"stores": [{module, utm, tag, stock}], "silence": [the game's own stock scripts], "supplies_only"}; empty when neither shop_randomizer nor crafting_gated is on.
+        The Pazaak dealers are not in it. With crafting_gated every store sells only crafting supplies, Components and Chemicals (SHOP_SUPPLY_STOCK: priced copies of the
+        game's two items, made by client/k2_shop.py), whether or not the shops are randomized: gear comes from the crafting types the items unlock, not from the shelves."""
+        supplies = bool(self.options.crafting_gated.value)
+        if not self.options.shop_randomizer.value and not supplies:
             return {}
         data = shop_data()
-        count = min(self.options.shop_count.value, len(data["pool"]))
-        stock = {planet: list(data["staples"]) + self.random.sample(data["pool"], count) for planet in data["planets"]}
+        if supplies:
+            stock = {planet: list(SHOP_SUPPLY_STOCK) for planet in data["planets"]}
+        else:
+            count = min(self.options.shop_count.value, len(data["pool"]))
+            stock = {planet: list(data["staples"]) + self.random.sample(data["pool"], count) for planet in data["planets"]}
         stores = [{"module": s["module"], "utm": s["utm"], "tag": s["tag"], "stock": stock[s["planet"]]} for s in data["stores"] if not s["leave_alone"]]
-        return {"stores": stores, "silence": list(data["stock_scripts"]), "supplies_only": bool(self.options.crafting_gated.value)}
+        return {"stores": stores, "silence": list(data["stock_scripts"]), "supplies_only": supplies}
 
     def _peragus_plan(self) -> typing.Dict[str, typing.Any]:
         """shortened_peragus: what the client does to the opening, from data/peragus.json (variant A, "short hallway", of docs/PERAGUS_CONDENSED.md).
@@ -458,13 +512,58 @@ class KotorTwoWorld(World):
         return {"mode": mode, "seed": self.random.getrandbits(32), "gated": gated, "types": self._craft_types(),
                 "gear": crafting_data()["gear"] if mode else [], "gear_gated": bool(mode and self.options.gear_items.value)}
 
+    def _module_needs(self, module: str) -> typing.Dict[str, int]:
+        """The tokens it takes to be in a module: its area location's requirement, plus (area_randomizer) the way there through the shuffled doors, {item name: count}."""
+        for loc in LOCATIONS:
+            if loc.type == "area" and loc.spec.get("module") == module:
+                needs = dict(loc.requires)
+                for fam, n in self._door_requirements(loc).items():
+                    needs[fam] = max(needs.get(fam, 0), n)
+                return needs
+        return {}
+
+    def _pick_bounty_carriers(self) -> typing.List[typing.Tuple[str, int]]:
+        """bounty_cards: which spawn points carry a Bounty Datapad. Round by round, each eligible area gives one more point (in a random order of areas and points) until
+        BOUNTY_TOTAL are chosen, so every area carries two to four. Returned easiest area first (fewest tokens needed to get there), which is the order the checks'
+        logic uses: Bounty Datapad #n needs the n easiest carriers' areas."""
+        modules = enemy_data()["modules"]
+        areas = sorted(m for m in BOUNTY_MODULES if m in modules)
+        spare = {m: list(range(len(modules[m]["points"]))) for m in areas}
+        for m in areas:
+            self.random.shuffle(spare[m])
+        chosen: typing.List[typing.Tuple[str, int]] = []
+        while len(chosen) < BOUNTY_TOTAL and any(spare.values()):
+            order = list(areas)
+            self.random.shuffle(order)
+            for m in order:
+                if len(chosen) < BOUNTY_TOTAL and spare[m]:
+                    chosen.append((m, spare[m].pop()))
+        counts = self._counts()
+        cost = {m: sum(min(n, counts.get(fam, n)) for fam, n in self._module_needs(m).items()) for m in areas}
+        return sorted(chosen, key=lambda c: (cost[c[0]], c[0], c[1]))
+
+    def _bounty_requirements(self, n: int) -> typing.Dict[str, int]:
+        """The tokens that holding n datapads needs: every one of the n easiest carriers' areas has to be reachable, so the largest need of each family among them."""
+        merged: typing.Dict[str, int] = {}
+        for module in {m for m, _ in self.bounty_carriers[:n]}:
+            for fam, k in self._module_needs(module).items():
+                merged[fam] = max(merged.get(fam, 0), k)
+        return merged
+
+    @staticmethod
+    def _effective_cr(entry: typing.Dict[str, typing.Any]) -> float:
+        """The rating a pool creature counts as in the difficulty rule: Force users count higher than their rating."""
+        return entry["cr"] + (ENEMY_FORCE_USER_EXTRA if entry["category"] == "force_user" else 0.0)
+
     def _enemy_plan(self) -> typing.Dict[str, typing.Any]:
         """enemy_randomizer: which creature stands at each precomputed spawn point, {"spawns": [{module, x, y, z, angle, template, source}]}. Empty when the option
-        is off. The difficulty rule follows K1: a creature must have a rating from (area's lowest - ENEMY_CR_TOLERANCE) up to the area's highest non-boss rating
-        (a hard ceiling); if nothing in the pool fits, the weakest creatures of the pool are used rather than a strong one."""
+        is off. The difficulty rule: a creature must have a rating from (area's lowest - ENEMY_CR_TOLERANCE) up to (area's average + ENEMY_CR_HEADROOM), never above the
+        area's highest non-boss rating, and those above the average are drawn less often (ENEMY_WEIGHT_SLOPE); if nothing in the pool fits, the weakest creatures of the
+        pool are used rather than a strong one. (Until 2026-11-15 the ceiling was the area's highest non-boss rating, so every spot could get the strongest creature.)"""
         if not self.options.enemy_randomizer.value:
             return {}
         data = enemy_data()
+        carriers = set(self.bounty_carriers)
         mode = self.options.enemy_mode.value
         pool = data["pool"]
         by_category: typing.Dict[str, typing.List[str]] = {}
@@ -480,24 +579,31 @@ class KotorTwoWorld(World):
             if mode == ENEMY_FULLY_RANDOM:
                 candidates = base
             else:
-                candidates = [r for r in base if info["cr_min"] - ENEMY_CR_TOLERANCE <= pool[r]["cr"] <= info["cr_cap"]]
+                average = info.get("cr_avg", info["cr_cap"])
+                ceiling = min(info["cr_cap"], math.ceil(average + ENEMY_CR_HEADROOM - 1e-9))
+                candidates = [r for r in base if info["cr_min"] - ENEMY_CR_TOLERANCE <= pool[r]["cr"] and self._effective_cr(pool[r]) <= max(ceiling, info["cr_min"])]
                 if not candidates:
                     weakest = sorted(base, key=lambda r: pool[r]["cr"])[:5]
                     candidates = weakest
-            for x, y, z in info["points"]:
-                template = self.random.choice(candidates)
-                spawns.append({"module": module, "x": x, "y": y, "z": z, "angle": round(self.random.uniform(0.0, 6.2832), 3), "template": template,
-                               "source": pool[template]["source"]})
+            weights = [1.0] * len(candidates) if mode == ENEMY_FULLY_RANDOM else [
+                1.0 / (1.0 + ENEMY_WEIGHT_SLOPE * max(0.0, self._effective_cr(pool[r]) - info.get("cr_avg", info["cr_cap"]))) for r in candidates]
+            for index, (x, y, z) in enumerate(info["points"]):
+                template = self.random.choices(candidates, weights=weights)[0]
+                spawn = {"module": module, "x": x, "y": y, "z": z, "angle": round(self.random.uniform(0.0, 6.2832), 3), "template": template,
+                         "source": pool[template]["source"]}
+                if (module, index) in carriers:
+                    spawn["bounty"] = 1                       # this creature carries a Bounty Datapad
+                spawns.append(spawn)
         return {"spawns": spawns}
 
     def _loot_plan(self) -> typing.Dict[str, typing.Any]:
         """loot_randomizer: how the client changes the ordinary gear lying in containers and dropped by creatures. The pool is the shop pool (ordinary gear only, so
-        quest and plot items are never touched); mode is loot_mode (replace or bonus); the seed number makes every pick independent of the order of work. The opening
+        quest and plot items are never touched); mode is loot_mode (replace, bonus or crafting; default changes nothing); the seed number makes every pick independent of the order of work. The opening
         module (101PER) is skipped because the first minutes of the game need the gear in it. Empty when the option is off."""
-        if not self.options.loot_randomizer.value:
+        if not self.options.loot_randomizer.value or self.options.loot_mode.value == LOOT_DEFAULT:
             return {}
-        return {"mode": "bonus" if self.options.loot_mode.value == 1 else "replace", "pool": list(shop_data()["pool"]),
-                "seed": self.random.getrandbits(32), "skip_modules": list(LOOT_SKIP_MODULES), "materials": bool(self.options.crafting_mode.value)}
+        mode = {LOOT_REPLACE: "replace", LOOT_BONUS: "bonus", LOOT_CRAFTING: "crafting"}[self.options.loot_mode.value]
+        return {"mode": mode, "pool": list(shop_data()["pool"]), "seed": self.random.getrandbits(32), "skip_modules": list(LOOT_SKIP_MODULES)}
 
     def _companion_prestige_pairs(self) -> typing.Dict[str, typing.List[int]]:
         """multiclass_companion prestige: the [light, dark] prestige pair each Jedi-capable companion's item applies; the game picks the side from the alignment
@@ -519,7 +625,7 @@ class KotorTwoWorld(World):
             v = getattr(self.options, f.name).value
             options[f.name] = sorted(v) if isinstance(v, (set, frozenset)) else v
         return {
-            "world_version": "0.0.2-draft",
+            "world_version": "0.1.0",
             "options": options,
             "goal": self._goal_spec(),
             "level_cap": self.level_cap,

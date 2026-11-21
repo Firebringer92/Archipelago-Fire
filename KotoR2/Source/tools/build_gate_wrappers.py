@@ -1,10 +1,14 @@
-"""Builds the story-gate script wrappers (kind S in data/gates.json) from the player's own game files.
+"""Builds the story-gate scripts (kind S in data/gates.json) from the player's own game files.
 
-For each gated script name N:
-  * every copy of N the game has (one per module that carries its own, plus the shared one) is written as N_orig.ncs, or N_orig_1, N_orig_2 ... when the
-    bodies differ; the copies come from the player's install, nothing from the game is kept in the project;
-  * an Override script N.ncs replaces it: in a gated module it asks the gate (nss/k2ap_gate.nss) and runs the original only when the gate is open, in every
-    other module it just runs that module's original.
+Story scenes that need a companion (data/companion_scenes.json) are built here too: the scene's own script gets a check joined on (nss/k2ap_scene.nss) that brings the
+companion into the party before the scene's dialogue starts; the dispatcher is not involved.
+
+For each gated script name N, an Override script N.ncs replaces the game's: our check (nss/k2ap_gate.nss) joined onto the game's own compiled script
+(tools/ncs_merge.py). In a gated module the check runs first and the original runs only when the gate is open; in every other module just that module's original runs.
+The original is NOT run through ExecuteScript: a script started that way does not get the event it was started by (GetEnteringObject(), GetScriptParameter(1)), and the gated
+scripts read them: the Telos shuttle gave a black screen live on 2026-11-14 because its dialogue option never reached it. Joined this way the original keeps the engine's own event.
+When the modules carry different bodies of the script, all of them go into the one file and the module name picks. Nothing from the game is kept in the project: the files
+are made from the player's install.
 Override beats the game's copy of a script, so no game archive changes. Output goes to compile_staging/gates (not the game): deploying is a separate,
 deliberate step with the game closed.
 
@@ -63,20 +67,24 @@ HOLD = {
 GUARDED = {"my_clear_inv": ["202TEL"]}
 # Turret sequences, skipped when the seed says so (K2AP_SkipTurrets, as in KotOR 1). script -> {module: code run instead of the script}. {orig} is the
 # module's original script. See docs/MINIGAME_SKIPS.md for what each exit of the minigame would have set.
-#   106PER a_load003ebo: loads the 107PER hangar turret. Setting the minigame as finished first makes 107PER take its own "return from the boarders"
+#   106PER a_load003ebo: loads the 107PER hangar turret. The module load is made here (what the original does at its end: 003EBO_BACKGROUND=0 and StartNewModule
+#     107PER at From106PER); running the original through ExecuteScript did not load the module live (the Hawk could not be entered). Setting the minigame as finished first makes 107PER take its own "return from the boarders"
 #     path: Kreia is brought back, the talk about her hand plays and the movie leads to the Hawk. 25 is the number of targets (the script constant
 #     that 107PER/c_check_alldead compares the dead count with).
 #   003EBO a_to_421dxn: the Dxun blockade turret; its exit sets 401DXN_STARTED to 4 and loads the Hawk, which starts the Dxun landing.
 #   504OND a_505turret: the Onderon palace turret; its exit only returns to 504OND, so the conversation simply ends there.
 TURRETS = {
     "a_load003ebo": {"106PER": 'SetGlobalNumber("107PER_MG_FINISHED", 1); SetGlobalNumber("107PER_MG_DEAD", 25); SetGlobalNumber("107PER_MG_EBON", 0); '
-                               'ExecuteScript("{orig}", OBJECT_SELF);'},
+                               'SetGlobalNumber("003EBO_BACKGROUND", 0); StartNewModule("107PER", "From106PER");'},
     "a_to_421dxn": {"003EBO": 'SetGlobalNumber("401DXN_STARTED", 4); StartNewModule("003EBO");'},
     "a_505turret": {"504OND": 'SetGlobalNumber("500OND_Turret", 1);'},
 }
 # ap_jedi_inc: the Masters' +1 on the Jedi count waits for the token; the three conversations are pointed at it by client/k2_dialogues.py (nss/ap_jedi_inc.nss, nss/k2ap_master.nss)
 SPECIAL = ("ap_jedi_inc",)
-PARAM_SCRIPTS = {"a_201shuttle", "a_to851"}      # read GetScriptParameter: whether ExecuteScript keeps the parameters is a live test (TEST_QUEUE)
+# Game scripts that get one of our checks joined on (an int script of nss/ that answers non-zero when it did the whole job; the game's script then does not run for that
+# call). script -> nss name of the check. k_sp1_generic is the script every Force power runs; nss/k2ap_revit.nss takes over Improved and Master Revitalize only.
+SPELLS = {"k_sp1_generic": "k2ap_revit"}
+PARAM_SCRIPTS = {"a_201shuttle", "a_to851"}      # read GetScriptParameter: kept, because the original runs in the engine's own call of the script
 
 FAMILY_KEY = {"Telos": "telos", "Nar Shaddaa": "nar", "Dxun/Onderon": "dxn", "Dantooine": "dan", "Korriban": "kor", "Endgame": "endgame"}
 
@@ -86,76 +94,96 @@ def gate_table():
         return {g["id"]: g for g in json.load(f)["gates"]}
 
 
-def wrapper_source(name, gated, variants, default):
-    """gated: {module: gate id}; variants: [(orig name, [modules])]; default: orig name for every other module, or None."""
+def scene_table():
+    """{script: {MODULE: entry}} from data/companion_scenes.json: the companions a script's scene needs (entry: slots, optional when, again)."""
+    with open(os.path.join(ROOT, "data", "companion_scenes.json"), encoding="utf-8") as f:
+        scenes = json.load(f)["scenes"]
+    out = {}
+    for e in scenes:
+        if e["module"].upper() in out.setdefault(e["script"].lower(), {}):
+            raise ValueError("scene %s/%s is listed twice" % (e["script"], e["module"]))
+        out[e["script"].lower()][e["module"].upper()] = e
+    return out
+
+
+def scene_lines(name, module, indent):
+    """The lines of the scene check of script `name` in `module` (none when the script has no scene there)."""
+    entry = scene_table().get(name, {}).get(module.upper())
+    if entry is None:
+        return []
+    if entry.get("mode") == "unlock":                                                      # unlock: a door that fails to open is unlocked and opened; the original does not run
+        test = "if (K2AP_SceneUnlockDoor()) return TRUE;"
+        body = ["if (%s)" % entry["when"], "{", "    " + test, "}"] if entry.get("when") else [test]
+        return [indent + b for b in body]
+    mask = sum(1 << int(slot) for slot in entry["slots"])
+    check = "K2AP_SceneLend" if entry.get("mode") == "lend" else "K2AP_SceneEnsure"       # lend: the scene's own script brings the companions in
+    body = ['K2AP_Trace("%s", "scene: companions needed (mask %d)");' % (name, mask), "%s(%d);" % (check, mask)]
+    if entry.get("mode") == "stage":                                                       # stage: the actor the area lacks is made from the party template
+        body = ['K2AP_Trace("%s", "scene: actor needed (slot %d)");' % (name, int(entry["slots"][0])),
+                "K2AP_SceneStage(%d, %.2f, %.2f, %.2f, %.2f);" % (int(entry["slots"][0]), entry["x"], entry["y"], entry["z"], entry["facing"])]
+        if "reset_flag" in entry:                                                          # a local boolean of the script's owner that marks the scene as played: cleared once
+            body.append("K2AP_SceneReset(%d, %d);" % (int(entry["reset_flag"]), int(entry["marker"])))
+    if entry.get("mode") == "ring":                                                        # ring: the duel ring's opponent is put at the ring after the fight start
+        body = ['K2AP_Trace("%s", "scene: duel ring opponent check");' % name, "K2AP_SceneRing();"]
+    body += ["K2AP_SceneEnsureAgain(%d, %.2f);" % (mask, float(d)) for d in entry.get("again", [])]
+    if entry.get("when"):
+        body = ["if (%s)" % entry["when"], "{"] + ["    " + b for b in body] + ["}"]
+    return [indent + b for b in body]
+
+
+def scene_source(name, modules):
+    """The check of a script that only carries a scene (an int script; always FALSE: the original always runs)."""
+    lines = ["// generated by tools/build_gate_wrappers.py -- companion scene check for %s (the original always runs)" % name, '#include "k2ap_gate"', '#include "k2ap_scene"', "",
+             "int StartingConditional()", "{", "    string sMod = GetStringLowerCase(GetModuleName());"]
+    for module in sorted(modules):
+        lines += ['    if (sMod == "%s")' % module.lower(), "    {"] + scene_lines(name, module, "        ") + ["        return FALSE;", "    }"]
+    lines += ["    return FALSE;", "}", ""]
+    return "\n".join(lines)
+
+
+def wrapper_source(name, gated, variants=None, default=None):
+    """The gate check of script `name` as an int script (nss): TRUE = the gate is held and the original must not run. gated: {module: gate id}. `variants`/`default`
+    are not needed any more (which original runs is decided by tools/ncs_merge.py) and are accepted only for the callers that still pass them."""
     gates = gate_table()
-    by_module = {}
-    for orig, mods in variants:
-        for m in mods:
-            by_module[m.lower()] = orig
-    lines = ["// generated by tools/build_gate_wrappers.py -- story gate wrapper for %s" % name, '#include "k2ap_gate"', "", "void main()", "{",
+    lines = ["// generated by tools/build_gate_wrappers.py -- story gate check for %s (TRUE = held back)" % name, '#include "k2ap_gate"'] + (
+        ['#include "k2ap_scene"'] if scene_table().get(name) else []) + ["", "int StartingConditional()", "{",
              "    string sMod = GetStringLowerCase(GetModuleName());"]
     for module, entry in sorted(gated.items()):
         gate_id, when, cleanup = (tuple(entry) + (None, None))[:3] if isinstance(entry, tuple) else (entry, None, None)
         g = gates[gate_id]
-        orig = by_module.get(module.lower(), default)
         test = '!K2AP_GateOpen("%s", "%s", "%s", %d)' % (gate_id, FAMILY_KEY[g["family"]], g["family"], g["tokens_needed"])
         body = ['K2AP_Trace("%s", "reached, gate %s");' % (name, gate_id),
-                'if (%s) { K2AP_Trace("%s", "held back by %s"); %sreturn; }' % (test, name, gate_id, (cleanup + " ") if cleanup else ""),
+                'if (%s) { K2AP_Trace("%s", "held back by %s"); %sreturn TRUE; }' % (test, name, gate_id, (cleanup + " ") if cleanup else ""),
                 'K2AP_Trace("%s", "gate %s open, running the original");' % (name, gate_id)]
         lines += ['    if (sMod == "%s")' % module.lower(), "    {"]
         if when:
             lines += ["        if (%s)" % when, "        {"] + ["            " + b for b in body] + ["        }"]
         else:
             lines += ["        " + b for b in body]
-        lines += ['        ExecuteScript("%s", OBJECT_SELF);' % orig, "        return;", "    }"]
-    for module, orig in sorted(by_module.items()):
-        if module in {m.lower() for m in gated}:
-            continue
-        if orig != default:
-            lines.append('    if (sMod == "%s") { ExecuteScript("%s", OBJECT_SELF); return; }' % (module, orig))
-    if default:
-        lines.append('    ExecuteScript("%s", OBJECT_SELF);' % default)
-    lines += ["}", ""]
+        lines += scene_lines(name, module, "        ")
+        lines += ["        return FALSE;", "    }"]
+    lines += ["    return FALSE;", "}", ""]
     return "\n".join(lines)
 
 
-def replace_source(name, bodies, variants, default, conds=None):
-    """bodies: {module: code}. In that module the code runs instead of the script when the condition holds (the seed skips turrets, or conds[module]);
-    otherwise (and in every other module) the module's original runs."""
-    by_module = {}
-    for orig, mods in variants:
-        for m in mods:
-            by_module[m.lower()] = orig
-    lines = ["// generated by tools/build_gate_wrappers.py -- %s: replaced in one module while a condition holds" % name, '#include "k2ap_gate"', "",
-             "void main()", "{", "    string sMod = GetStringLowerCase(GetModuleName());"]
+def replace_source(name, bodies, variants=None, default=None, conds=None):
+    """The check of script `name` as an int script: TRUE = the original must not run because the code here ran instead. bodies: {module: code}. In that module the code
+    runs instead of the script when the condition holds (the seed skips turrets, or conds[module]); otherwise (and in every other module) the module's original runs."""
+    lines = ["// generated by tools/build_gate_wrappers.py -- %s: replaced in one module while a condition holds (TRUE = replaced)" % name, '#include "k2ap_gate"', "",
+             "int StartingConditional()", "{", "    string sMod = GetStringLowerCase(GetModuleName());"]
     for module, code in sorted(bodies.items()):
-        orig = by_module.get(module.lower(), default)
         cond = (conds or {}).get(module, "K2AP_SkipTurrets()")
-        lines.append('    if (sMod == "%s" && (%s)) { K2AP_Trace("%s", "replaced: %s"); %s return; }' % (
-            module.lower(), cond, name, "held" if conds else "turret sequence skipped", code.replace("{orig}", orig or "")))
-    for module, orig in sorted(by_module.items()):
-        if orig != default:
-            lines.append('    if (sMod == "%s") { ExecuteScript("%s", OBJECT_SELF); return; }' % (module, orig))
-    if default:
-        lines.append('    ExecuteScript("%s", OBJECT_SELF);' % default)
-    lines += ["}", ""]
+        lines.append('    if (sMod == "%s" && (%s)) { K2AP_Trace("%s", "replaced: %s"); %s return TRUE; }' % (
+            module.lower(), cond, name, "held" if conds else "turret sequence skipped", code))
+    lines += ["    return FALSE;", "}", ""]
     return "\n".join(lines)
 
 
-def guard_source(name, variants, default):
-    """Runs the module's original, then brings the progression tokens back from the lockers."""
+def guard_source(name, variants=None, default=None):
+    """What runs after the module's original: the progression tokens come back from the lockers (a void script)."""
     lines = ["// generated by tools/build_gate_wrappers.py -- %s, followed by the return of the progression tokens" % name, '#include "k2ap_gate"', "",
-             "void main()", "{", "    string sMod = GetStringLowerCase(GetModuleName());"]
-    for orig, mods in variants:
-        if orig == default:
-            continue
-        for m in mods:
-            lines.append('    if (sMod == "%s") ExecuteScript("%s", OBJECT_SELF);' % (m.lower(), orig))
-    if default:
-        others = " && ".join('sMod != "%s"' % m.lower() for orig, mods in variants if orig != default for m in mods)
-        lines.append("    %sExecuteScript(\"%s\", OBJECT_SELF);" % ("if (%s) " % others if others else "", default))
-    lines += ["    int nBack = K2AP_TokensFromLockers();", '    K2AP_Trace("%s", "original run; tokens returned from the lockers: " + IntToString(nBack));' % name, "}", ""]
+             "void main()", "{",
+             "    int nBack = K2AP_TokensFromLockers();", '    K2AP_Trace("%s", "original run; tokens returned from the lockers: " + IntToString(nBack));' % name, "}", ""]
     return "\n".join(lines)
 
 
@@ -171,6 +199,33 @@ def collect(name):
                 bodies.setdefault(hashlib.sha1(data).hexdigest(), (data, []))[1].append(base)
     res = tsl_data.inst().resource(name, ResourceType.NCS, [tsl_data.SearchLocation.CHITIN])
     return bodies, (res.data if res is not None else None)
+
+
+def build_spells(parts, staging, dry_run):
+    """The SPELLS scripts: the check joined in front of the game's own compiled script (from the base archives; a mod's copy in Override is not read). Returns the number of problems."""
+    import build_area_wrappers as AW
+    import ncs_merge
+    problems = 0
+    for name, check in sorted(SPELLS.items()):
+        _, shared = collect(name)
+        print("%-16s check %-12s original %s" % (name, check, "found" if shared is not None else "MISSING"))
+        if shared is None:
+            print("  PROBLEM: the game has no %s" % name)
+            problems += 1
+            continue
+        if dry_run:
+            continue
+        try:
+            with open(os.path.join(ROOT, "nss", check + ".nss"), encoding="utf-8") as f:
+                pre = AW.compile_source(parts, check, f.read())
+            data = ncs_merge.merge([(shared, None)], pre=pre)
+        except (RuntimeError, ncs_merge.MergeError) as e:
+            print("  PROBLEM: %s: %s" % (name, e))
+            problems += 1
+            continue
+        with open(os.path.join(staging, name + ".ncs"), "wb") as f:
+            f.write(data)
+    return problems
 
 
 def main():
@@ -200,52 +255,67 @@ def main():
             + [(name, {m: None for m in mods}, "guard") for name, mods in sorted(GUARDED.items())]
             + [(name, bodies, "replace") for name, bodies in sorted(TURRETS.items())]
             + [(name, {m: "" for m in conds}, "hold") for name, conds in sorted(HOLD.items())])
+    other = {n for n, _, _ in work}
+    for name, modules in sorted(scene_table().items()):
+        modules = {m: e for m, e in modules.items() if not e.get("area")}                 # an area entry script's scene is joined by build_area_wrappers.py
+        if not modules:
+            continue
+        if name in other:
+            if name not in GATED:
+                raise ValueError("scene script %s is also a guard/replace/hold script: not supported" % name)
+            missing_modules = set(modules) - {m.upper() for m in GATED[name]}
+            if missing_modules:
+                raise ValueError("scene script %s has scenes in %s, which its gate does not cover" % (name, ", ".join(sorted(missing_modules))))
+        else:
+            work.append((name, {m: None for m in modules}, "scene"))
+    import build_area_wrappers as AW
+    import ncs_merge
+    parts = os.path.join(STAGING, "_parts")                     # the check scripts and the module pickers: parts of the result, not files for Override
+    k2compile.prepare_include_dir(parts, os.environ.get("K2_GAME_DIR", tsl_data.GAME))
     for name, gated, kind in work:
         bodies, shared = collect(name)
         # the shared (archive) copy is the default for modules that carry no copy of their own
-        variants, default = [], None
         distinct = {}
         for h, (data, mods) in bodies.items():
             distinct[h] = (data, list(mods))
+        default_hash = None
         if shared is not None:
-            h = hashlib.sha1(shared).hexdigest()
-            distinct.setdefault(h, (shared, []))
+            default_hash = hashlib.sha1(shared).hexdigest()
+            distinct.setdefault(default_hash, (shared, []))
         order = sorted(distinct)
-        for i, h in enumerate(order):
-            data, mods = distinct[h]
-            orig = name + "_orig" if len(order) == 1 else "%s_orig_%d" % (name, i + 1)
-            variants.append((orig, mods))
-            if shared is not None and h == hashlib.sha1(shared).hexdigest():
-                default = orig
-            if not a.dry_run:
-                with open(os.path.join(STAGING, orig + ".ncs"), "wb") as f:
-                    f.write(data)
-        missing = [m for m in gated if not any(m in mods for _, mods in variants) and default is None]
-        print("%-16s gated %-22s %d original(s), default %s%s" % (name, ",".join(sorted(gated)), len(variants), default,
+        print("%-16s gated %-22s %d original(s), default %s%s" % (name, ",".join(sorted(gated)), len(order), "yes" if default_hash else "none",
                                                               "  [takes script parameters]" if name in PARAM_SCRIPTS else ""))
+        missing = [m for m in gated if not any(m in distinct[h][1] for h in order) and default_hash is None]
         if missing:
             print("  PROBLEM: no original found for %s" % ",".join(missing))
             problems += 1
             continue
         if a.dry_run:
             continue
-        src = os.path.join(STAGING, name + ".nss")
-        with open(src, "w", newline="\n") as f:
+        try:
+            chain = [(distinct[h][0], distinct[h][1]) for h in order if h != default_hash]
+            members = []
+            for i, (data, mods) in enumerate(chain):
+                members.append((data, AW.compile_source(parts, "%s__pick%d" % (name, i + 1), AW.picker_source(mods))))
+            if default_hash is not None:
+                members.append((distinct[default_hash][0], None))
+            pre = post = None
             if kind == "guard":
-                f.write(guard_source(name, variants, default))
-            elif kind == "replace":
-                f.write(replace_source(name, gated, variants, default))
-            elif kind == "hold":
-                f.write(replace_source(name, gated, variants, default, HOLD[name]))
+                post = AW.compile_source(parts, name + "__post", guard_source(name))
+            elif kind == "scene":
+                pre = AW.compile_source(parts, name + "__pre", scene_source(name, gated))
+            elif kind in ("replace", "hold"):
+                pre = AW.compile_source(parts, name + "__pre", replace_source(name, gated, None, None, HOLD[name] if kind == "hold" else None))
             else:
-                f.write(wrapper_source(name, gated, variants, default))
-        ncs = os.path.join(STAGING, name + ".ncs")
-        if os.path.exists(ncs):
-            os.remove(ncs)
-        ok, message = k2compile.compile_script(STAGING, name)
-        if not ok:
-            print("  PROBLEM: %s did not compile:\n%s" % (name, message[-1200:]))
+                pre = AW.compile_source(parts, name + "__pre", wrapper_source(name, gated))
+            data = ncs_merge.merge(members, pre=pre, post=post)
+        except (RuntimeError, ncs_merge.MergeError) as e:
+            print("  PROBLEM: %s: %s" % (name, e))
             problems += 1
+            continue
+        with open(os.path.join(STAGING, name + ".ncs"), "wb") as f:
+            f.write(data)
+    problems += build_spells(parts, STAGING, a.dry_run)
     print("%d problem(s); output in %s" % (problems, STAGING))
     return 1 if problems else 0
 

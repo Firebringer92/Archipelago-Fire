@@ -16,7 +16,7 @@ R = os.path.join(ROOT, "research", "enemies")
 # Modules that get no extra creatures: story set pieces where scripted fights, waves or cutscene states would be disturbed (the yacht fight, Vash's duel, the two
 # vision modules, the Nihilus fight and the Malachor proving ground). The research marks all of them as combat modules; this list is a project decision.
 GENERIC_SPAWN = {"k_def_spawn01", "k_def_spn_t_none", "k_def_spn_t_drd", "k_def_spn_t_jedi", "k_def_grenspn"}
-EXCLUDED_MODULES = ["351NAR", "702KOR", "710KOR", "711KOR", "852NIH", "906MAL"]
+EXCLUDED_MODULES = ["305NAR", "351NAR", "702KOR", "710KOR", "711KOR", "852NIH", "906MAL"]      # 305NAR: its pit is the arena of the Hanharr/Mira encounter
 # Creature templates that are never drawn: found in a live test to look unfinished. n_swoopgang (appearance Swoop_Gang_01) is shown as an untextured white figure.
 # Add a template here when a live test shows one that looks or behaves unfinished; the pool is rebuilt without it.
 EXCLUDED_TEMPLATES = {"n_swoopgang"}
@@ -34,7 +34,7 @@ def main() -> int:
         if module in EXCLUDED_MODULES or not points[module]:
             continue
         b = bands[module]
-        modules[module] = {"cr_min": b["cr_min"], "cr_max": b["cr_max"], "cr_cap": b["cr_max_nonboss"], "category": b["dominant_category"] or "",
+        modules[module] = {"cr_min": b["cr_min"], "cr_max": b["cr_max"], "cr_cap": b["cr_max_nonboss"], "cr_avg": round(b["cr_avg"], 2), "category": b["dominant_category"] or "",
                            "points": [[p["x"], p["y"], p["z"]] for p in points[module]]}
     pool = {}
     # The 38 creatures of the research's extended pool whose only problem was a designer tag in the name ({Male 2}, {Replacement 1}, ...): the ones that run only the

@@ -1,0 +1,182 @@
+{
+  "_about": "Story scenes that need a companion standing in the party. Each entry joins a check onto the game's own script (tools/build_gate_wrappers.py, nss/k2ap_scene.nss): before the scene's dialogue starts, every listed slot that is not in the party is brought in (made available first when the story never recruited them). They are lent for the scene (the hiding pass leaves them alone) and the loan ends at the first calm moment after it, when the hiding pass removes them again. Slots: 0 Atton, 1 Bao-Dur, 2 Mandalore, 3 G0-T0, 4 Handmaiden, 5 HK-47, 6 Kreia, 7 Mira, 8 T3-M4, 9 Visas, 10 Hanharr, 11 Disciple. 'when' limits the check to the entering party leader; 'mode' lend (optional) lends the companions without adding them to the party, for a scene whose own script spawns them; 'mode' stage (with x, y, z, facing and 'area': the script is an area entry script, which tools/build_area_wrappers.py joins) makes the actor from the party template when the area lacks one; 'mode' ring (403DXN's a_circle_fight) puts the duel ring's current opponent at the ring a moment after the fight start; 'again' (optional) lists delays in seconds at which the check is repeated. The candidates come from research/companion_scenes (scan_scenes.py): hard = every way through the dialogue passes a line of that speaker. 'mode' unlock (a_compdlg in the Peragus modules, shortened_peragus only): a door whose OnFailToOpen is a_compdlg is unlocked and opened and the original does not run.",
+  "scenes": [
+    {
+      "script": "a_mercctalk",
+      "module": "233TEL",
+      "slots": [
+        1
+      ],
+      "when": "GetEnteringObject() == GetPartyLeader()",
+      "why": "dialogue 233mrcc: Bao-Dur speaks lines 1-3 and its last node (a_mercattack) is what makes the mercenaries hostile; the script fades out and starts the dialogue one second later, so the companion is lent (unlock bit) for the scene"
+    },
+    {
+      "script": "tr_baodurpad",
+      "module": "233TEL",
+      "slots": [
+        1
+      ],
+      "when": "GetIsPartyLeader(GetEnteringObject())",
+      "why": "dialogue 233bdur at the landing pad: Bao-Dur speaks 24 of its 28 lines"
+    },
+    {
+      "script": "tr_checknetwork",
+      "module": "233TEL",
+      "slots": [
+        1
+      ],
+      "when": "GetIsPartyLeader(GetEnteringObject())",
+      "why": "dialogue 233bdur again (the shield network check): same scene, second trigger"
+    },
+    {
+      "script": "a_compdlg",
+      "module": "232TEL",
+      "slots": [
+        1
+      ],
+      "when": "GetTag(OBJECT_SELF) == \"TelosDoor2\" || GetTag(OBJECT_SELF) == \"TelosDoorFirst\"",
+      "why": "232TEL force fields: the door's dialogue (ffield_1 for the first one, ffield for the other eight) offers Bao-Dur's fist (c_con_baodurpm tests IsNPCPartyMember and his distance); only his melee attack opens them (a_ffield_baodur). Without a lightsaber and with him hidden the doors cannot be opened (HG-232TEL-FORCEFIELDS in COMPANION_NEEDS.md). a_compdlg is the generic locked-door script; only these two door tags get the check"
+    },
+    {
+      "script": "a_ffield_baodur",
+      "module": "232TEL",
+      "slots": [
+        1
+      ],
+      "when": "GetLastAttacker() == GetPartyLeader()",
+      "why": "232TEL force-field doors, when the party leader attacks one: the original opens the door only for Bao-Dur's own attack and starts his dialogue only when he is in the party and near; the check brings him in first"
+    },
+    {
+      "script": "k_301_ref3",
+      "module": "301NAR",
+      "slots": [
+        6
+      ],
+      "mode": "lend",
+      "when": "GetEnteringObject() == GetPartyLeader()",
+      "why": "301NAR landing pad, the beggar scene (dialogue refugee3: Kreia speaks 46 of its 58 lines). The script spawns Kreia itself (SpawnAvailableNPC at wp_kreia) when she is available, so she is only lent, so that the hiding pass does not take her away before the dialogue starts"
+    },
+    {
+      "script": "k_301_enter",
+      "module": "301NAR",
+      "slots": [
+        4,
+        6,
+        9,
+        11
+      ],
+      "mode": "lend",
+      "when": "GetEnteringObject() == GetFirstPC()",
+      "why": "301NAR landing pad, the arrival scene (dialogue arrival: Kreia, Visas, the Disciple and the Handmaiden speak). The script spawns the available companions itself at the WP_gspawn_ waypoints, so they are only lent"
+    },
+    {
+      "script": "k_305_intro",
+      "module": "305NAR",
+      "slots": [
+        7
+      ],
+      "mode": "stage",
+      "area": true,
+      "x": -39.78,
+      "y": -3.34,
+      "z": -1.97,
+      "facing": 191.5,
+      "when": "GetEnteringObject() == GetFirstPC()",
+      "why": "305NAR entry script (the Jekk'Jekk Tarr tunnels): the placed Mira (p_mira, at her cell) is missing from the area when Mira is available but hidden (seen in a saved game: Hanharr and Visquis present, no Mira), so the opening scene and the 305han2 conversation run without her and the switch into her body never comes. The actor is made from her party template at the story's own spot before the original runs; the original then arranges her as usual"
+    },
+    {
+      "script": "a_compdlg",
+      "module": "305NAR",
+      "slots": [
+        7
+      ],
+      "mode": "stage",
+      "x": -39.78,
+      "y": -3.34,
+      "z": -1.97,
+      "facing": 191.5,
+      "when": "GetTag(OBJECT_SELF) == \"HighSecurityDoorInterior\"",
+      "why": "305NAR vent door (HighSecurityDoorInterior, where the player stands after the opening scene): its conversation 305han2 offers the cut scene (node 1 on: Visquis, Hanharr and Mira, ending in a_switchpc / a_305switch, the switch into Mira) only while the door's local boolean 10 is not set (c_talkedto), and the cut scene's first reply sets it (a_talktrue). A cut scene that stopped half way (no Mira actor in the area) left it set, so the door showed only its description for good. The check clears the flag once per door (boolean 50 records that) and makes the Mira actor at her cell when the area has none",
+      "reset_flag": 10,
+      "marker": 50
+    },
+    {
+      "script": "k_501_enter",
+      "module": "501OND",
+      "slots": [
+        2
+      ],
+      "mode": "stage",
+      "area": true,
+      "x": 7.6,
+      "y": 95.2,
+      "z": 12.76,
+      "facing": 214.5,
+      "when": "GetEnteringObject() == GetFirstPC() && GetGlobalNumber(\"502OND_End_First\") == 2 && !GetLocalBoolean(GetObjectByTag(\"fake_mand\", 0), 50)",
+      "why": "501OND entry script (the Onderon spaceport): when the player comes back from the cantina (502OND_End_First is 2) it starts the end_mand conversation (Mandalore speaks both lines) and writes escape_merchant stage 90, but only when an object tagged mand is in the area, which is Mandalore in the party. With him hidden the whole branch is skipped and the stage (the check 'Escape from the Merchant Quarter') is never written. The check makes him from his party template next to the entry from the cantina (the game's from-502OND waypoint, 3.4 / 92.3) before the original runs; nothing is added to the party. It runs only while the game's own flag on fake_mand (local boolean 50, set when the scene starts) is not yet set, so the scene's actor is not made twice"
+    },
+    {
+      "script": "k_403_enter",
+      "module": "403DXN",
+      "slots": [
+        2
+      ],
+      "mode": "stage",
+      "area": true,
+      "x": 27.15,
+      "y": 156.04,
+      "z": 25.16,
+      "facing": 233.9,
+      "when": "GetEnteringObject() == GetFirstPC() && GetGlobalNumber(\"502OND_End_First\") > 0 && !GetLocalBoolean(GetObjectByTag(\"From_402DXN\", 0), 53)",
+      "why": "403DXN entry script, the return from Onderon (502OND_End_First above 0): on that first entry it sets a flag on From_402DXN (local boolean 53, set once and never again) and starts the conversation mand_cs2 (Mandalore: 'We're back', the Sith, going with you) from the object tagged mand, which is Mandalore in the party. With him hidden no such object exists, the conversation never starts, the flag is used up and the later Kelborn / Kavar message steps (403DXN_Second_Visit, master_palace 60 and on) never get their start (a tester stood at the shuttle waiting for something to trigger). The check makes him from his party template next to the shuttle arrival (the game's own wp_mcs1_mand spot) before the original runs; nothing is added to the party. It runs only while the game's flag 53 is not set"
+    },
+    {
+      "script": "a_circle_fight",
+      "module": "403DXN",
+      "slots": [],
+      "mode": "ring",
+      "why": "403DXN Mandalorian duel ring: the game's own fight start (a_circle_fight) is meant to send the current opponent to wp_circle_enemy; a played game showed the second opponent, Kex, staying at the camp (npc_kex at -62, 50 while the ring is at y 120 to 134), so the duel could not begin. A moment after the fight start the check puts the opponent at that spot when he is far from it (nss/k2ap_scene.nss K2AP_RingOpponent)"
+    },
+    {
+      "script": "a_spawnhk50",
+      "module": "101PER",
+      "slots": [
+        6
+      ],
+      "when": "GetGlobalNumber(\"101PER_Sion_Arrives\") != 0 && GetGlobalNumber(\"101PER_HK50_Spawned\") != 1",
+      "why": "101PER, the HK-50 scene (conversation hk50, where Atton joins the party and the droid confesses): the scene needs the objects Atton and Kreia to be in the area. With the companions hidden (ap_gated, her item not received) the hiding pass took Kreia back to the Ebon Hawk at the first calm moment after she joined (seen in a played game: CH|2 right after R|6), so the scene never ran, Atton was never recruited and Medical Bay Murders stayed at stage 10. The check brings Kreia back before the droid is made. Atton is not added: the scene recruits him itself (hk50 R19, a_addatton). Runs only until the scene has started (101PER_HK50_Spawned)"
+    },
+    {
+      "script": "a_compdlg",
+      "module": "101PER",
+      "slots": [],
+      "mode": "unlock",
+      "when": "GetObjectType(OBJECT_SELF) == OBJECT_TYPE_DOOR",
+      "why": "Shortened Peragus: the area's own scripts lock some doors again on entry and the hangar's two traffic doors open only through a console puzzle the condensed opening skips (the console's own scripts a_op106eastdr and a_op106westdr just unlock and open the door), so a player can be shut in. a_compdlg is the door's OnFailToOpen script; when a door of this module fails to open the check unlocks it and opens it, and the original (the 'slice the terminal' message) does not run (nss/k2ap_scene.nss K2AP_SceneUnlockDoor). Only with shortened_peragus; every other game runs the original"
+    },
+    {
+      "script": "a_compdlg",
+      "module": "103PER",
+      "slots": [],
+      "mode": "unlock",
+      "when": "GetObjectType(OBJECT_SELF) == OBJECT_TYPE_DOOR",
+      "why": "Shortened Peragus: the area's own scripts lock some doors again on entry and the hangar's two traffic doors open only through a console puzzle the condensed opening skips (the console's own scripts a_op106eastdr and a_op106westdr just unlock and open the door), so a player can be shut in. a_compdlg is the door's OnFailToOpen script; when a door of this module fails to open the check unlocks it and opens it, and the original (the 'slice the terminal' message) does not run (nss/k2ap_scene.nss K2AP_SceneUnlockDoor). Only with shortened_peragus; every other game runs the original"
+    },
+    {
+      "script": "a_compdlg",
+      "module": "105PER",
+      "slots": [],
+      "mode": "unlock",
+      "when": "GetObjectType(OBJECT_SELF) == OBJECT_TYPE_DOOR",
+      "why": "Shortened Peragus: the area's own scripts lock some doors again on entry and the hangar's two traffic doors open only through a console puzzle the condensed opening skips (the console's own scripts a_op106eastdr and a_op106westdr just unlock and open the door), so a player can be shut in. a_compdlg is the door's OnFailToOpen script; when a door of this module fails to open the check unlocks it and opens it, and the original (the 'slice the terminal' message) does not run (nss/k2ap_scene.nss K2AP_SceneUnlockDoor). Only with shortened_peragus; every other game runs the original"
+    },
+    {
+      "script": "a_compdlg",
+      "module": "106PER",
+      "slots": [],
+      "mode": "unlock",
+      "when": "GetObjectType(OBJECT_SELF) == OBJECT_TYPE_DOOR",
+      "why": "Shortened Peragus: the area's own scripts lock some doors again on entry and the hangar's two traffic doors open only through a console puzzle the condensed opening skips (the console's own scripts a_op106eastdr and a_op106westdr just unlock and open the door), so a player can be shut in. a_compdlg is the door's OnFailToOpen script; when a door of this module fails to open the check unlocks it and opens it, and the original (the 'slice the terminal' message) does not run (nss/k2ap_scene.nss K2AP_SceneUnlockDoor). Only with shortened_peragus; every other game runs the original"
+    }
+  ]
+}

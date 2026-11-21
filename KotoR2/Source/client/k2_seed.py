@@ -60,7 +60,6 @@ ROWS: typing.Tuple[typing.Tuple[str, typing.Callable[[dict], int]], ...] = (
     ("EXPERIENCE_MODE", _opt("experience_mode")),
     ("CREDIT_MODE", _opt("credit_mode")),
     ("BAZAAR", _opt("bazaar", 1)),
-    ("QUEST_ITEM_CHECKS", _opt("quest_item_checks", 1)),
     ("AREA_VISIT_CHECKS", _opt("area_visit_checks", 1)),
     ("ALIGNMENT_CHECKS", _opt("alignment_checks", 1)),
     ("CRAFTING_MODE", _opt("crafting_mode")),

@@ -86,14 +86,14 @@ void main()
     int nPrice = VdPrice(nCat, nItem);
     if (nCat == 0)
     {
-        int nRank = K2SE_GetSkillRankBase(oPC, nItem);
-        if (nRank < 0 || K2SE_SetSkillRank(oPC, nItem, nRank + 1) != 1) return;
+        if (!K2AP_RaiseSkill(oPC, nItem)) return;
+        K2AP_RaisePartyMembers(oPC, 0, nItem);                    // the companions in the party get the rank too (nss/k2ap_party.nss)
         CreateItemOnObject("ap_vd_skill", oPC, 1);
     }
     else if (nCat == 1)
     {
-        int nScore = K2SE_GetAbilityScoreBase(oPC, nItem);
-        if (nScore < 0 || K2SE_SetAbilityScoreBase(oPC, nItem, nScore + 1) != 1) return;
+        if (!K2AP_RaiseAbility(oPC, nItem)) return;
+        K2AP_RaisePartyMembers(oPC, 1, nItem);
         CreateItemOnObject("ap_vd_abil", oPC, 1);
     }
     else if (nCat == 2)

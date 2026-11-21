@@ -32,6 +32,7 @@ int RB_OK_CHANGED = 1;
 int RB_PARTIAL = 2;          // converted, but some picks or powers could not be filled
 int RB_BAD_STATE = 3;        // class or level not what the caller said
 int RB_REFUSED = 4;          // a native refused (duplicate class, bad id, downgrade)
+int RB_STEP_DONE = 5;        // a phased run (K2SE_MemSet("rb_phase", 1..4)) did its step; the marker stays set for the next one
 
 // ------------------------------------------------------------------------------------------------ marker bits on the creature
 // Local booleans 0..63 (read back with != 0). Bits 32..58 hold the conversion marker so a crash between steps can be resumed:
@@ -47,7 +48,7 @@ int RB_B_HPBEFORE = 48;
 
 // ------------------------------------------------------------------------------------------------ where the marker lives
 // Bits 32..58 are the marker. On a companion they are local booleans. On the PLAYER booleans 32..50 hold the story-gate release flags (nss/k2se_disp.nss),
-// so the player's marker bits are kept in local numbers 1..4 (eight bits each) instead. Every marker access goes through these two functions.
+// so the player's marker bits are kept in local numbers 1..4 (seven bits each: a local number keeps only 0-127, see docs/LOCAL_VARIABLE_MAP.md) instead. Every marker access goes through these two functions.
 int RB_MPlayer(object oC)
 {
     return oC == GetFirstPC();
@@ -58,7 +59,7 @@ int RB_MGet(object oC, int n)
     if (n >= 32 && n <= 58 && RB_MPlayer(oC))
     {
         int b = n - 32;
-        return (GetLocalNumber(oC, 1 + b / 8) >> (b % 8)) & 1;
+        return (GetLocalNumber(oC, 1 + b / 7) >> (b % 7)) & 1;
     }
     return GetLocalBoolean(oC, n);
 }
@@ -68,11 +69,11 @@ void RB_MPut(object oC, int n, int v)
     if (n >= 32 && n <= 58 && RB_MPlayer(oC))
     {
         int b = n - 32;
-        int i = 1 + b / 8;
+        int i = 1 + b / 7;
         int nCur = GetLocalNumber(oC, i);
-        int nMask = 1 << (b % 8);
+        int nMask = 1 << (b % 7);
         if (v != 0) nCur = nCur | nMask;
-        else nCur = nCur & (255 - nMask);
+        else nCur = nCur & (127 - nMask);
         SetLocalNumber(oC, i, nCur);
         return;
     }
@@ -476,7 +477,7 @@ int RB_RepointSkills(object oC, int nNew, int nLevel)
         int bClass = StringToInt(GetSubString(sSk, s * 4, 1));
         int bDroidOk = StringToInt(GetSubString(sSk, s * 4 + 1, 1));
         int nRank = K2SE_GetSkillRankBase(oC, s);
-        int bDroidClass = (nNew == 6 || nNew == 7);
+        int bDroidClass = (nNew == 6 || nNew == 7 || nNew == 10);      // Combat, Expert and Battle Droid (client/k2_droid.py)
         if ((!bClass || (bDroidClass && !bDroidOk)) && nRank > 0)
         {
             nPool = nPool + nRank;
@@ -511,18 +512,39 @@ int RB_RebuildClass(object oC, int nNew, int nLevel, int nOld, int nOldLevel, in
 {
     int nPos = RB_FindPos(oC, nNew);
     if (nPos < 0 || GetLevelByPosition(nPos + 1, oC) != nLevel) return RB_BAD_STATE;
+    // A run is limited in how many instructions it may execute, and the whole rebuild of a droid conversion (the STRIP passes over every feat and power) does not fit in one
+    // (found live 2026-11-18: the first droid start stopped after the feat removal, with no result and no acknowledgement). The player's conversion therefore runs in four
+    // script runs, each with the budget of its own: K2SE_MemSet("rb_phase", "1") old feats removed, "2" powers removed, "3" feats granted, "4" picks, powers, equipment and the
+    // report. 0 (the default) runs everything at once, as the companions' conversions do. Every step is idempotent and the marker stays set until the last step.
+    int nPhase = StringToInt(K2SE_MemGet("rb_phase"));
     int nRemF = 0;
     int nRemP = 0;
-    if (nOld >= 0 && nOld != nNew)
+    int nAddF = 0;
+    if (nPhase == 0 || nPhase == 1)
     {
-        nRemF = RB_RemoveOldFeats(oC, nNew, nLevel, nOld, nOldLevel, nPos, nNpc, nMode);
+        if (nOld >= 0 && nOld != nNew)
+        {
+            nRemF = RB_RemoveOldFeats(oC, nNew, nLevel, nOld, nOldLevel, nPos, nNpc, nMode);
+        }
+        else if (nMode == RB_STRIP && !RB_IsForce(nNew))
+        {
+            nRemF = RB_RemoveOldFeats(oC, nNew, nLevel, nNew, 0, nPos, nNpc, nMode);   // old level 0: only the STRIP list applies
+        }
+        K2SE_Diag("RB", "phase 1 feats removed: " + IntToString(nRemF));
+        if (nPhase == 1) return RB_STEP_DONE;
     }
-    else if (nMode == RB_STRIP && !RB_IsForce(nNew))
+    if (nPhase == 0 || nPhase == 2)
     {
-        nRemF = RB_RemoveOldFeats(oC, nNew, nLevel, nNew, 0, nPos, nNpc, nMode);   // old level 0: only the STRIP list applies
+        nRemP = RB_RemovePowers(oC, nNew, nOld, nPos, nMode);
+        K2SE_Diag("RB", "phase 2 powers removed: " + IntToString(nRemP));
+        if (nPhase == 2) return RB_STEP_DONE;
     }
-    nRemP = RB_RemovePowers(oC, nNew, nOld, nPos, nMode);
-    int nAddF = RB_GrantFeats(oC, nNew, nLevel, nNpc);
+    if (nPhase == 0 || nPhase == 3)
+    {
+        nAddF = RB_GrantFeats(oC, nNew, nLevel, nNpc);
+        K2SE_Diag("RB", "phase 3 feats granted: " + IntToString(nAddF));
+        if (nPhase == 3) return RB_STEP_DONE;
+    }
     int nPick = RB_FillPicks(oC, nNew, nLevel, nNpc);
     int nAddP = RB_FillPowers(oC, nNew, nLevel, nSide);
     int nUnF = RB_PicksMissing(oC, nNpc);
@@ -568,7 +590,7 @@ int RB_Finish(object oC, int nNew, int nLevel, int nNpc)
     if (nMode != 0) nMode = RB_STRIP;
     int nSide = RB_SideFor(oC);
     int nRes = RB_RebuildClass(oC, nNew, nLevel, nOld, nOldLevel, nNpc, nMode, nSide);
-    if (nRes == RB_BAD_STATE) return nRes;
+    if (nRes == RB_BAD_STATE || nRes == RB_STEP_DONE) return nRes;
     // hit points: target = HP before the conversion + (new class sum - old class sum), each sum = level * (hit die + CON modifier).
     // Written once (the hp-done bit), so a resumed run cannot add it twice.
     if (RB_MGet(oC, RB_B_HPDONE) == 0)
@@ -591,7 +613,7 @@ int RB_Finish(object oC, int nNew, int nLevel, int nNpc)
 int RB_ConvertClass(object oC, int nPos, int nNewClass, int nLevel, int nNpc, int nMode)
 {
     if (!K2SE_IsPresent() || !GetIsObjectValid(oC)) return RB_REFUSED;
-    if (nNewClass < 0 || nNewClass > 16 || nNewClass == 10 || nLevel < 1 || nLevel > 50 || nPos < 0 || nPos > 2) return RB_REFUSED;
+    if (nNewClass < 0 || nNewClass > 16 || nLevel < 1 || nLevel > 50 || nPos < 0 || nPos > 2) return RB_REFUSED;
     int nCur = GetClassByPosition(nPos + 1, oC);
     int nCurLevel = GetLevelByPosition(nPos + 1, oC);
     if (nCur == CLASS_TYPE_INVALID) return RB_REFUSED;                       // an empty position takes AddMultiClass, not a swap
@@ -621,7 +643,7 @@ int RB_ConvertClass(object oC, int nPos, int nNewClass, int nLevel, int nNpc, in
 int RB_AddClass(object oC, int nClass, int nLevel, int nNpc, int nSide)
 {
     if (!K2SE_IsPresent() || !GetIsObjectValid(oC)) return RB_REFUSED;
-    if (nClass < 0 || nClass > 16 || nClass == 10 || nLevel < 1) return RB_REFUSED;
+    if (nClass < 0 || nClass > 16 || nLevel < 1) return RB_REFUSED;
     if (RB_FindPos(oC, nClass) >= 0) return RB_REFUSED;                       // already has it: use RB_RebuildClass for a top-up
     if (GetClassByPosition(3, oC) != CLASS_TYPE_INVALID) return RB_REFUSED;   // three classes is the engine's limit
     if (GetClassByPosition(2, oC) != CLASS_TYPE_INVALID && GetLevelByPosition(2, oC) == 0) return RB_REFUSED;   // a pending class is already waiting
@@ -672,7 +694,7 @@ int RB_SelfTest()
 // The caller runs  ExecuteScript("k2se_rb", oCompanion, nPack)  (synchronous: it returns after this script ends) and then reads the result
 // from local booleans 59..61 of the companion (RB_BitsGet(oC, 59, 3) = one of the result codes above; the full line is in k2se.log).
 //   nPack = kind + 4*class + 128*level + 8192*pos + 32768*mode + 65536*npc          (npc 15 = no companion data, 12 = the player)
-//   kind: 0 convert the class at position pos, 1 add a class, 2 resume an interrupted conversion, 3 self-test only
+//   kind: 0 convert the class at position pos, 1 add a class, 2 resume an interrupted conversion, 3 experience only (raise the XP to the total of `level`; class and levels stay)
 int RB_Pack(int nKind, int nClass, int nLevel, int nPos, int nMode, int nNpc)
 {
     return nKind + 4 * nClass + 128 * nLevel + 8192 * nPos + 32768 * nMode + 65536 * nNpc;
@@ -694,7 +716,13 @@ void main()
     if (nKind == 0) nRes = RB_ConvertClass(oC, nPos, nClass, nLevel, nNpc, nMode);
     else if (nKind == 1) nRes = RB_AddClass(oC, nClass, nLevel, nNpc, RB_SideFor(oC));
     else if (nKind == 2) nRes = RB_Resume(oC, nNpc);
-    else { RB_SelfTest(); nRes = RB_OK_NOCHANGE; }
+    else
+    {
+        // experience only: the companion keeps their class and levels, and the player takes the level-ups on the Level Up screen (stats, feats, powers by choice)
+        int nXp = RB_XpForLevel(nLevel);
+        if (nLevel >= 1 && GetXP(oC) < nXp) { SetXP(oC, nXp); nRes = RB_OK_CHANGED; }
+        else nRes = RB_OK_NOCHANGE;
+    }
     RB_BitsPut(oC, 59, 3, nRes);
     if (nPos == 3) RB_RepointSkills(oC, nClass, nLevel);      // never taken (pos is 0..2): keeps the optional skill step compiled in the size below
 }

@@ -28,12 +28,44 @@ def apply_item_list(root, stock: typing.Sequence[str]) -> bool:
     return True
 
 
-def shop_files(store, plan: dict) -> typing.Tuple[typing.Dict[str, bytes], typing.List[str]]:
-    """Edits the stores of the plan in their module files and returns ({Override file: bytes}, problems)."""
+# crafting_gated stores sell only these: the game's Components (compont_00001) and Chemicals (chem_00001) are free (Cost 0), so each gets a copy with a price; the tag and base item
+# stay, which is what the workbench and the chemical lab count. Prices are the Archipelago Vendor's smallest bundle rate (data/vendor.json: 10 for 300 credits).
+SUPPLY_ITEMS = {"ap_shpcomp": "compont_00001", "ap_shpchem": "chem_00001"}
+SUPPLY_PRICE = 30
+
+
+def supply_items(game_dir: str) -> typing.Tuple[typing.Dict[str, bytes], typing.List[str]]:
+    """({Override file: bytes}, problems): the two priced supply items, made from the player's own item templates."""
+    from pykotor.extract.installation import Installation, SearchLocation
+    from pykotor.resource.formats.gff import bytes_gff, read_gff
+    from pykotor.resource.type import ResourceType
+    inst = Installation(game_dir)
+    files: typing.Dict[str, bytes] = {}
+    problems: typing.List[str] = []
+    for new, source in SUPPLY_ITEMS.items():
+        res = inst.resource(source, ResourceType.UTI, [SearchLocation.CHITIN])
+        if res is None:
+            problems.append("the item %s was not found in the game files, so the shops cannot sell it" % source)
+            continue
+        gff = read_gff(res.data)
+        gff.root.set_uint32("Cost", SUPPLY_PRICE)
+        files[new + ".uti"] = bytes_gff(gff)
+    return files, problems
+
+
+def shop_files(store, plan: dict, game_dir: typing.Optional[str] = None) -> typing.Tuple[typing.Dict[str, bytes], typing.List[str]]:
+    """Edits the stores of the plan in their module files and returns ({Override file: bytes}, problems). With the plan's supplies_only the priced supply items are made too."""
     files: typing.Dict[str, bytes] = {}
     problems: typing.List[str] = []
     if not plan:
         return files, problems
+    if plan.get("supplies_only"):
+        if game_dir is None:
+            problems.append("the shops' crafting supplies were not made: the game folder was not given")
+        else:
+            made, supply_problems = supply_items(game_dir)
+            files.update(made)
+            problems += supply_problems
     for entry in plan.get("stores", []):
         module, utm = entry["module"], entry["utm"]
         if not store.exists(module, "_s"):

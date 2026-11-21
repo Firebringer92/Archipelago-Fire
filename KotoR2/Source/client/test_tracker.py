@@ -31,12 +31,48 @@ class TestTracker(unittest.TestCase):
         self.assertIn(BY_NAME["Alignment: Dark Side 10"] if False else BY_NAME["Alignment: Dark Side 20"], hit)
         self.assertIn(BY_NAME["Alignment: Fallen Jedi"], hit)
 
+    def test_landing_on_telos_gives_out_the_openings_checks(self):
+        t = Tracker(SPECS)
+        self.assertEqual(t.handle("V|102PER"), {BY_NAME["Visited: Peragus - Mining Tunnels"]})              # inside the opening only the visit itself counts
+        self.assertEqual(t.handle("V|003EBO") & {BY_NAME["Quest: Rescue FullName"], BY_NAME["Companion Recruited: Atton Rand"]}, set())      # the Ebon Hawk is not the landing
+        hit = t.handle("V|201TEL")                                                                          # Telos is
+        wanted = {"Visited: Peragus - Dormitories", "Visited: Peragus - Asteroid Exterior", "Visited: Peragus - Hangar Bay", "Visited: Harbinger - Engine Deck",
+                  "Quest: Rescue FullName", "Quest: Turbolift Lockdown", "Quest: Voiceprint Protocol", "Quest: Medical Bay Murders: Bonus Mission",
+                  "Companion Recruited: Atton Rand", "Companion Recruited: Kreia", "Companion Recruited: T3-M4"}
+        self.assertTrue({BY_NAME[n] for n in wanted} <= hit, wanted - {n for n in wanted if BY_NAME[n] in hit})
+        # what is not the opening's own stays untouched
+        for name in ("Quest: Crafting a Lightsaber", "Quest: Recent History: Bonus Mission", "Companion Recruited: Bao-Dur", "Companion Recruited: Mira",
+                     "Visited: Ebon Hawk - Interior [001EBO]", "Level 2"):
+            self.assertNotIn(BY_NAME[name], hit, name)
+        self.assertEqual(t.handle("V|202TEL") & hit, set())                                                 # only once
+
+    def test_the_sweep_can_be_switched_off(self):
+        t = Tracker(SPECS, opening_sweep=False)
+        t.handle("V|102PER")
+        self.assertEqual(t.handle("V|201TEL") & {BY_NAME["Companion Recruited: Atton Rand"], BY_NAME["Quest: Rescue FullName"]}, set())
+
+    def test_bounty_datapads_by_count(self):
+        ids = {n: BY_NAME["Bounty Datapad #%d" % n] for n in range(1, 41)}
+        self.assertEqual(self.t.handle("BC|3"), {ids[1], ids[2], ids[3]})
+        self.assertEqual(self.t.handle("BC|3"), set())                 # only once
+        self.assertEqual(self.t.handle("BC|5"), {ids[4], ids[5]})
+        self.assertEqual(self.t.handle("BC|2"), set())                 # a lower count (a save loaded) fires nothing and takes nothing back
+        self.assertEqual(self.t.handle("BC|x"), set())                 # a bad line is ignored
+
     def test_quest_by_stage(self):
         qid = BY_NAME["Quest: Arrested!"]
         spec = SPECS[qid]
         low = self.t.handle("Q|%s=%d" % (spec["journal_tag"], max(0, spec["target"] - 1)))
         self.assertNotIn(qid, low)
         self.assertIn(qid, self.t.handle("Q|%s=%d" % (spec["journal_tag"], spec["target"])))
+
+    def test_additional_quest_checks_fire_with_their_quest(self):
+        def line(name):
+            spec = SPECS[BY_NAME[name]]
+            return "Q|%s=%d" % (spec["journal_tag"], spec["target"])
+        side = self.t.handle(line("Quest: Cave Crawling"))
+        self.assertEqual(side, {BY_NAME["Quest: Cave Crawling"]} | {BY_NAME["Additional Quest Check: Cave Crawling #%d" % n] for n in (1, 2, 3)})   # all three extras fire
+        self.assertEqual(self.t.handle(line("Quest: Cave Crawling")), set())                                                           # only once
 
     def test_influence_pair_fires_both(self):
         hit = self.t.handle("I|7=80")                  # Mira 80

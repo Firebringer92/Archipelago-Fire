@@ -45,6 +45,24 @@ def unlock(root) -> bool:
     return changed
 
 
+PERAGUS_MODULES = ("101PER", "102PER", "103PER", "104PER", "105PER", "106PER", "107PER")
+
+
+def peragus_unlock(store) -> typing.Tuple[int, typing.List[str]]:
+    """Shortened Peragus: every door template of the Peragus modules is made unlocked and keyless. Their locks wait for story steps the shortened opening skips (the hangar
+    terminal that opens the way to the Ebon Hawk, the lockdown), so a player could be trapped. Returns (door templates changed, problems)."""
+    problems: typing.List[str] = []
+    changed = 0
+    for module in PERAGUS_MODULES:
+        if not store.exists(module, "_s"):
+            continue
+        try:
+            changed += store.edit_resources(module, ("utd",), lambda resref, ext, root: unlock(root), "_s")
+        except Exception as e:
+            problems.append("shortened Peragus: the doors of %s could not be unlocked (%s)" % (module, e))
+    return changed, problems
+
+
 def door_files(store, plan: dict) -> typing.Tuple[int, typing.List[str]]:
     """Re-links the doors of the plan and unlocks the re-linked doors' templates. Returns (links written, problems)."""
     problems: typing.List[str] = []

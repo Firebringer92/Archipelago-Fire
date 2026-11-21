@@ -18,6 +18,8 @@
     {"glob": "Docs/*.md", "origin": "authored: project documentation (a document that quotes the game's text must be reviewed by a person before it is added)"},
     {"glob": "Docs/*.yaml", "origin": "authored: the player YAML templates"},
     {"glob": "Source/client/*.py", "origin": "authored: the Archipelago client (AI-assisted, human-reviewed); no game data inside"},
+    {"glob": "Source/installer/*.py", "origin": "authored: the player installer (no game data inside)"},
+    {"glob": "Source/installer/*.bat", "origin": "authored: the installer, uninstaller and client start scripts (adapted from the KotOR 1 ones)"},
     {"glob": "Source/tools/*.py", "origin": "authored: build and check tools; no game data inside"},
     {"glob": "Source/tools/*.json", "origin": "authored: the rules of the provenance check"},
     {"glob": "Source/worlds/kotor2/*.py", "origin": "authored: the apworld"},
@@ -42,6 +44,20 @@
       "origin": "nwnsc 1.1.5, downloaded unchanged from https://github.com/nwneetools/nwnsc/releases (nwnsc-win-v1.1.5.zip), the same file KotOR 1 ships. Added to the release zip when it is built; the repository does not hold it",
       "licence_zip_path": "tools/nwnsc/LICENSE.txt",
       "notice_must_mention": ["nwnsc", "Skywing"]
+    },
+    {
+      "zip_path": "tools/mdlops/mdlops.exe",
+      "sha256": "9b42b84704f831155661335a7546777f7562fe2d4ef763bde375ead85eab20b4",
+      "origin": "MDLOps 1.0.0 from https://deadlystream.com/files/file/779-mdlops/ (GPL), the same file KotOR 1 ships. Added to the release zip when it is built, with its Perl source, licence, readme and tutorials; the repository does not hold it",
+      "licence_zip_path": "tools/mdlops/GPL.txt",
+      "notice_must_mention": ["MDLOps", "Chuck Chargin"]
+    },
+    {
+      "zip_path": "extender/version.dll",
+      "sha256": "d49b1d6e204ca5bdfd3acf8f8e3726d29e912b396b132bacf554d00fa64c6911",
+      "origin": "built from Source/extender/src with CMake (Win32, Release); forked from K2SE (see README.md, Credits)",
+      "licence_zip_path": "THIRD_PARTY_NOTICES.txt",
+      "notice_must_mention": ["K2SE"]
     }
   ]
 }

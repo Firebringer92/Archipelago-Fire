@@ -10,6 +10,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tsl_data as T  # noqa: E402
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "client"))
+import k2_droid  # noqa: E402
+
 N_LEVELS = 50
 CLASS_IDS = list(range(17))
 # class id -> feat.2da / skills.2da / featgain.2da column code (classes.2da featstable / skillstable / featgain)
@@ -26,7 +29,7 @@ SKILL_NAMES = ["ComputerUse", "Demolitions", "Stealth", "Awareness", "Persuade",
 JEDI_BASE = (3, 4, 5)
 PRESTIGE = (11, 12, 13, 14, 15, 16)
 FORCE_CLASSES = JEDI_BASE + PRESTIGE
-DROID_CLASSES = (6, 7)
+DROID_CLASSES = (6, 7, 10)           # Combat, Expert and Battle Droid (class 10 is made by client/k2_droid.py)
 NONFORCE_CLASSES = (0, 1, 2, 6, 7, 8, 9, 10)
 
 
@@ -48,6 +51,11 @@ def toint(v, default=None):
 def load():
     d = {}
     cl = T.twoda("classes")
+    feat_table, skills_table, featgain_table = T.twoda("feat"), T.twoda("skills"), T.twoda("featgain")
+    try:
+        k2_droid.apply_battle_class(cl, feat_table, skills_table, featgain_table)       # the Battle Droid exists in the data whether or not Override has the edited tables yet
+    except ValueError:
+        pass                                                                          # the game's class table is not the one this was written for: class 10 stays as it is
     d["classes"] = {}
     for i in range(cl.get_height()):
         r = cl.get_row(i)
@@ -55,7 +63,7 @@ def load():
         d["classes"][i]["id"] = i
     d["class_label"] = {i: d["classes"][i]["label"] for i in d["classes"]}
 
-    f = T.twoda("feat")
+    f = feat_table
     d["feat_heads"] = f.get_headers()
     d["feats"] = {}
     for i in range(f.get_height()):
@@ -67,12 +75,12 @@ def load():
     for i in range(sp.get_height()):
         r = sp.get_row(i)
         d["spells"][i] = {k: cell(r, k) for k in sp.get_headers()}
-    sk = T.twoda("skills")
+    sk = skills_table
     d["skills"] = {}
     for i in range(sk.get_height()):
         r = sk.get_row(i)
         d["skills"][i] = {k: cell(r, k) for k in sk.get_headers()}
-    fg = T.twoda("featgain")
+    fg = featgain_table
     d["featgain"] = {}  # level -> {col: int}
     for i in range(fg.get_height()):
         r = fg.get_row(i)

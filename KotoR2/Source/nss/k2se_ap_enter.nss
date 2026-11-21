@@ -5,6 +5,7 @@
 void main()
 {
     if (!K2SE_IsPresent()) return;
+    if (GetIsObjectValid(GetFirstPC())) K2AP_StageSion(GetFirstPC());      // 153HAR only (nss/k2ap_comp.nss)
     if (K2SE_ConfigInt("disp_enable", 0) == 0) return;
     K2SE_Diag("DISP", "area enter hook (empty-OnEnter area) ran in " + GetModuleName());
     DispStart();

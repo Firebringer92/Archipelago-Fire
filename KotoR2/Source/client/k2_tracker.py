@@ -9,6 +9,7 @@ Report lines the game sends (absolute truth each time; the client decides what i
   I|<slot>=<value>,...                influence per AVAILABLE companion slot only (GetInfluence reads 0 for an unavailable one)
   O|<tag>,<tag>,...                   quest items currently held
   B|<purchases>|<exchanges>           Bazaar receipt and token counts
+  BC|<count>                          Bounty Datapads held (bounty_cards); the nth check fires when the count reaches n
   X|victory                           the story goal was reached (goal defeat_kreia)
 Goals: kreia and nihilus come from the game (X|victory, the DefeatDarthNihilus journal quest at 99); level, influence and cult are decided here.
 The spec of each location comes from the seed (slot_data["locations"]): its type and what to compare.
@@ -20,9 +21,29 @@ import time
 import typing
 
 
+# The opening: the prologue, Peragus and the Harbinger. When the player lands on Telos (the first area that is neither part of the opening nor the Ebon Hawk), every
+# check of the opening is given out, whichever route was taken (what a condensed Peragus skips, or what a player walks past, is not lost). Always on, not an option.
+OPENING_MODULES = {"001EBO", "002EBO"}
+OPENING_PLANETS = ("Peragus", "Harbinger")
+OPENING_RECRUIT_SLOTS = (0, 6, 8)                  # Atton, Kreia, T3-M4: the three story joins of the opening
+
+
+def in_opening(module: str) -> bool:
+    module = module.strip().upper()
+    return module in OPENING_MODULES or module[3:] in ("PER", "HAR")
+
+
+def left_opening(module: str) -> bool:
+    """An area after the opening: not the opening itself and not the Ebon Hawk (003-007EBO, where the player waits between scenes)."""
+    module = module.strip().upper()
+    return bool(module) and not in_opening(module) and module[3:] != "EBO"
+
+
 class Tracker:
-    def __init__(self, locations: typing.Dict[int, dict], checked: typing.Iterable[int] = (), goal: typing.Optional[dict] = None):
+    def __init__(self, locations: typing.Dict[int, dict], checked: typing.Iterable[int] = (), goal: typing.Optional[dict] = None, opening_sweep: bool = True):
         self.goal = goal or {"type": "kreia"}
+        self.opening_sweep = opening_sweep
+        self.opening_ids: typing.Set[int] = set()
         self.held: typing.Dict[str, int] = {}              # companion items received so far (for the cult_leader goal)
         self.locations = {int(k): v for k, v in locations.items()}
         self.checked: typing.Set[int] = set(int(c) for c in checked)
@@ -36,12 +57,13 @@ class Tracker:
         self.item_by_tag: typing.Dict[str, int] = {}
         self.purchase_ids: typing.Dict[int, int] = {}
         self.exchange_ids: typing.Dict[int, int] = {}
+        self.bounty_ids: typing.Dict[int, int] = {}
         self.ever_high = False
         self.ever_low = False
         self.victory = False
         for lid, spec in self.locations.items():
             t = spec["type"]
-            if t == "quest":
+            if t in ("quest", "questextra"):                   # an additional quest check is finished by the same journal stage as its quest
                 self.quest_by_tag.setdefault(str(spec["journal_tag"]), []).append(lid)
             elif t == "area":
                 self.area_by_module[spec["module"].upper()] = lid
@@ -56,10 +78,19 @@ class Tracker:
                     self.bonus_ids[spec["bonus"]] = lid
                 else:
                     self.alignment_ids[spec["value"]] = lid
-            elif t == "questitem":
-                self.item_by_tag[spec["tag"].lower()] = lid
+            elif t == "bounty":
+                self.bounty_ids[spec["count"]] = lid
             elif t == "bazaar":
                 (self.purchase_ids if "Purchase" in spec["name"] else self.exchange_ids)[spec["count"]] = lid
+        for lid, spec in self.locations.items():          # what leaving the opening gives out: its areas, the quests that live only in it, the three recruits
+            t = spec["type"]
+            modules = [m for m in str(spec.get("module") or spec.get("modules") or "").split(";") if m]
+            if t == "area" and spec.get("planet") in OPENING_PLANETS:
+                self.opening_ids.add(lid)
+            elif t in ("quest", "questextra") and modules and spec.get("planet") in OPENING_PLANETS and all(in_opening(m) or m == "003EBO" for m in modules):
+                self.opening_ids.add(lid)
+            elif t == "recruit" and spec.get("slot") in OPENING_RECRUIT_SLOTS:
+                self.opening_ids.add(lid)
         # history flags survive a restart through the checked locations
         if self.alignment_ids.get(80) in self.checked:
             self.ever_high = True
@@ -87,6 +118,9 @@ class Tracker:
                             self._hit(out, lid)
             elif kind == "V":
                 self._hit(out, self.area_by_module.get(parts[1].strip().upper()))
+                if self.opening_sweep and left_opening(parts[1]):
+                    for lid in self.opening_ids:                # the player has left the opening: everything in it counts
+                        self._hit(out, lid)
             elif kind == "R":
                 slot = int(parts[1])
                 lid = self.recruit_by_slot.get(slot)
@@ -135,6 +169,11 @@ class Tracker:
                         self._hit(out, lid)
                 for n, lid in self.exchange_ids.items():
                     if exchanges >= n:
+                        self._hit(out, lid)
+            elif kind == "BC":
+                held = int(parts[1])
+                for n, lid in self.bounty_ids.items():
+                    if held >= n:
                         self._hit(out, lid)
             elif kind == "X" and len(parts) > 1 and parts[1] == "victory" and self.goal["type"] == "kreia":
                 self.victory = True

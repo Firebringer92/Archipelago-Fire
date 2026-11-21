@@ -9,10 +9,10 @@ decide where a new file came from. That decision is always made by a person.
 ## 0. Not built yet (the first release waits for these)
 
 - A release gate script that runs everything in section 3 in one go and saves its report. Until it exists, run the commands of section 3 by hand and paste their output into the patch notes.
-- The installer and the release zips. Section 2 and the clean-room install describe what they must satisfy.
+- The installer (copies `version.dll`, writes the Launcher markers and the shipping switches, installs the Python packages, uninstalls). The bundle packager exists (`tools/package_bundle.py`, section 2); section 2 and the clean-room install describe what the installer must satisfy.
 - A check that no file in the repository has the same name as one of the game's own (needs the game, so GitHub cannot run it).
 - A person's review of the K2SE licence. Decision (maintainer, 2026-11-08): the repository's README states MIT, so the extension is published with a link and credit in `README.md`. Note for the review: GitHub shows no `LICENSE` file or named copyright holder there; if the author adds one, copy its text into `Source/extender/`.
-- MDLOps is credited in `README.md` as planned for model editing but is not used yet. The day it is first used or shipped: add its `binaries` entry (SHA-256) to `provenance.json`, ship it unchanged with its licence, readme and tutorials (it is GPL), add it to the capability list if our code runs it, and change the README line from "planned" to a plain credit.
+- MDLOps (GPL) is now shipped and run (droid models): its `binaries` entry, the notice, the capability entry and the README credit are in place. A person still reads its licence conditions once for this project (the same file and licence KotOR 1 ships) and records the date in the patch notes.
 
 ## 1. Before packaging
 
@@ -30,9 +30,9 @@ decide where a new file came from. That decision is always made by a person.
 
 ## 2. Build
 
-- [ ] `python tools/package_world.py` (the world) and the bundle's packager. Each runs the provenance check on what it wrote and refuses if it fails.
-- [ ] **Programs and compiled scripts are not committed.** The zips carry `version.dll`, `nwnsc.exe` and the compiled `.ncs` files; the repository does not (`.gitignore`, and the check
-  fails them). If the extender was rebuilt, record the new DLL's SHA-256 in `provenance.json` and in the patch notes.
+- [ ] `python tools/package_world.py` (the world) and `python tools/package_bundle.py` (the player bundle; `--core DIR` only with the Archipelago version the players run). Each runs the provenance check on what it wrote and refuses if it fails; the bundle packager also runs the capability check, a compile of every file, a search for the maintainer's paths and a start of the modules from the extracted bundle. `--dev` builds a trial zip and is never a release.
+- [ ] **Programs and compiled scripts are not committed.** The zips carry `version.dll`, `nwnsc.exe`, `mdlops.exe` and the compiled `.ncs` files; the repository does not (`.gitignore`, and the check
+  fails them). If the extender was rebuilt, record the new DLL's SHA-256 in `provenance.json` (the packager refuses a release build until it is, and prints the entry) and in the patch notes.
 
 ## 3. The checks
 
@@ -57,3 +57,5 @@ decide where a new file came from. That decision is always made by a person.
 
 > Provenance: checks run `<link to the GitHub run>`; new non-code files accounted for: `<list or "none">`;
 > third-party files added: `<name, licence, link, date read, or "none">`. Reviewed by `<name>` on `<date>`.
+
+- [ ] **No starting AP Companion Gifts.** `START_STOCK` in `client/k2_gift.py` is 10 only so testers have gifts at once; set it to 0 (and check `_apply_start_gifts` in `client/KotorTwoClient.py` and the tests that count the start grant) before shipping. The gifts hidden in containers stay.

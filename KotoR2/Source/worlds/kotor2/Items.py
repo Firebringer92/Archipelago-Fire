@@ -92,8 +92,10 @@ def goal_token_counts(disabled: typing.Container[str], skip_gates: typing.Contai
 
 
 # Characters that can be offered as extra companions on the new party slots (12-31). Each must pass a vetting test in the game before it is delivered.
-EXTRA_COMPANION_NAMES = ["Bastila Shan", "Carth Onasi", "Jolee Bindo", "Juhani", "Mission Vao", "Zaalbar", "Canderous Ordo",
-                         "Darth Sion", "Darth Nihilus", "Kavar", "Vrook Lamar", "Zez-Kai Ell"]
+_EXTRA_COMPANIONS_FIRST = ["Bastila Shan", "Carth Onasi", "Jolee Bindo", "Juhani", "Mission Vao", "Zaalbar", "Canderous Ordo",
+                           "Darth Sion", "Darth Nihilus", "Kavar", "Vrook Lamar", "Zez-Kai Ell"]
+_EXTRA_COMPANIONS_LATER = ["Vash", "Atris"]       # added after the first ids were laid out: their items are appended at the end of the table so no id above moves
+EXTRA_COMPANION_NAMES = _EXTRA_COMPANIONS_FIRST + _EXTRA_COMPANIONS_LATER
 TRAP_TYPE_KEYS = ["lose_credits", "dark_side_push", "light_side_push", "lose_influence", "reduce_skill", "cut_max_health", "remove_companion",
                   "remove_half_inventory", "halve_strength", "halve_dexterity", "halve_intelligence", "halve_wisdom", "halve_charisma"]
 
@@ -129,7 +131,7 @@ for _family, _name in TOKEN_FAMILIES.items():
     _add(_name, P, "token:" + _TOKEN_KEYS[_family])   # delivered as a stage of the family journal quest ap_prog_<key> (client/k2_journal.py)
 _add("Victory", P, "victory")
 # Added after the first draft: appended so the ids above never move.
-for _c in EXTRA_COMPANION_NAMES:
+for _c in _EXTRA_COMPANIONS_FIRST:
     _add("Companion: " + _c, U, "extracompanion:" + _c.lower().replace(" ", "_").replace("-", ""))
 _add("AP Companion", U, "apcompanion")
 # More traps (appended: ids above never move). Each is decided in the game at delivery from the character's live state and does nothing when there is
@@ -166,6 +168,11 @@ VENDOR_PASSES = {"skill": "Skill Training", "abil": "Ability Training", "align":
 for _key, _title in VENDOR_PASSES.items():
     _add("Vendor Pass: " + _title, U, "vendorpass:" + _key)
 VENDOR_PASS_ITEM_BY_KEY = {k: "Vendor Pass: " + t for k, t in VENDOR_PASSES.items()}
+for _c in _EXTRA_COMPANIONS_LATER:
+    _add("Companion: " + _c, U, "extracompanion:" + _c.lower().replace(" ", "_").replace("-", ""))
+
+# The Party Console (appended: ids above never move): an inventory item that opens the party selection screen. Every seed with companions has one in the pool.
+_add("Party Console", U, "partycon")
 
 BASE_COMPANION_ITEMS = ["Companion: " + c for c in _COMPANIONS]
 EXTRA_COMPANION_ITEMS = {c: "Companion: " + c for c in EXTRA_COMPANION_NAMES}

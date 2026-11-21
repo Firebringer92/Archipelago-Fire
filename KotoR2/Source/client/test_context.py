@@ -14,10 +14,13 @@ from NetUtils import NetworkItem  # noqa: E402
 from fake_game import FakeGame  # noqa: E402
 from k2_dispatcher import Job  # noqa: E402
 import KotorTwoClient as K  # noqa: E402
+import k2_extras  # noqa: E402
+
+k2_extras.LOOK_METHOD_OVERRIDE = None          # the tests read the plan's own look_method; the client's default (the template look) has its own test below
 from worlds.kotor2.Items import ITEMS, ITEM_NAME_TO_ID  # noqa: E402
 
 DATA = json.load(open(os.path.join(HERE, "..", "data", "locations.json")))
-LOCS = {str(l["id"]): {k: v for k, v in l.items() if k not in ("id", "requires", "progression", "only_if_option")} for l in DATA["locations"]}
+LOCS = {str(l["id"]): {k: v for k, v in l.items() if k not in ("id", "requires", "progression", "only_if_option")} for l in DATA["locations"] if l["type"] != "questextra"}                # the additional quest checks are off in a default seed
 BY_NAME = {l["name"]: l["id"] for l in DATA["locations"]}
 
 
@@ -58,6 +61,8 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         self.game = FakeGame(self.ctx.link)
         self.stop = False
         self.task = asyncio.ensure_future(self.run_game())
+        with open(os.path.join(self.dir, "client_seedx_1.json"), "w") as f:
+            json.dump({"state_version": 2, "start_gifts_sent": True}, f)       # the starting AP Companion Gifts were ordered long ago: the tests below count their own jobs
         self.ctx._on_connected({"slot_data": {"locations": LOCS, "seed_guard": 7, "options": {}}})
         await self.ctx.wait_patch()
 
@@ -73,6 +78,26 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         while not self.stop:
             self.game.poll()
             await asyncio.sleep(0.03)
+
+    async def test_the_starting_ap_companion_gifts_are_ordered_once(self):
+        import KotorTwoClient as K
+        self.assertTrue(self.ctx.start_gifts_sent)                       # (set from the state file the setup wrote)
+        self.ctx.start_gifts_sent = False                                 # a game that never had them
+        self.ctx._apply_start_gifts()
+        self.assertTrue(self.ctx.start_gifts_sent)
+        await asyncio.sleep(0.5)
+        self.assertEqual(self.game.effects, [])                           # the shipped build starts with no gifts: nothing is ordered
+        saved, K.START_STOCK = K.START_STOCK, 10                          # a build that does give some (a test build)
+        try:
+            self.ctx.start_gifts_sent = False
+            self.ctx._apply_start_gifts()
+            await self.wait_effects(1)
+            self.assertEqual([(e[1], e[2]) for e in self.game.effects], [("gift", "10")])
+            self.ctx._apply_start_gifts()                                 # ordered once: asking again does nothing
+            await asyncio.sleep(0.5)
+            self.assertEqual(len(self.game.effects), 1)
+        finally:
+            K.START_STOCK = saved
 
     async def test_items_become_jobs_and_checks_are_sent(self):
         names = ["Republic Credits", "Skill: Stealth", "Trap: Lose Credits", "Experience Points"]
@@ -130,6 +155,46 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(total("credits"), 200)
         self.assertEqual(total("xp"), 0)             # no additive XP job in the clamped modes
 
+    async def test_the_state_file_is_named_after_the_servers_seed(self):
+        """seed_name is empty in the real client; the name the server reports must be used, or every seed shares one state file."""
+        other = K.KotorTwoContext(None, None, link_dir=self.dir, game_dir=self.game_dir, payload_dir=os.path.join(self.dir, "none"), config_path=os.path.join(self.dir, "config.txt"))
+        other.server_seed_name, other.slot = "realseed", 1
+        other._on_connected({"slot_data": {"locations": LOCS, "seed_guard": 7, "options": {}}})
+        self.assertTrue(other._state_path.endswith("client_realseed_1.json"))
+        other.exit_event.set()
+
+    def _context(self, seed):
+        ctx = K.KotorTwoContext(None, None, link_dir=self.dir, game_dir=self.game_dir, payload_dir=os.path.join(self.dir, "none"), config_path=os.path.join(self.dir, "config.txt"))
+        ctx.server_seed_name, ctx.slot = seed, 1
+        ctx._on_connected({"slot_data": {"locations": LOCS, "seed_guard": 7, "options": {}}})
+        return ctx
+
+    async def test_the_outbox_of_another_seed_is_not_read_as_checks(self):
+        marker = os.path.join(self.dir, "outbox_seed.txt")
+        with open(marker) as f:
+            self.assertEqual(f.read().splitlines()[0], "seedx_1")      # the first connect recorded which seed the outbox belongs to
+        with open(self.ctx.link.outbox_path, "a") as f:
+            f.write("900|V|101PER" + chr(10) + "901|Q|x" + chr(10))
+        again = self._context("newseed")
+        self.assertTrue(again._outbox_started)                  # the old lines are skipped, not history to read
+        self.assertEqual(again.link.read_new(), [])
+        self.assertEqual(again.link._last_seq, 901)
+        with open(marker) as f:
+            self.assertEqual(f.read().splitlines()[0], "newseed_1")
+        again.exit_event.set()
+
+    async def test_the_same_seed_again_reads_only_its_own_lines_never_an_earlier_seeds(self):
+        with open(self.ctx.link.outbox_path, "a") as f:
+            f.write("900|V|OLDSEED" + chr(10) + "901|L|20" + chr(10))        # what an earlier seed's run left in the shared file
+        first = self._context("newseed")                         # claims the file after those lines
+        with open(first.link.outbox_path, "a") as f:
+            f.write("1|V|101PER" + chr(10) + "2|L|2" + chr(10))             # this seed's own run
+        first.exit_event.set()
+        second = self._context("newseed")                        # a restart of the client on the same seed
+        self.assertFalse(second._outbox_started)                 # history is read ...
+        self.assertEqual(second.link.read_new(), ["V|101PER", "L|2"])      # ... but from the claim, not from the top of the file
+        second.exit_event.set()
+
     async def test_delivery_state_survives_restart(self):
         self.ctx.items_received.append(NetworkItem(ITEM_NAME_TO_ID["Republic Credits"], 0, 1, 0))
         await self.ctx._deliver_new_items()
@@ -184,6 +249,10 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         await self.wait_effects(1)
         self.assertEqual([(e[1], e[2]) for e in self.game.effects], [("class", "0:1:0:0:1:0:0")])
         self.assertTrue(self.ctx.start_class_sent)
+        for _ in range(60):                                      # the game's answer is counted before the reconnect: a job still in flight at a reconnect is sent again by design
+            if self.ctx.dispatcher.current is None and not self.ctx.dispatcher._queue:
+                break
+            await asyncio.sleep(0.1)
         self.ctx._on_connected({"slot_data": slot})              # a reconnect does not order it again
         await asyncio.sleep(1.0)
         self.assertEqual(len(self.game.effects), 1)
@@ -392,6 +461,9 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         old = K.journal_files
         K.journal_files = lambda *a: ({}, [])
         self.addCleanup(setattr, K, "journal_files", old)
+        old_gifts = K.gift_files                                 # the stand-in folder has no module files for the gifts either
+        K.gift_files = lambda *a: ({}, [])
+        self.addCleanup(setattr, K, "gift_files", old_gifts)
         text = self.ctx.patch_game()
         self.assertIn("Finished in", text)
         self.assertIn("you can start the game now", text)
@@ -427,13 +499,35 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         self.assertIn("ap_look_12=30", config)             # no KotOR 1 models in the stand-in game folder: Bastila's generic look
         self.assertIn("ap_look_13=48", config)
         self.assertNotIn("ap_look_14", config)             # that one is written into its template instead
+        block = config[config.index("# --- k2ap begin"):]
+        self.assertIn("party32=1", block)                  # slots 12 and up need the extender's 32-slot party, or every extra's item is refused
+        self.assertIn("party32_gui=1", block)
+
+    async def test_the_clients_default_writes_the_look_into_the_template_and_no_disguise_rows(self):
+        k2_extras.LOOK_METHOD_OVERRIDE = "template"
+        try:
+            self.ctx._on_connected({"slot_data": self.extras_slot()})
+            await self.ctx.wait_patch()
+        finally:
+            k2_extras.LOOK_METHOD_OVERRIDE = None
+        config = open(os.path.join(self.dir, "config.txt")).read()
+        self.assertNotIn("ap_look_", config)                 # the disguise effect is not used: nothing for the dispatcher's tick to apply
+        self.assertIn("party32=1", config)
+
+    async def test_a_seed_without_extras_leaves_the_party_switches_alone(self):
+        slot = self.extras_slot()
+        slot["extras"] = []
+        self.ctx._on_connected({"slot_data": slot})
+        await self.ctx.wait_patch()
+        config = open(os.path.join(self.dir, "config.txt")).read()
+        self.assertNotIn("party32", config[config.index("# --- k2ap begin"):])
 
     async def test_an_extra_in_the_party_is_raised_to_the_players_level(self):
         self.ctx._on_connected({"slot_data": self.extras_slot()})
         self.game._put("L|9")
         self.game._put("CC|12:5:1:255:0")
         await self.wait_effects(1)
-        self.assertEqual([(e[1], e[2]) for e in self.game.effects], [("compclass", "12:0:5:9:0:0:0")])
+        self.assertEqual([(e[1], e[2]) for e in self.game.effects], [("compclass", "12:3:5:9:0:0:0")])
 
     async def test_crafting_items_unlock_types_and_rewrite_the_table_and_switches(self):
         plan = {"mode": 1, "seed": 5, "gated": True, "types": ["armor", "ranged", "melee", "lightsaber", "other", "parts", "lab"], "gear": []}
@@ -692,6 +786,53 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         await self._wait_effects(4)
         self.assertEqual([(e[1], e[2]) for e in self.game.effects], [("token", "telos"), ("token", "telos"), ("skill", "stealth"), ("pass", "skill")])
         self.assertEqual(self.ctx.delivered, 0)             # the server's item count is untouched: this is a test, not a received item
+
+    async def test_a_delivered_companion_whose_unlock_bit_is_missing_is_unlocked_again(self):
+        self.ctx.slot_data["options"] = {"companions": 2}                                      # ap_gated: the items decide
+        self.ctx.items_received.append(NetworkItem(ITEM_NAME_TO_ID["Companion: Mira"], 0, 1, 0))
+        self.ctx.items_received.append(NetworkItem(ITEM_NAME_TO_ID["Companion: Kreia"], 0, 1, 0))
+        self.ctx._reconcile_unlocks(1 << 6)                                                    # the game has Kreia (slot 6) but not Mira (slot 7)
+        await self._wait_effects(1)
+        self.assertEqual([(e[1], e[2]) for e in self.game.effects], [("companion", "7")])
+        for _ in range(3):                                                                     # reports that still lack them: Mira (and Kreia) again, but at most twice a slot
+            await asyncio.sleep(1.5)                                                           # the order in flight is answered first: none is sent while one waits
+            self.ctx._reconcile_unlocks(0)
+        await asyncio.sleep(2.0)
+        self.assertEqual([e[2] for e in self.game.effects if e[1] == "companion"].count("7"), 2)
+        self.ctx._reconcile_unlocks((1 << 6) | (1 << 7))                                       # both unlocked: nothing, and the count starts over
+        self.assertEqual(self.ctx._unlock_attempts, {})
+
+    async def test_the_unlock_check_does_nothing_outside_the_gated_mode(self):
+        self.ctx.slot_data["options"] = {"companions": 1}
+        self.ctx.items_received.append(NetworkItem(ITEM_NAME_TO_ID["Companion: Mira"], 0, 1, 0))
+        self.ctx._reconcile_unlocks(0)
+        await asyncio.sleep(0.5)
+        self.assertEqual(self.game.effects, [])
+
+    async def test_k2_give_gift_makes_one_stack_of_the_asked_size(self):
+        cp = self._commands()
+        self.assertTrue(cp._cmd_k2_give("gift", "5"))
+        await self._wait_effects(1)
+        self.assertEqual([(e[1], e[2]) for e in self.game.effects], [("gift", "5")])
+
+    async def test_k2_give_unlocks_a_story_companion_by_slot(self):
+        cp = self._commands()
+        self.assertTrue(cp._cmd_k2_give("Companion:", "Atton", "Rand"))
+        self.assertTrue(cp._cmd_k2_give("Companion:", "Bao-Dur"))
+        await self._wait_effects(2)
+        self.assertEqual([(e[1], e[2]) for e in self.game.effects], [("companion", "0"), ("companion", "1")])
+
+    async def test_k2_give_sends_the_seeds_extra_and_generated_companions_to_their_slots(self):
+        self.ctx._on_connected({"slot_data": self.extras_slot()})
+        await self.ctx.wait_patch()
+        cp = self._commands()
+        self.assertTrue(cp._cmd_k2_give("Companion:", "Bastila", "Shan"))
+        self.assertTrue(cp._cmd_k2_give("AP", "Companion", "2"))
+        self.assertFalse(cp._cmd_k2_give("Companion:", "Juhani"))                  # not in this seed's plan: nothing is sent
+        await self._wait_effects(3)
+        self.assertEqual([(e[1], e[2]) for e in self.game.effects],
+                         [("extracompanion", "12:apxc12"), ("extracompanion", "13:apxc13"), ("extracompanion", "14:apxc14")])
+        self.assertEqual(self.ctx.extras_given, set())                              # a test does not use up the real items
 
     async def test_k2_give_refuses_what_needs_the_real_item(self):
         cp = self._commands()

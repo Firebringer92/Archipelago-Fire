@@ -17,7 +17,8 @@ class Goal(Choice):
     high_level: reach the level set by goal_level.
     influence_crew: reach the high (75 or more) or low (25 or less) end of influence with influence_goal_count companions (needs companions).
     cult_leader: recruit every companion your seed offers (every recruit check, and every companion item in ap_gated); needs companions.
-    Game side: only defeat_kreia is detected in the game today; the others are built in the world and the client."""
+    Game side: defeat_kreia comes from the game (the ending), defeat_nihilus from the journal quest DefeatDarthNihilus, and high_level, influence_crew and cult_leader are decided
+    by the client from the checks and items it knows. All are built; none has been played to the end."""
     display_name = "Goal"
     option_defeat_kreia = 0
     option_defeat_nihilus = 1
@@ -54,11 +55,11 @@ class LevelTarget(Range):
 
 
 class ShortenedPeragus(Toggle):
-    """Condense the Peragus opening ("short hallway"): Atton is freed at once, the T3-M4 trip, the mining tunnels, the outside walk and the dormitories are cut, the
-    Sith arrive by a docking movie, and the Harbinger's locked doors and the hangar door are opened for you. Kept: Kreia, the HK-50 scene, Atton and T3-M4
-    joining, the Sion duel, the turret scene and the first Hawk visit. The checks that only exist in the cut parts (Mining Tunnels, Asteroid Exterior and
-    Dormitories visits, Rescue, Turbolift Lockdown and Voiceprint Protocol quests) leave the seed. The seed carries the plan; the game side is not built yet, so
-    nothing happens in the game."""
+    """Condense the Peragus opening ("short hallway"): the doors that hold the opening up are unlocked so Atton can be freed at once, and when his talk is over the
+    Sith arrive (a docking movie) and the story moves on to Act II. The T3-M4 trip, the mining tunnels, the walk outside and the dormitories are skipped, and you are
+    handed the spikes and parts the Harbinger and hangar consoles use. Kept: Kreia, the HK-50 scene (where Atton joins; it is started for you when you get near it),
+    T3-M4 joining, the Sion duel, the turret scene and the first Hawk visit. The checks of the skipped parts stay in the seed and are given out when you leave
+    the opening."""
     display_name = "Shortened Peragus"
 
 
@@ -123,7 +124,7 @@ class ApCompanions(Range):
 
 class CompanionClass(Choice):
     """How companion classes are handled. The seed decides each companion's class (the three droids are never changed); the game applies it when the companion
-    arrives, which waits for the companion work, so nothing happens in the game yet.
+    arrives (class rebuild, race and, for droid, the look). Built; none of the values has been played yet.
     default: untouched. jedi_companion: every non-Jedi companion becomes a base Jedi class when they arrive. no_jedi: Jedi companions become non-Jedi.
     droid: every companion who is not a droid becomes a Combat or Expert Droid: class and race droid, and the droid look through a changed copy of their own creature
     template (a companion who already joined in an old save keeps the look the save stored). randomize_base: each companion gets a random base class (never a prestige class)."""
@@ -137,7 +138,7 @@ class CompanionClass(Choice):
 
 
 class MulticlassCompanion(Choice):
-    """A second class for companions. random_class is decided by the seed (the game applies it, which waits for the companion work); prestige is not built.
+    """A second class for companions. random_class is decided by the seed and applied by the game; prestige is built as an item per Jedi-capable companion. Built; neither has been played.
     off: none. prestige: an item upgrades a companion to a Jedi prestige class. random_class: a random second class once the companion is level 15."""
     display_name = "Multiclass Companion"
     option_off = 0
@@ -152,7 +153,7 @@ class StartingClass(Choice):
     random_class: a random base class (Soldier, Scout, Scoundrel, Jedi Guardian, Consular or Sentinel). prestige_start: you begin as a random prestige class.
     prestige_gated: a "Prestige Class" item is in the pool; when it arrives you gain a light or dark prestige class of one pair chosen by the seed (Vanguard /
     Marauder, Shadow / Assassin, Sage / Sorcerer), the side following your alignment (a random side when exactly neutral).
-    droid: you start as a Combat or Expert Droid and your race is droid (no Force); your appearance is not changed."""
+    droid: you start as a Battle Droid (a droid that can use melee weapons and lightsabers) and your race is droid (no Force); you look like a droid through a disguise effect, your own model is never replaced."""
     display_name = "Starting Class"
     option_default = 0
     option_non_force_user = 1
@@ -242,10 +243,13 @@ class AlignmentChecks(DefaultOnToggle):
     display_name = "Alignment Checks"
 
 
-class QuestItemChecks(Toggle):
-    """Holding a listed quest item for the first time is a check. Off by default: the list is a draft of 37 items taken from the game's data
-    (docs/QUEST_ITEM_CANDIDATES.md) and is being replaced by a list built from play-through logs of main-story items.""" 
-    display_name = "Quest Item Checks"
+class AdditionalQuestChecks(Range):
+    """Finishing a quest gives more checks: this many additional checks for every quest (105 quests, so up to 315 more locations). They fire together with the
+    quest's own check, need the same tokens, and never hold progression items. 0 turns them off."""
+    display_name = "Additional Quest Checks"
+    range_start = 0
+    range_end = 3
+    default = 0
 
 
 class Bazaar(DefaultOnToggle):
@@ -289,7 +293,7 @@ class CraftingMode(Choice):
     simple: gear recipes ask for a rank that follows the item's value and cost their normal amount.
     complex: every rank 6 higher (the game's own recipes too, at most 32) and gear costs double.
     random_requirements: every rank random from 1 to 32 and every gear cost a random multiple (half to four times).
-    Gear items in the pool (gear_items) and the Vendor's supply menu go with it. Not built yet in the game: loot turning into materials."""
+    Gear items in the pool (gear_items) and the Vendor's supply menu go with it. Crafting mode leaves the loot alone: what loot does is loot_mode's business alone."""
     display_name = "Crafting Mode"
     option_off = 0
     option_simple = 1
@@ -300,12 +304,16 @@ class CraftingMode(Choice):
 
 class LootMode(Choice):
     """What loot_randomizer does to the ordinary gear in containers and dropped by creatures (quest items, credits and the like are never touched).
+    default: no change; the loot stays as the game has it.
     replace: each piece of gear becomes a random piece from the shop pool; a creature keeps and uses its own gear but drops the random piece instead.
     bonus: everything stays and every container that holds gear, and every creature that carries something, gets one more random piece.
-    With a crafting mode, the same two words will decide whether materials replace the gear or come on top (the seed carries the flag; the game side is not built)."""
+    crafting: each piece of gear becomes crafting Components (more for a more valuable piece, at most ten); a creature keeps and uses its own gear but drops Components instead.
+    Independent of crafting_mode: crafting mode never changes what loot does."""
     display_name = "Loot Mode"
-    option_replace = 0
-    option_bonus = 1
+    option_default = 0
+    option_replace = 1
+    option_bonus = 2
+    option_crafting = 3
     default = 0
 
 
@@ -313,7 +321,8 @@ class CraftingGated(Toggle):
     """Each crafting type is locked until its own item arrives: the five workbench tabs (armor and robes, ranged weapons, melee weapons, lightsabers, belts, gloves and
     other gear; only with a crafting_mode), the game's own upgrade parts and upgrade screen, and the chemical lab. Seven items go into the pool (two without a
     crafting_mode, which gate the game's own crafting). The recipes and console entries of a locked type are hidden; whether the game reads a rewritten recipe table
-    while it runs, or only after a restart, is not yet known."""
+    while it runs, or only after a restart, is not yet known. Every shop then sells only crafting supplies, Components and Chemicals (a price each), and nothing
+    else: gear comes from the items. The Pazaak dealers and the special shops are left alone."""
     display_name = "Crafting Gated"
 
 
@@ -342,6 +351,13 @@ class EnemyMode(Choice):
     option_random_sane = 1
     option_fully_random = 2
     default = 1
+
+
+class BountyCards(DefaultOnToggle):
+    """With enemy_randomizer on: forty of the new creatures (spread over the free-roam combat areas) carry a Bounty Datapad. Taking one from the body adds to a count, and
+    holding 1, 2, ... 40 datapads are forty checks (Bounty Datapad #1 to #40). A datapad is a quest item: it cannot be sold or dropped, so the count only goes up. Does
+    nothing when enemy_randomizer is off."""
+    display_name = "Bounty Datapads"
 
 
 class GearItems(Range):
@@ -410,7 +426,7 @@ class KotorTwoOptions(PerGameCommonOptions):
     credit_item: CreditItem
     area_visit_checks: AreaVisitChecks
     alignment_checks: AlignmentChecks
-    quest_item_checks: QuestItemChecks
+    additional_quest_checks: AdditionalQuestChecks
     bazaar: Bazaar
     trap_percentage: TrapPercentage
     trap_types: TrapTypes
@@ -421,6 +437,7 @@ class KotorTwoOptions(PerGameCommonOptions):
     area_randomizer: AreaRandomizer
     enemy_randomizer: EnemyRandomizer
     enemy_mode: EnemyMode
+    bounty_cards: BountyCards
     gear_items: GearItems
     shop_randomizer: ShopRandomizer
     shop_count: ShopCount

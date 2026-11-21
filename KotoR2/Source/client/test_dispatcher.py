@@ -62,6 +62,24 @@ class TestDispatch(Rig):
         self.assertEqual(self.game.effects[-1][0], 41)
         self.assertEqual(job.state, "applied")
 
+    async def test_a_rollback_while_the_pump_waits_does_not_end_the_pump(self):
+        """The pump sleeps with a job in flight; a rollback takes the job out of flight (no number) before the pump wakes. The pump must not send that job
+        without a number (a TypeError ended the pump and every queued job stopped)."""
+        self.game.poll = lambda: None                      # the game answers nothing: the job stays in flight
+        job = self.client.submit("credits", "1")
+        for _ in range(40):
+            if self.client.current is job:
+                break
+            await asyncio.sleep(0.05)
+        self.assertIs(self.client.current, job)
+        self.client.current = None                         # what a rollback does to the job in flight
+        job.seq = None
+        job.state = "queued"
+        self.client._queue.append(job)
+        await asyncio.sleep(0.8)                           # longer than the resend time: the old code sent the numberless job here
+        self.assertFalse(self.client._task.done())
+        self.assertIsNotNone(job.seq)                      # taken up again from the queue and numbered
+
     async def test_rollback_replays_missing_jobs(self):
         first = [self.client.submit("credits", str(i)) for i in range(1, 3)]
         await self.finish(first)
@@ -77,6 +95,45 @@ class TestDispatch(Rig):
         self.assertEqual(self.game.counter, 4)
         self.assertEqual([e[2] for e in self.game.effects], ["1", "2", "3", "4"])
 
+    async def _wait_for(self, check, seconds=12):
+        for _ in range(int(seconds / 0.1)):
+            if check():
+                return True
+            await asyncio.sleep(0.1)
+        return check()
+
+    async def test_second_reload_during_a_replay(self):
+        """Two older saves loaded one after the other, the second while the first replay is still in flight (found live: the replayed jobs stayed in flight
+        for ever and failed with 'no answer from the game')."""
+        await self.finish([self.client.submit("credits", str(i)) for i in range(1, 5)])
+        self.assertEqual(self.game.counter, 4)
+        real_poll = self.game.poll
+        self.game.poll = lambda: None                      # the game is busy loading: it answers nothing for a moment
+        self.client.on_event("T|0|7")                      # save A (number 0) was loaded
+        await self._wait_for(lambda: self.client.current is not None and self.client.current.fixed_seq, 3)
+        self.assertEqual(self.client.current.seq, 1)       # the first replayed job is in flight
+        self.game.counter = 2                              # then save B (number 2) is loaded
+        self.client.on_event("T|2|7")
+        self.client.on_event("S|1|2")                      # the game's answer to the old replay job
+        self.game.poll = real_poll
+        done = await self._wait_for(lambda: self.game.counter == 4)
+        self.assertTrue(done, "the game stayed at %d (client failed %d job(s))" % (self.game.counter, self.client.stats["failed"]))
+        self.assertEqual(self.client.stats["failed"], 0)
+        self.assertEqual([e[2] for e in self.game.effects][-2:], ["3", "4"])
+
+    async def test_new_job_after_a_replay_is_numbered_right(self):
+        await self.finish([self.client.submit("credits", str(i)) for i in range(1, 4)])
+        self.game.save("old")
+        await self.finish([self.client.submit("credits", "4")])
+        self.game.load("old")
+        await self._wait_for(lambda: self.game.counter == 4)
+        later = self.client.submit("credits", "5")
+        await self.finish([later])
+        self.assertEqual(self.game.counter, 5)
+        self.game.load("old")                              # and a second reload of the same save replays all of it again
+        self.assertTrue(await self._wait_for(lambda: self.game.counter == 5))
+        self.assertEqual(self.client.stats["failed"], 0)
+
     async def test_death_job_is_not_replayed(self):
         await self.finish([self.client.submit("credits", "1")])
         self.game.save("old")
@@ -91,6 +148,30 @@ class TestDispatch(Rig):
                 break
         self.assertEqual(self.game.counter, 3)
         self.assertNotIn(("trap", "death"), [(e[1], e[2]) for e in self.game.effects])
+
+    async def test_the_inventory_trap_is_counted_but_not_carried_out_again_after_an_older_save_loads(self):
+        await self.finish([self.client.submit("credits", "1")])
+        self.game.save("old")
+        await self.finish([self.client.submit("trap", "inventory"), self.client.submit("credits", "2")])
+        self.assertEqual([(e[1], e[2]) for e in self.game.effects].count(("trap", "inventory")), 1)
+        self.game.load("old")
+        self.assertTrue(await self._wait_for(lambda: self.game.counter == 3))                    # the numbers stay in step
+        self.assertEqual([(e[1], e[2]) for e in self.game.effects].count(("trap", "inventory")), 0)   # the old save did not get the trap a second time
+        self.assertIn(("credits", "2"), [(e[1], e[2]) for e in self.game.effects])               # other jobs are still replayed
+        self.assertEqual(self.client.stats["failed"], 0)
+
+    async def test_class_order_is_not_replayed(self):
+        """A class order is for the companions in the party at that moment: after an older save is loaded it is counted (the numbers stay in step) but not carried
+        out again (found live 2026-11-15: replayed orders for slots 13 and 14 were refused, the two who were no longer in the party)."""
+        await self.finish([self.client.submit("credits", "1")])
+        self.game.save("old")
+        await self.finish([self.client.submit("compclass", "13:0:4:11:0:0:0"), self.client.submit("credits", "2")])
+        self.assertEqual(self.game.counter, 3)
+        self.game.load("old")
+        self.assertTrue(await self._wait_for(lambda: self.game.counter == 3))
+        self.assertNotIn("compclass", [e[1] for e in self.game.effects])                    # the load restored the old save's jobs; the replay did not carry the order out again
+        self.assertEqual([e[2] for e in self.game.effects if e[1] == "credits"], ["1", "2"])
+        self.assertEqual(self.client.stats["failed"], 0)
 
     async def test_wrong_seed_fails_the_job(self):
         self.game.guard = 9

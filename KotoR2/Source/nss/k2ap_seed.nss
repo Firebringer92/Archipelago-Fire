@@ -73,11 +73,6 @@ int K2AP_Bazaar()
     return K2SE_ConfigInt("ap_bazaar", 0);
 }
 
-int K2AP_QuestItemChecks()
-{
-    return K2SE_ConfigInt("ap_quest_item_checks", 0);
-}
-
 int K2AP_AreaVisitChecks()
 {
     return K2SE_ConfigInt("ap_area_visit_checks", 0);

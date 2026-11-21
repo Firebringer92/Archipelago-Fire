@@ -18,7 +18,7 @@ ROOT = os.path.normpath(os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 NWNSC = os.path.join(HERE, "nwnsc", "nwnsc.exe")
 NWNNSSCOMP = os.path.join(ROOT, "compile_staging", "research", "nwnnsscomp.exe")
-INCLUDES = ("k2se.nss", "k2se_disp.nss", "k2se_poll.nss", "k2ap_seed.nss", "k2ap_gate.nss", "k2ap_comp.nss", "k2ap_master.nss", "k2ap_bazaar.nss", "k2ap_craft.nss", "k2ap_vendor.nss", "k2se_rb.nss")
+INCLUDES = ("k2se.nss", "k2se_disp.nss", "k2se_poll.nss", "k2ap_seed.nss", "k2ap_gate.nss", "k2ap_comp.nss", "k2ap_scene.nss", "k2ap_master.nss", "k2ap_bazaar.nss", "k2ap_craft.nss", "k2ap_vendor.nss", "k2ap_party.nss", "k2ap_gift.nss", "k2ap_per.nss", "k2ap_stand.nss", "k2se_rb.nss")
 
 
 def game_nwscript(game_dir: str) -> bytes:

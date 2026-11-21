@@ -102,6 +102,33 @@ class TestLoot(unittest.TestCase):
         self.assertEqual(len(read_list(self.store, "aaa", "guard", "utc")), 4)
         self.assertEqual(len(read_list(self.store, "aaa", "pack", "utc")), 2)                   # a creature that carries anything gets one
 
+    def test_crafting_turns_gear_into_components_and_leaves_everything_else(self):
+        plan = dict(self.plan, mode="crafting")
+        changed, problems = L.loot_files(self.store, plan)                                       # without a game folder every piece counts as one Components
+        self.assertEqual(problems, [])
+        chest = read_list(self.store, "aaa", "chest", "utp")
+        self.assertEqual([c[0] for c in chest], [L.COMPONENTS, "quest_item", L.COMPONENTS])     # gear gone, the quest item stays
+        guard = read_list(self.store, "aaa", "guard", "utc")
+        self.assertEqual(guard[:3], [("pool_03", 0), ("pool_04", 0), ("quest_item", 1)])        # the creature keeps and uses its gear but no longer drops it
+        self.assertEqual(guard[3:], [(L.COMPONENTS, 1)])                                         # and drops Components instead (one per dropped piece)
+        self.assertEqual(read_list(self.store, "aaa", "pack", "utc"), [("quest_item", 0)])
+
+    def test_a_valuable_piece_becomes_several_components_up_to_ten(self):
+        from pykotor.resource.formats.gff import read_gff
+        plan = dict(self.plan, mode="crafting")
+        root = read_gff(self.store.resources("aaa", "_s")[("chest", "utp")]).root
+        self.assertTrue(L.change_template(plan, "aaa", "chest", "utp", root, lambda x: 4 if x == "pool_01" else 99 if x == "pool_02" else 1))
+        refs = [str(e.get_resref("InventoryRes")) for e in root.get_list("ItemList")]
+        self.assertEqual(refs.count(L.COMPONENTS), 4 + 99)                                       # worth() already caps at ten in real use; the template follows what it is told
+
+    def test_the_game_folder_reader_caps_the_count_and_counts_unknown_items_as_one(self):
+        import os as _os
+        if not _os.path.isfile(_os.path.join(GAME, "swkotor2.exe")):
+            self.skipTest("the game is not installed")
+        worth = L.components_for(GAME)
+        self.assertEqual(worth("no_such_item_xyz"), 1)
+        self.assertTrue(1 <= worth("w_lghtsbr01") <= L.MAX_COMPONENTS)
+
     def test_picks_are_the_same_for_the_same_seed_and_differ_between_seeds(self):
         def snapshot():
             return [read_list(self.store, "aaa", r, e) for r, e in (("chest", "utp"), ("guard", "utc"))]

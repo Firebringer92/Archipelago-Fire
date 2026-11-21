@@ -9,6 +9,7 @@
 // Receipts are plot items, so a purchase count is the number held and a loaded older save simply holds fewer. All numbers are those of data/vendor.json.
 
 #include "k2ap_bazaar"
+#include "k2ap_party"
 
 // ---- the Vendor on the Hawk: put into 003EBO when the seed has the vendor on (called from the dispatcher's tick)
 void K2AP_VendorEnsure(object oPC)

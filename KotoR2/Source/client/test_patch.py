@@ -69,8 +69,8 @@ class TestSeedFile(unittest.TestCase):
 
     def test_include_file_is_current(self):
         path = os.path.join(HERE, "..", "nss", "k2ap_seed.nss")
-        with open(path, newline="") as f:
-            self.assertEqual(f.read(), k2_seed.nss_include(), "run tools/build_seed_include.py")
+        with open(path, encoding="utf-8") as f:            # universal newlines: a Windows checkout may have turned the file's line ends into CRLF
+            self.assertEqual(f.read(), k2_seed.nss_include().replace("\r\n", "\n"), "run tools/build_seed_include.py")
 
     def test_function_names(self):
         self.assertEqual(k2_seed.func_name("SEED_GUARD"), "K2AP_SeedGuard")

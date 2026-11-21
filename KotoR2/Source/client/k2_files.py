@@ -76,8 +76,27 @@ class Link:
         return out
 
     def skip_existing(self) -> None:
-        """Ignore everything already in the outbox (used when the client starts and wants only what happens next)."""
+        """Ignore everything already in the outbox (used when the lines belong to another seed). The sequence number of the last line is kept, so the next game
+        process's numbering from 1 is still seen as a new session."""
         try:
-            self._offset = os.path.getsize(self.outbox_path)
-        except FileNotFoundError:
+            size = os.path.getsize(self.outbox_path)
+            with open(self.outbox_path, "rb") as f:
+                f.seek(max(0, size - 4096))
+                tail = f.read()
+        except OSError:
             self._offset = 0
+            return
+        self._offset = size
+        for raw in reversed(tail.split(b"\n")):
+            head = raw.decode("ascii", "replace").strip().partition("|")[0]
+            if head.isdigit():
+                self._last_seq = int(head)
+                break
+
+    def start_at(self, offset: int) -> None:
+        """Read the outbox from this byte offset (where the current seed's own lines begin). An offset past the end of the file (the file was replaced) reads it all."""
+        try:
+            size = os.path.getsize(self.outbox_path)
+        except OSError:
+            size = 0
+        self._offset = offset if 0 <= offset <= size else 0

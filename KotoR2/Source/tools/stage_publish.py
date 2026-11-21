@@ -38,6 +38,7 @@ PUBLIC_DOCS = {"README.md", "SECURITY.md", "PROVENANCE.md", "RELEASE_CHECKLIST.m
 MAP = [
     ("docs", (".md",), "Docs"),
     ("client", (".py",), "Source/client"),
+    ("installer", (".py", ".bat"), "Source/installer"),
     ("tools", (".py", ".json"), "Source/tools"),
     ("worlds/kotor2", (".py",), "Source/worlds/kotor2"),
     ("worlds/kotor2/test", (".py",), "Source/worlds/kotor2/test"),

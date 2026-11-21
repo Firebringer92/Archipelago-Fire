@@ -10,6 +10,8 @@ ROOT = os.path.normpath(os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 import k2_extras as X  # noqa: E402
 
+X.LOOK_METHOD_OVERRIDE = None          # the tests below read the plan's own look_method (the client's default override is tested in test_the_client_uses_the_template_look_whatever_the_plan_says)
+
 GAME = os.environ.get("K2_GAME_DIR") or r"C:\Program Files (x86)\Steam\steamapps\common\Knights of the Old Republic II"
 HAVE_GAME = os.path.isfile(os.path.join(GAME, "swkotor2.exe"))
 with open(os.path.join(ROOT, "data", "extra_companions.json"), encoding="utf-8") as f:
@@ -33,15 +35,15 @@ class TestHelpers(unittest.TestCase):
 
     def test_the_data_file_is_complete(self):
         names = [e["name"] for e in DATA["extras"]]
-        self.assertEqual(len(names), 12)
-        self.assertEqual(len(set(names)), 12)
+        self.assertEqual(len(names), 14)
+        self.assertEqual(len(set(names)), 14)
         self.assertEqual(sum(1 for e in DATA["extras"] if e["kind"] == "k1"), 7)
         for e in DATA["extras"]:
             for key in ("appearance", "portrait", "gender", "class", "fallback_appearance", "fallback_portrait"):
                 self.assertIn(key, e, e["name"])
             self.assertNotIn("source", e)                                  # every extra is built from the one generic base, not from the character's own template
             female, male = DATA["portraits"]["female"], DATA["portraits"]["male"]
-            if e["kind"] != "k1":
+            if e["kind"] != "k1" and e["name"] != "Atris":                   # Atris keeps her own portrait row (46); the others use a row from the portrait pool
                 self.assertIn(e["portrait"], female if e["gender"] else male, e["name"])
             self.assertIn(e["fallback_portrait"], female if e["gender"] else male, e["name"])      # no other companion's face when the K1 portrait is missing
 
@@ -79,12 +81,41 @@ class TestHelpers(unittest.TestCase):
         with open(os.path.join(ROOT, "nss", "k2se_disp.nss"), encoding="utf-8") as f:
             self.assertIn("K2AP_LookEnforce();", f.read())
 
+    def test_the_client_uses_the_template_look_whatever_the_plan_says(self):
+        entry = {"slot": 12, "kind": "k1", "appearance": 4, "portrait": 33, "fallback_appearance": 30, "fallback_portrait": 1, "look_method": "disguise"}
+        X.LOOK_METHOD_OVERRIDE = "template"
+        try:
+            self.assertEqual(X.look_method(entry), "template")
+            self.assertEqual(X.look_lines([entry], lambda e: True), [])                  # nothing for the dispatcher's tick to disguise
+        finally:
+            X.LOOK_METHOD_OVERRIDE = None
+        self.assertEqual(X.look_method(entry), "disguise")
+        import importlib
+        importlib.reload(X)                                                                # the module's own default
+        try:
+            self.assertEqual(X.LOOK_METHOD_OVERRIDE, "template")
+        finally:
+            X.LOOK_METHOD_OVERRIDE = None
+
+    def test_the_32_slot_party_is_switched_on_only_when_the_seed_has_extras(self):
+        self.assertEqual(X.party_lines([{"slot": 12}]), ["party32=1", "party32_gui=1"])
+        self.assertEqual(X.party_lines([]), [])
+        self.assertEqual(X.party_lines(None), [])
+
     def test_the_droid_slots_are_not_in_the_template_table(self):
         self.assertEqual(set(X.COMPANION_TEMPLATES), {0, 1, 2, 4, 6, 7, 9, 10, 11})
 
 
 @unittest.skipUnless(HAVE_GAME, "needs the game files")
 class TestBuildersAgainstTheGame(unittest.TestCase):
+    def test_the_level_one_feats_of_a_class_come_from_the_players_feat_table(self):
+        from pykotor.extract.installation import Installation
+        inst = Installation(GAME)
+        scoundrel = set(X.start_feats(inst, 2))
+        self.assertTrue({5, 8, 31, 39, 40, 44, 60, 104} <= scoundrel)               # light armour, Critical Strike, Sniper Shot, blaster, rifle, melee, Sneak Attack, Scoundrel's Luck
+        self.assertIn(43, set(X.start_feats(inst, 3)))                               # a Jedi Guardian: lightsaber proficiency
+        self.assertNotIn(43, scoundrel)
+
     def test_every_extra_builds_and_reads_back(self):
         from pykotor.resource.formats.gff import read_gff
         files, problems = X.build_templates(GAME, PLAN, lambda e: True)
@@ -98,6 +129,8 @@ class TestBuildersAgainstTheGame(unittest.TestCase):
             self.assertEqual(root.get_uint16("Appearance_Type"), 452)                       # the generic base's body: the look is a disguise (look_method)
             self.assertEqual(root.get_uint16("PortraitId"), entry["portrait"])
             self.assertEqual(root.get_uint8("Gender"), entry["gender"])
+            feats = {f.get_uint16("Feat") for f in root.get_list("FeatList")}
+            self.assertTrue({5, 39, 40, 44} <= feats, entry["name"])                    # light armour, blaster, blaster rifle, melee: never an empty feat list
 
     def test_the_template_method_writes_the_look_into_the_template(self):
         from pykotor.resource.formats.gff import read_gff

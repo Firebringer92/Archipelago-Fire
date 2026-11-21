@@ -5,7 +5,8 @@ It does five things:
   * patches the game's Override folder with that data (k2_patch.py, k2_seed.py): connect, patch, then launch the game;
   * turns every received item into a dispatcher job (k2_dispatcher.py) that the game applies at a calm moment;
   * reads the game's report lines (k2_files.py) and sends the location checks they reach (k2_tracker.py);
-  * records the run (k2_tracker.Recorder) so a playthrough can be analysed afterwards.
+  * records the run (k2_tracker.Recorder) so a playthrough can be analysed afterwards;
+  * shows a Status tab and a Heartbeat log (k2_status.py, k2_gui.py): whether the server and the game are connected and answering, and what waits.
 Run it from the Archipelago folder next to the world, or with the project's ap_core on the path (see tools/run_world_tests.py).
 """
 import asyncio
@@ -25,16 +26,18 @@ import Utils  # noqa: E402
 from CommonClient import ClientCommandProcessor, CommonContext, get_base_parser, gui_enabled, logger, server_loop  # noqa: E402
 from NetUtils import ClientStatus  # noqa: E402
 
-from k2_dispatcher import DispatchClient, Job, RECEIPT_PREFIX  # noqa: E402
+from k2_dispatcher import DispatchClient, Job, RECEIPT_PREFIX, STATE_ACTIONS  # noqa: E402
 from k2_companions import CompanionPlanner, parse_cc
-from k2_extras import build_droid_templates, build_templates, extra_for_item, k1_assets_in, look_lines, template_name
+from k2_droid import droid_files, fallback_looks, rig_looks, uses_battle_droid, usable_look
+from k2_extras import build_droid_templates, build_templates, companion_look_lines, extra_for_item, k1_assets_in, look_lines, party_lines, template_name
 from k2_bazaar import build_files as build_bazaar_files
 from k2_bazaar_tokens import token_files
+from k2_gift import gift_files, START_STOCK
 from k2_assets import asset_files
 from k2_journal import journal_files, tracker_stage
 from k2_crafting import crafting_files, flag_lines, material_yields
 from k2_dialogues import master_dialogue_files
-from k2_doors import door_files
+from k2_doors import door_files, peragus_unlock
 from k2_enemies import enemy_files
 from k2_loot import loot_files
 from k2_shop import shop_files
@@ -42,6 +45,7 @@ from k2_vendor import build_files as build_vendor_files
 from k2_files import Link  # noqa: E402
 from k2_patch import Patcher, find_game_dir, path_report, payload_files  # noqa: E402
 from k2_seed import config_lines, seed_files  # noqa: E402
+from k2_status import GameWatch, Snapshot, heartbeat, heartbeat_line, render  # noqa: E402
 from k2_tracker import ItemLog, Recorder, Tracker  # noqa: E402
 
 try:
@@ -55,8 +59,9 @@ GAME = "KotOR 2 TSL"
 DEFAULT_AMOUNTS = {"xp": "8000", "credits": "5000"}
 QUIET_ARMS = {"victory"}
 # actions /k2_give may send (the simple ones; the arms that rewrite the seed's tables or classes need the real item)
-TEST_GIVE_ACTIONS = {"notify", "credits", "xp", "set_xp", "skill", "ability", "token", "trap", "gear", "pass", "materials", "death"}
+TEST_GIVE_ACTIONS = {"notify", "credits", "xp", "set_xp", "skill", "ability", "token", "trap", "gear", "pass", "materials", "death", "companion", "gift", "partycon"}
 MODE_LIMITED, MODE_GATED = 1, 2
+COMPANIONS_AP_GATED = 2
 COMPANIONS_AP_LIMITED = 3
 PRESTIGE_LEVEL = 15
 # the twelve story companions in slot order (0-11); an item "Companion: <name>" makes that slot usable
@@ -80,13 +85,10 @@ def arm_to_job(arm: str, amounts: typing.Optional[typing.Dict[str, str]] = None)
 
 class KotorTwoCommandProcessor(ClientCommandProcessor):
     def _cmd_k2_status(self) -> bool:
-        """Show the delivery state: the game's job number, the job in flight, what is waiting."""
+        """Show what the Status tab shows: the server, the game, the game files, the checks, and what is waiting to be delivered."""
         ctx: "KotorTwoContext" = self.ctx
-        d = ctx.dispatcher
-        cur = d.current.text if d.current else "none"
-        self.output("game job number: %s; in flight: %s; waiting: %d; applied this session: %d; failed: %d; replayed: %d" % (
-            d.counter, cur, len(d._queue), d.stats["applied"], d.stats["failed"], d.stats["replayed"]))
-        self.output("checked locations: %d of %d" % (len(ctx.tracker.checked) if ctx.tracker else 0, len(ctx.tracker.locations) if ctx.tracker else 0))
+        for text in ctx.status_lines():
+            self.output(text)
         return True
 
     def _cmd_k2_patch(self, game_dir: str = "") -> bool:
@@ -148,7 +150,8 @@ class KotorTwoCommandProcessor(ClientCommandProcessor):
 
     def _cmd_k2_give(self, *words: str) -> bool:
         """TESTING ONLY. Give yourself an item as if it had arrived from the multiworld, without telling the server: /k2_give <item name or arm> [count]
-        (for example /k2_give Telos Progression 3, /k2_give skill:stealth, /k2_give gear:g_a_class4001, /k2_give vendorpass:skill, /k2_give xp)."""
+        (for example /k2_give Telos Progression 3, /k2_give skill:stealth, /k2_give gear:g_a_class4001, /k2_give vendorpass:skill, /k2_give xp,
+        /k2_give Companion: Atton Rand, /k2_give AP Companion, /k2_give Companion: Bastila Shan for an extra of the seed's plan, /k2_give gift 5 for five AP Companion Gifts)."""
         ctx: "KotorTwoContext" = self.ctx
         args = list(words)
         count = 1
@@ -164,12 +167,41 @@ class KotorTwoCommandProcessor(ClientCommandProcessor):
         action, args_text = arm_to_job(arm, ctx.amounts)
         if arm.startswith("vendorpass:"):
             action, args_text = "pass", arm[len("vendorpass:"):]
+        named = companion_job(next((n for n in ITEMS if n.lower() == text.lower()), ""))
+        if named:                                                # "Companion: Atton Rand": the slot unlocks and, if the story has not recruited them, they join
+            action, args_text = named
+        extra_item = next((n for n in ITEMS if n.lower() == text.lower() and (n.startswith("Companion: ") or n == "AP Companion")), "")
+        if extra_item and not named:
+            # an extra or generated companion (slots 12 and up): the plan of this seed says which slot and template. A test ignores what was already delivered, so
+            # a refused delivery can be tried again; "AP Companion" with a count takes the generated companions in turn.
+            extras = ctx.slot_data.get("extras") or []
+            jobs, used = [], set()
+            for _ in range(count if extra_item == "AP Companion" else 1):
+                entry = extra_for_item(extras, extra_item, used)
+                if entry is None:
+                    break
+                used.add(entry["slot"])
+                jobs.append(("extracompanion", "%d:%s" % (entry["slot"], template_name(entry["slot"]))))
+            if not jobs:
+                names = ", ".join("%s (slot %d)" % (e["name"], e["slot"]) for e in extras) or "none"
+                self.output("This seed's plan has no %r. Its extra and generated companions: %s." % (extra_item, names))
+                return False
+            for job_action, job_args in jobs:
+                ctx.dispatcher.submit(job_action, job_args, message=RECEIPT_PREFIX + extra_item, item_name=extra_item)
+            ctx.recorder and ctx.recorder.write("give", text=extra_item, action="extracompanion", args=[a for _, a in jobs], count=len(jobs))
+            self.output("Sent %d x %s (%s) to the game." % (len(jobs), extra_item, ", ".join(a for _, a in jobs)))
+            return True
+        if action == "gift" or text.lower() in ("gift", "gifts", "ap companion gift", "ap companion gifts"):      # /k2_give gift 5: one job that makes a stack of that size
+            ctx.dispatcher.submit("gift", str(count), message=RECEIPT_PREFIX + "%d AP Companion Gift%s" % (count, "" if count == 1 else "s"), item_name="AP Companion Gifts")
+            ctx.recorder and ctx.recorder.write("give", text="AP Companion Gift", action="gift", args=str(count), count=1)
+            self.output("Sent %d AP Companion Gift%s to the game." % (count, "" if count == 1 else "s"))
+            return True
         if action not in TEST_GIVE_ACTIONS:
             self.output("%r cannot be given this way (it needs the real item: crafting types, class and companion items change the seed's tables)." % text)
             return False
         for _ in range(count):
-            ctx.dispatcher.submit(action, args_text, message=RECEIPT_PREFIX + "Test: " + text, item_name="test")
-        ctx.recorder and ctx.recorder.write("testgive", text=text, action=action, args=args_text, count=count)
+            ctx.dispatcher.submit(action, args_text, message=RECEIPT_PREFIX + text, item_name=text)
+        ctx.recorder and ctx.recorder.write("give", text=text, action=action, args=args_text, count=count)
         self.output("Sent %d x %s (%s %s) to the game." % (count, text, action, args_text))
         return True
 
@@ -216,6 +248,7 @@ class KotorTwoContext(CommonContext):
         self.dispatcher = DispatchClient(self.link)
         self.dispatcher.on_failure = self._on_job_failure
         self.dispatcher.on_applied = self._on_job_applied
+        self.dispatcher.on_rollback = self._on_save_changed
         self.tracker: typing.Optional[Tracker] = None
         self.recorder: typing.Optional[Recorder] = None
         self.slot_data: dict = {}
@@ -225,6 +258,7 @@ class KotorTwoContext(CommonContext):
         self.tracker_sent = 0                # the Archipelago Tracker stage already ordered (0 = none yet; kept across restarts)
         self.start_class_sent = False       # the starting class conversion was ordered (kept across restarts)
         self.start_stats_sent = False        # the starting stats were ordered (kept across restarts)
+        self.start_gifts_sent = False        # the starting AP Companion Gifts were ordered (kept across restarts)
         self.extras_given: typing.Set[int] = set()        # slots of the extra and generated companions already handed over (kept across restarts)
         self.prestige_pending = False        # a Prestige Class item arrived before the player reached level 15 (kept across restarts)
         self.game_level = 0                  # the last character level the game reported
@@ -232,15 +266,19 @@ class KotorTwoContext(CommonContext):
         self.party_info: typing.Dict[int, tuple] = {}      # CC report: slot -> (class 1, level 1, class 2, level 2) of the companions in the party
         self.planner: typing.Optional[CompanionPlanner] = None
         self._comp_attempts: typing.Dict[int, tuple] = {}
+        self._unlock_attempts: typing.Dict[int, int] = {}          # slot -> times the unlock was re-sent while the game's bit stayed unset
         self.amounts = dict(DEFAULT_AMOUNTS)
         self._outbox_task: typing.Optional[asyncio.Task] = None
         self._state_path: typing.Optional[str] = None
+        self.watch = GameWatch()                  # the game's process and the time of its last report (k2_status.py)
+        self.patch_problems = False               # the last patch finished with problems (or could not run)
+        self.patch_finished: typing.Optional[float] = None
+        self._heartbeat_task: typing.Optional[asyncio.Task] = None
 
     # ---- connection ------------------------------------------------------------------------------------------------
     def make_gui(self):
-        ui = super().make_gui()
-        ui.base_title = "KOTOR 2 Archipelago Client"
-        return ui
+        from k2_gui import manager_class
+        return manager_class(super().make_gui())
 
     def on_package(self, cmd: str, args: dict):
         if cmd == "Connected":
@@ -295,15 +333,49 @@ class KotorTwoContext(CommonContext):
         await self.send_msgs([{"cmd": "Bounce", "tags": ["TrapLink"],
                                "data": {"time": self._last_trap_link_sent, "source": self.player_names[self.slot], "trap_name": trap_name}}])
 
+    @property
+    def seed_key(self) -> str:
+        """The multiworld's own name, as the server reports it (RoomInfo). `seed_name` is what a patched client expects and is empty for this one: using it alone
+        gave every seed the same state file, recorder and placement name."""
+        return str(getattr(self, "server_seed_name", None) or self.seed_name or "seed")
+
+    def _take_outbox_for_seed(self, name: str) -> None:
+        """The outbox is the game's one report file and it lives across seeds: every earlier run's quests, levels and areas are still in it. The client keeps, in
+        outbox_seed.txt, which seed claimed the file last and the byte offset where that seed's own lines begin. Another seed (or no record, or a record without an offset): the
+        existing lines are skipped and the claim is made now. The same seed again: the history is read, but only from that offset, never from the top of the file."""
+        marker = os.path.join(self.link.directory, "outbox_seed.txt")
+        last, start = "", -1
+        try:
+            with open(marker) as f:
+                lines = f.read().splitlines()
+            last = lines[0].strip()
+            start = int(lines[1].strip()) if len(lines) > 1 and lines[1].strip() else -1
+        except (OSError, ValueError, IndexError):
+            last, start = "", -1
+        if last == name and start >= 0:
+            self.link.start_at(start)
+        else:
+            self.link.skip_existing()
+            self._outbox_started = True
+            start = self.link._offset
+            logger.info("KOTOR 2: this is a different seed from the last one played here: the game's earlier reports are ignored.")
+        try:
+            with open(marker, "w") as f:
+                f.write("%s" % name + chr(10) + "%d" % start + chr(10))
+        except OSError:
+            pass
+
     def _on_connected(self, args: dict) -> None:
         self.slot_data = args.get("slot_data", {})
+        rig_looks(self.slot_data)                                    # creature droid looks (66, 63) become the human-rig bodies, which can hold weapons (client/k2_droid.py)
         locations = self.slot_data.get("locations", {})
         options = self.slot_data.get("options", {})
         self.tracker = Tracker(locations, self.checked_locations, self.slot_data.get("goal"))
         self.amounts = {"xp": str(options.get("experience_item", DEFAULT_AMOUNTS["xp"])),
                         "credits": str(options.get("credit_item", DEFAULT_AMOUNTS["credits"]))}
         self.dispatcher.guard = int(self.slot_data.get("seed_guard", 0))
-        name = "%s_%s" % (self.seed_name or "seed", self.slot or 0)
+        name = "%s_%s" % (self.seed_key, self.slot or 0)
+        self._take_outbox_for_seed(name)
         self.recorder = Recorder(os.path.join(self.link.directory, "recorder"), name)
         self._state_path = os.path.join(self.link.directory, "client_%s.json" % name)
         try:
@@ -315,6 +387,7 @@ class KotorTwoContext(CommonContext):
             self.tracker_sent = int(saved.get("tracker_sent", 0))
             self.start_class_sent = bool(saved.get("start_class_sent", False))
             self.start_stats_sent = bool(saved.get("start_stats_sent", False))
+            self.start_gifts_sent = bool(saved.get("start_gifts_sent", False))
             self.extras_given = set(int(x) for x in saved.get("extras_given", []))
             self.prestige_pending = bool(saved.get("prestige_pending", False))
             if int(saved.get("state_version", 1)) < 2:
@@ -322,6 +395,7 @@ class KotorTwoContext(CommonContext):
             elif not self._dispatch_restored:
                 self._dispatch_restored = True
                 again = self.dispatcher.import_state(saved.get("dispatcher", {})) + list(saved.get("failed", []))
+                again = [j for j in again if j.get("action") not in STATE_ACTIONS]       # a class order for who was in the party then: the next party report decides afresh
                 for job in again:
                     self.dispatcher.submit(job["action"], job["args"], message=job.get("message", ""), index=int(job.get("index", -1)), item_name=job.get("item_name", ""))
                 if again:
@@ -329,6 +403,7 @@ class KotorTwoContext(CommonContext):
         except (OSError, ValueError, KeyError, TypeError):
             self.delivered = self.paid_checks = self.unlocked = self.tracker_sent = 0
             self.start_class_sent = False
+            self.start_gifts_sent = False
         self.planner = CompanionPlanner(self.slot_data, self._prestige_slots())
         self.recorder.write("connected", seed=self.seed_name, slot=self.slot, locations=len(locations), delivered=self.delivered,
                             options=self.slot_data.get("options"))
@@ -337,6 +412,7 @@ class KotorTwoContext(CommonContext):
         asyncio.ensure_future(self.update_trap_link(bool(options.get("trap_link"))))
         self.start_patch()
         self._apply_start_stats()
+        self._apply_start_gifts()
         self._apply_start_class()
         self._apply_progress()
         if self._outbox_task is None or self._outbox_task.done():
@@ -363,8 +439,11 @@ class KotorTwoContext(CommonContext):
         return Patcher(found, self.link.directory, config_path=self.config_path)
 
     def _config(self, plan: typing.Optional[dict], unlocked: typing.Set[str]) -> typing.List[str]:
-        """The marked block of config.txt: the seed's switches, the crafting flags and the extras' disguise rows."""
-        return config_lines(self.slot_data) + flag_lines(plan, unlocked) + list(self._look_lines)
+        """The marked block of config.txt: the seed's switches, the crafting flags, the 32-slot party switches (when the seed has extra companions) and the extras' disguise rows."""
+        pc_look = int((self.slot_data.get("start_class") or {}).get("look") or 0)
+        pc_lines = ["ap_pc_look=%d" % pc_look] if pc_look > 0 else []                  # the droid player's look: the dispatcher's tick puts the disguise back when the game removes it
+        return (config_lines(self.slot_data) + flag_lines(plan, unlocked) + party_lines(self.slot_data.get("extras")) + list(self._look_lines) + pc_lines
+                + companion_look_lines(self.slot_data.get("companion_classes")))
 
     def start_patch(self) -> None:
         """Run the patch in a worker thread: it reads and rewrites dozens of game files and takes about a minute, and the window must stay usable meanwhile."""
@@ -395,6 +474,7 @@ class KotorTwoContext(CommonContext):
         if patcher is None:
             text = ("KOTOR 2: the game folder was not found, so the seed's files were NOT written. Type /k2_patch <game folder> "
                     "(the folder that contains swkotor2.exe).")
+            self.patch_problems = True
         elif not force and patcher._running():
             text = ("KOTOR 2: the game is running, so its files were NOT changed (rewriting them while it runs can crash it). If you have patched this seed before "
                     "you can play on. For a new seed, close the game and type /k2_patch.")
@@ -421,6 +501,16 @@ class KotorTwoContext(CommonContext):
                     files.update(built)
                 except Exception as e:                                  # pykotor missing or the game files unreadable: the rest of the patch still goes ahead
                     problems = ["the extra companions' creature templates could not be built: %s" % e]
+            if uses_battle_droid(self.slot_data):                        # class 10, melee for droids and the human-rig looks (client/k2_droid.py)
+                try:
+                    built, droid_problems = droid_files(patcher.game_dir, self.slot_data, os.path.normpath(os.path.join(HERE, "..", "tools")), lambda line: logger.debug(line))
+                    files.update(built)
+                    problems += droid_problems
+                    if "appearance.2da" not in built:                    # nothing hosts the human-rig looks: no droid is given one
+                        fallback_looks(self.slot_data)
+                except Exception as e:
+                    fallback_looks(self.slot_data)
+                    problems.append("the Battle Droid's class and item tables could not be built: %s" % e)
             droids = {k: v for k, v in (self.slot_data.get("companion_classes") or {}).items() if v.get("look")}
             if droids:
                 try:
@@ -434,9 +524,9 @@ class KotorTwoContext(CommonContext):
             problems += ["a module file was changed by something else since the last patch and was left alone: %s" % name for name in left_alone]
             if self.slot_data.get("loot_plan"):                          # before the Bazaar tokens: their container copies are made from the templates as they are then
                 try:
-                    changed, loot_problems = loot_files(patcher.module_store(), self.slot_data["loot_plan"])
+                    changed, loot_problems = loot_files(patcher.module_store(), self.slot_data["loot_plan"], patcher.game_dir)
                     problems += loot_problems
-                    logger.info("KOTOR 2: the loot randomizer changed %d container and creature templates." % changed)
+                    heartbeat.info("KOTOR 2: the loot randomizer changed %d container and creature templates." % changed)
                 except Exception as e:
                     problems.append("the loot randomizer could not change the game's loot: %s" % e)
             if self.slot_data.get("options", {}).get("story_gates", True):
@@ -444,22 +534,32 @@ class KotorTwoContext(CommonContext):
                     active = {"NAR3", "DXN3", "DAN2"} - set(self.slot_data.get("disabled_gates", []))
                     nodes, dlg_problems = master_dialogue_files(patcher.module_store(), active)
                     problems += dlg_problems
-                    logger.info("KOTOR 2: the Master gates changed %d dialogue nodes." % nodes)
+                    heartbeat.info("KOTOR 2: the Master gates changed %d dialogue nodes." % nodes)
                 except Exception as e:
                     problems.append("the Master gates could not patch the Masters' conversations: %s" % e)
             if self.slot_data.get("door_plan"):
                 try:
                     written, door_problems = door_files(patcher.module_store(), self.slot_data["door_plan"])
                     problems += door_problems
-                    logger.info("KOTOR 2: the area randomizer re-linked %d doors." % written)
+                    heartbeat.info("KOTOR 2: the area randomizer re-linked %d doors." % written)
                 except Exception as e:
                     problems.append("the area randomizer could not re-link the game's doors: %s" % e)
+            if self.slot_data.get("options", {}).get("shortened_peragus"):
+                try:
+                    unlocked, per_problems = peragus_unlock(patcher.module_store())
+                    problems += per_problems
+                    heartbeat.info("KOTOR 2: shortened Peragus unlocked %d door templates." % unlocked)
+                except Exception as e:
+                    problems.append("shortened Peragus could not unlock the game's doors: %s" % e)
             if self.slot_data.get("enemy_plan"):
                 try:
                     built, added, enemy_problems = enemy_files(patcher.game_dir, patcher.module_store(), self.slot_data["enemy_plan"])
                     files.update(built)
                     problems += enemy_problems
-                    logger.info("KOTOR 2: the enemy randomizer added %d creatures." % added)
+                    heartbeat.info("KOTOR 2: the enemy randomizer added %d creatures." % added)
+                    carriers = sum(1 for s in self.slot_data["enemy_plan"].get("spawns", []) if s.get("bounty"))
+                    if carriers:
+                        heartbeat.info("KOTOR 2: %d of them carry a Bounty Datapad." % carriers)
                 except Exception as e:
                     problems.append("the enemy randomizer could not add creatures to the game's areas: %s" % e)
             if self.slot_data.get("options", {}).get("bazaar"):
@@ -470,11 +570,17 @@ class KotorTwoContext(CommonContext):
                 except Exception as e:
                     problems.append("the Bazaar's files could not be built: %s" % e)
                 try:
-                    built, bz_problems = token_files(patcher.game_dir, patcher.module_store(), str(self.seed_name or "seed"))
+                    built, bz_problems = token_files(patcher.game_dir, patcher.module_store(), self.seed_key)
                     files.update(built)
                     problems += bz_problems
                 except Exception as e:
                     problems.append("the Bazaar tokens could not be placed in the game's modules: %s" % e)
+            try:                                                       # the AP Companion Gifts: not an option, always placed (after the Bazaar's tokens, which take their containers first)
+                built, gift_problems = gift_files(patcher.game_dir, patcher.module_store(), self.seed_key)
+                files.update(built)
+                problems += gift_problems
+            except Exception as e:
+                problems.append("the AP Companion Gifts could not be placed in the game's modules: %s" % e)
             if self.slot_data.get("options", {}).get("archipelago_vendor"):
                 try:
                     built, vendor_problems = build_vendor_files(patcher.game_dir)
@@ -484,7 +590,7 @@ class KotorTwoContext(CommonContext):
                     problems.append("the Archipelago Vendor's files could not be built: %s" % e)
             if self.slot_data.get("shop_plan"):
                 try:
-                    built, shop_problems = shop_files(patcher.module_store(), self.slot_data["shop_plan"])
+                    built, shop_problems = shop_files(patcher.module_store(), self.slot_data["shop_plan"], patcher.game_dir)
                     files.update(built)
                     problems += shop_problems
                 except Exception as e:
@@ -507,11 +613,13 @@ class KotorTwoContext(CommonContext):
             text = result.summary()
             self.recorder and self.recorder.write("patch", created=result.created, changed=result.changed, removed=result.removed,
                                                   errors=result.errors)
+            self.patch_problems = bool(result.errors or problems)
             if result.errors or problems:
                 text += " FINISHED WITH PROBLEMS (%d): see the warnings above." % (len(result.errors) + len(problems))
             else:
                 text += " Finished in %d seconds: the game files are ready, you can start the game now." % round(time.time() - started)
         self.last_patch = text
+        self.patch_finished = time.time()
         logger.info(text)
         return text
 
@@ -528,7 +636,7 @@ class KotorTwoContext(CommonContext):
         try:
             with open(self._state_path, "w") as f:
                 json.dump({"state_version": 2, "delivered": self.delivered, "paid_checks": self.paid_checks, "unlocked": self.unlocked, "tracker_sent": self.tracker_sent,
-                           "start_class_sent": self.start_class_sent, "start_stats_sent": self.start_stats_sent, "extras_given": sorted(self.extras_given),
+                           "start_class_sent": self.start_class_sent, "start_stats_sent": self.start_stats_sent, "start_gifts_sent": self.start_gifts_sent, "extras_given": sorted(self.extras_given),
                            "prestige_pending": self.prestige_pending, "dispatcher": self.dispatcher.export_state(), "failed": self._failed}, f)
         except OSError:
             pass
@@ -580,7 +688,7 @@ class KotorTwoContext(CommonContext):
         result = patcher.apply(self._patch_files, config=self._config(plan, unlocked))
         self._craft_applied = state
         self.recorder and self.recorder.write("crafting", unlocked=sorted(unlocked), recipes=len(received), errors=result.errors)
-        logger.info("KOTOR 2: crafting unlocked: %s" % (", ".join(sorted(unlocked)) or "nothing"))
+        heartbeat.info("KOTOR 2: crafting unlocked: %s" % (", ".join(sorted(unlocked)) or "nothing"))
 
     def _material_yield(self, resref: str) -> int:
         """Components a gear item gives in crafting mode, read once from the game's templates (1 if they cannot be read)."""
@@ -726,15 +834,26 @@ class KotorTwoContext(CommonContext):
         not change what the game reports is tried once more and then left."""
         if self.planner is None or not self.planner.active() or not self.party_info or self.game_level <= 0:
             return
-        queued = {(j.action, j.args) for j in list(self.dispatcher._queue) + ([self.dispatcher.current] if self.dispatcher.current else [])}
+        waiting = list(self.dispatcher._queue) + ([self.dispatcher.current] if self.dispatcher.current else [])
+        queued = {(j.action, j.args) for j in waiting}
+        queued_slots = {j.args.split(":")[0] for j in waiting if j.action == "compclass"}       # an order already waits for that companion: it is planned again once it was answered
         for slot, args in self.planner.orders(self.party_info, self.game_level, self.game_alignment):
-            if ("compclass", args) in queued:
+            if ("compclass", args) in queued or str(slot) in queued_slots:
                 continue
             info = self.party_info[slot]
             last = self._comp_attempts.get(slot)
             tries = last[2] + 1 if last and last[0] == info and last[1] == args else 1
-            if tries > 2:
+            if tries > (1 if args.split(":")[1] == "3" else 2):          # an experience order (kind 3) is given once per player level: the companion's class level stays until the player takes the level-up
                 continue
+            if args.split(":")[1] == "3" and last and last[1] == args:
+                continue
+            # The same order for the same slot is sent at most three times in ten minutes, whatever the game reported in between: a report that flips between two states
+            # (two objects with one tag, say) would otherwise start the count again with every flip and the order would run for ever.
+            now = time.monotonic()
+            sent = [t for t in self.__dict__.setdefault("_comp_sent", {}).get((slot, args), []) if now - t < 600]
+            if len(sent) >= 3:
+                continue
+            self._comp_sent[(slot, args)] = sent + [now]
             self._comp_attempts[slot] = (info, args, tries)
             self.recorder and self.recorder.write("compclass_order", slot=slot, args=args, tries=tries, info=list(info))
             self.dispatcher.submit("compclass", args, message="", item_name="CompanionClass")
@@ -759,6 +878,44 @@ class KotorTwoContext(CommonContext):
         self.dispatcher.submit("stats", ":".join(str(int(v)) for v in stats), message="Your abilities and skills have been set.", item_name="StartStats")
         self._save_state()
 
+    def _expected_unlock_slots(self) -> typing.Set[int]:
+        """The story companion slots whose item the seed has delivered to this player (companions: ap_gated)."""
+        out: typing.Set[int] = set()
+        for item in self.items_received:
+            job = companion_job(self.item_names.lookup_in_game(item.item, self.game) or "")
+            if job:
+                out.add(int(job[1]))
+        return out
+
+    def _reconcile_unlocks(self, mask: int) -> None:
+        """The game reports its companion unlock set (UL|mask, one bit per slot). A companion whose item arrived but whose bit is not set is hidden by the game's hiding pass even
+        though the player earned them (found live 2026-11-17: Mira's item was delivered, a later save did not have the bit). The unlock order is sent again, at most twice
+        a slot until the game shows the bit; only in the mode where items decide (ap_gated), and never while an order for that slot is already waiting."""
+        if self.slot_data.get("options", {}).get("companions") != COMPANIONS_AP_GATED:
+            return
+        waiting = {int(j.args) for j in self.dispatcher.pending_jobs() if j.action == "companion" and j.args.isdigit()}
+        for slot in sorted(self._expected_unlock_slots()):
+            if (mask >> slot) & 1:
+                self._unlock_attempts.pop(slot, None)
+                continue
+            if slot in waiting or self._unlock_attempts.get(slot, 0) >= 2:
+                continue
+            self._unlock_attempts[slot] = self._unlock_attempts.get(slot, 0) + 1
+            self.recorder and self.recorder.write("reconcile", slot=slot, mask=mask, attempt=self._unlock_attempts[slot])
+            logger.info("KOTOR 2: %s was delivered but is not unlocked in this game: sending the unlock again." % BASE_COMPANIONS[slot])
+            self.dispatcher.submit("companion", str(slot), message=RECEIPT_PREFIX + "Companion: " + BASE_COMPANIONS[slot], item_name="Companion: " + BASE_COMPANIONS[slot])
+
+    def _apply_start_gifts(self) -> None:
+        """Gives the Exile the starting AP Companion Gifts once per save slot's seed (a dispatcher job; the game creates the stack at a calm moment)."""
+        if self.start_gifts_sent:
+            return
+        self.start_gifts_sent = True
+        if START_STOCK <= 0:
+            return
+        self.recorder and self.recorder.write("start_gifts", count=START_STOCK)
+        self.dispatcher.submit("gift", str(START_STOCK), message=RECEIPT_PREFIX + "%d AP Companion Gifts" % START_STOCK, item_name="AP Companion Gifts")
+        self._save_state()
+
     def _apply_start_class(self) -> None:
         """Orders the starting class conversion once per seed (the game runs the class rebuild at a calm moment, on the character as it is then)."""
         start = self.slot_data.get("start_class")
@@ -767,7 +924,11 @@ class KotorTwoContext(CommonContext):
         self.start_class_sent = True
         self.recorder and self.recorder.write("start_class", **start)
         # kind 0 = convert the class in position 0; level 0 = the level it has now
-        args = "0:%d:0:0:%d:%d:%d" % (start["class"], start["mode"], start.get("race", 0), start.get("look", 0))
+        look = start.get("look", 0)
+        patcher = self.make_patcher()
+        if patcher is not None:
+            look = usable_look(look, patcher.override)                    # a human-rig look only when its model files are in Override
+        args = "0:%d:0:0:%d:%d:%d" % (start["class"], start["mode"], start.get("race", 0), look)
         self.dispatcher.submit("class", args, message="Your class is being rebuilt.", item_name="StartClass")
         self._save_state()
 
@@ -822,8 +983,18 @@ class KotorTwoContext(CommonContext):
             self.recorder and self.recorder.write("victory")
             await self.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
 
+    def _on_save_changed(self) -> None:
+        """Another save was loaded: the class orders waiting for the old party are dropped and the attempts forgotten, so the next party report is worked out afresh."""
+        self._comp_attempts.clear()
+        self._unlock_attempts.clear()
+        self.dispatcher._queue = type(self.dispatcher._queue)(j for j in self.dispatcher._queue if j.action not in STATE_ACTIONS or j.fixed_seq)
+        self.party_info = {}
+        self.recorder and self.recorder.write("save_changed")
+
     def _on_job_applied(self, job: Job) -> None:
         self.recorder and self.recorder.write("applied", seq=job.seq, action=job.action, args=job.args, item=job.item_name)
+        if job.action == "compclass" and job.refused:
+            self._comp_attempts.pop(int(job.args.split(":")[0]), None)                  # refused (not in the party then): not a failed attempt
         self._save_state()                                  # the ledger and the list of jobs still to do change with every applied job
         if job.action == "trap" and (job.item_name or "").startswith("Trap: "):          # a real trap item; linked traps are named "TrapLink"
             asyncio.ensure_future(self._send_trap_link(job.item_name))
@@ -840,11 +1011,62 @@ class KotorTwoContext(CommonContext):
     def _requeue_failed(self) -> None:
         """The game has just reported its state, so it is running: the jobs it did not answer earlier (it was closed or had crashed) are sent now, in their order."""
         again, self._failed = self._failed, []
+        again = [j for j in again if j.get("action") not in STATE_ACTIONS]
         for job in again:
             self.dispatcher.submit(job["action"], job["args"], message=job.get("message", ""), index=int(job.get("index", -1)), item_name=job.get("item_name", ""))
         if again:
             logger.info("KOTOR 2: the game is back: %d job(s) it had not answered are sent again." % len(again))
             self._save_state()
+
+    # ---- the Status tab and the Heartbeat log (k2_status.py) -------------------------------------------------------------------
+    def status_snapshot(self) -> Snapshot:
+        d = self.dispatcher
+        window = d.window_text()
+        try:
+            connected = bool(self.server and not self.server.socket.closed and self.slot is not None)
+        except Exception:
+            connected = False
+        t = self.tracker
+        return Snapshot(
+            server_connected=connected, slot_name=str(self.player_names.get(self.slot, "")) if self.slot is not None else "", seed_name=self.seed_key if self.slot is not None else "",
+            game_running=self.watch.running, since_heard=self.watch.since_heard(), sessions=self.watch.sessions, module=self.current_module,
+            level=self.game_level, alignment=self.game_alignment, xp=self.game_xp,
+            patching=self._patch_lock.locked(), patch_text=self.last_patch or "", patch_problems=self.patch_problems,
+            patch_age=None if self.patch_finished is None else time.time() - self.patch_finished,
+            checks_done=len(t.checked) if t else 0, checks_total=len(t.locations) if t else 0, victory=bool(t and t.victory), goal_sent=bool(self.finished_game),
+            job_counter=d.counter, waiting=window["waiting"], failed=window["failed"], recent=window["recent"],
+            jobs_waiting=len(d.pending_jobs()), jobs_failed=d.stats["failed"], jobs_applied=d.stats["applied"])
+
+    def status_text(self) -> typing.Dict[str, str]:
+        snap = self.status_snapshot()
+        return render(snap, self.watch.silent(snap.jobs_waiting > 0))
+
+    def status_lines(self) -> typing.List[str]:
+        """The /k2_status report: the Status tab as plain lines."""
+        text = self.status_text()
+        lines: typing.List[str] = []
+        for key in ("server", "game", "state", "patch", "checks", "jobs", "waiting", "failed", "recent", "warnings"):
+            lines += [l for l in text[key].split("\n") if l]
+        return lines
+
+    async def _heartbeat_step(self) -> None:
+        """One turn of the heartbeat: look at the game's process now and then, note a silence once, and write the periodic line."""
+        if self.watch.process_due():
+            for line in await asyncio.get_event_loop().run_in_executor(None, self.watch.refresh):
+                heartbeat.info("KOTOR 2: " + line)
+        note = self.watch.silence_note(bool(self.dispatcher.pending_jobs()))
+        if note:
+            heartbeat.warning("KOTOR 2: " + note)
+        if self.watch.beat_due():
+            heartbeat.info(heartbeat_line(self.status_snapshot()))
+
+    async def _heartbeat_loop(self) -> None:
+        while not self.exit_event.is_set():
+            try:
+                await self._heartbeat_step()
+            except Exception:
+                heartbeat.exception("KOTOR 2: the heartbeat failed")
+            await asyncio.sleep(1.0)
 
     # ---- game lines to checks ------------------------------------------------------------------------------------------------
     async def _outbox_loop(self) -> None:
@@ -869,6 +1091,10 @@ class KotorTwoContext(CommonContext):
             if not history:
                 self.recorder and self.recorder.write("game", line=line)
                 self.dispatcher.on_event(line)
+                if line == "SESSION|":
+                    self.watch.new_session()
+                else:
+                    self.watch.heard()
             elif line.startswith("T|"):
                 last_report = line
             if line == "DL|death":
@@ -876,7 +1102,7 @@ class KotorTwoContext(CommonContext):
                     await self._send_death()
                 continue
             if line.startswith(("WT|", "GB|", "GP|")) and not history:
-                logger.info("KOTOR 2 wrapper: %s" % line)          # what the game-side wrappers did (gates, skips, the locker guard)
+                heartbeat.info("KOTOR 2 wrapper: %s" % line)          # what the game-side wrappers did (gates, skips, the locker guard)
             if line.startswith("T|") and self._failed and not history:
                 self._requeue_failed()
             if line.startswith("V|"):
@@ -886,6 +1112,11 @@ class KotorTwoContext(CommonContext):
                     self.item_log = ItemLog(os.path.join(self.link.directory, "items_seen.csv"))
                 self.item_log.update(ItemLog.parse(line[3:]), self.current_module)
                 continue
+            if line.startswith("UL|") and not history:
+                try:
+                    self._reconcile_unlocks(int(line[3:]))
+                except ValueError:
+                    pass
             if line.startswith("CC|"):
                 self.party_info = parse_cc(line[3:])
                 self._plan_companions()
@@ -931,6 +1162,7 @@ def launch():
         if args.name:
             ctx.username = args.name
         ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
+        ctx._heartbeat_task = asyncio.create_task(ctx._heartbeat_loop(), name="heartbeat")
         if gui_enabled:
             ctx.run_gui()
         ctx.run_cli()
@@ -938,7 +1170,7 @@ def launch():
         ctx.server_address = None
         await ctx.shutdown()
 
-    parser = get_base_parser(description="KOTOR 2 Archipelago client (draft).")
+    parser = get_base_parser(description="KOTOR 2 Archipelago client.")
     parser.add_argument("--name", default=None, help="Slot name to connect as.")
     parser.add_argument("--game-dir", default=None, help="The KOTOR 2 folder (the one with swkotor2.exe). Found automatically when omitted.")
     parser.add_argument("--payload-dir", default=None, help="Folder of shipped game files to install with the seed's files (default: payload next to the client).")

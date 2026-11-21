@@ -10,7 +10,8 @@ loaded older save brings back the matching number. The game answers on the outbo
   W|seq|reason             the action ran but was refused (the number still advances, a D line follows)
 
 Rollback: every job the game counted is kept in a ledger (this session only). When the game reports a number lower than ours, the jobs the old
-save never had are sent again in their original order, except deaths.
+save never had are sent again in their original order, except deaths and the Remove Half Inventory trap (it destroys items at random, so a repeat would take
+more of what the older save still has).
 """
 import asyncio
 import collections
@@ -18,12 +19,17 @@ import logging
 import time
 import typing
 
-logger = logging.getLogger("Client")
+logger = logging.getLogger("Client")            # what a player has to know (a warning)
+diag = logging.getLogger("Heartbeat")           # bookkeeping: shown on the Heartbeat tab, not in the main log
 
 NO_MESSAGE_ACTIONS = {"xp", "credits", "set_credits", "set_xp", "tracker"}
 MESSAGE_LINE_BREAK = "~~"
 MAX_BATCH_CHARS = 180            # the game reads at most 200 characters of the message
 DEATH_ACTIONS = {"trap:death", "force_death"}
+NEVER_REPLAYED = DEATH_ACTIONS | {"trap:inventory"}          # counted when an older save is loaded, never carried out again
+# Orders that depend on who is in the party at that moment: never replayed after a save is loaded (the game would refuse them for a companion who is not
+# there); the client works them out again from the game's next party report. The number they held is still counted.
+STATE_ACTIONS = {"compclass"}
 RECEIPT_PREFIX = "You received: "
 
 
@@ -50,6 +56,7 @@ class Job:
         self.sends = 0
         self.last_sign = time.time()
         self.index = -1                   # AP item index this job delivers, if any
+        self.abs_idx: typing.Optional[int] = None     # a replayed job: its place in the ledger
         self.item_name = ""
         self.carried: typing.List[str] = []
         self.done = asyncio.Event()
@@ -81,6 +88,7 @@ class DispatchClient:
         self.ledger: typing.List[typing.Tuple[int, str, str, str, bool]] = []
         self.on_failure: typing.Optional[typing.Callable[[Job, str], None]] = None
         self.on_applied: typing.Optional[typing.Callable[[Job], None]] = None
+        self.on_rollback: typing.Optional[typing.Callable[[], None]] = None
         self.stats = collections.Counter()
 
     # ---- keeping the work across a restart --------------------------------------------------------------------------
@@ -126,11 +134,13 @@ class DispatchClient:
 
     def _record(self, job: Job) -> None:
         if job.fixed_seq:
+            if job.abs_idx is not None:
+                self.abs_applied = job.abs_idx          # a replayed job: the game is now at its place in the ledger (the ledger entry is already there)
             return
         if self.abs_applied is None:
             self.abs_applied = ((job.seq or 1) - 1) % 255
         self.abs_applied += 1
-        replayable = job.text not in DEATH_ACTIONS and job.action != "death"
+        replayable = job.text not in NEVER_REPLAYED and job.action != "death" and job.action not in STATE_ACTIONS
         self.ledger.append((self.abs_applied, job.action, job.args, job.message_full, replayable))
         del self.ledger[:-1000]
 
@@ -163,7 +173,7 @@ class DispatchClient:
                     if self.current is not job:
                         continue                   # while we waited for the game's number a rollback took this job back into the queue: it is taken up again from there
                     job.seq = next_seq(self.counter or 0)
-                logger.info("[dispatch] sending job %d: %s" % (job.seq, job.text))
+                diag.info("[dispatch] sending job %d: %s" % (job.seq, job.text))
                 self._send(job)
             job = self.current
             if job is None:
@@ -175,8 +185,8 @@ class DispatchClient:
                     self._queue.appendleft(Job("notify", "", MESSAGE_LINE_BREAK.join(job.carried)))
                 continue
             await asyncio.sleep(0.25)
-            if job.done.is_set():
-                continue
+            if job.done.is_set() or self.current is not job:
+                continue                           # a rollback took the job out of flight while we slept: it is renumbered and sent again from the queue
             if time.time() - job.last_sign > self.RESEND_AFTER:
                 if job.sends >= self.MAX_SENDS:
                     self._fail(job, "no answer from the game after %d sends" % job.sends)
@@ -189,6 +199,30 @@ class DispatchClient:
         job.state = "sent" if job.state in ("queued", "sent") else job.state
         if not self.link.write_job(job.seq, self.guard, job.action, job.args, job.message):
             logger.warning("[dispatch] could not write the job file; will retry")
+
+    # ---- the Status tab ----------------------------------------------------------------------------------------------
+    @staticmethod
+    def _label(job: Job) -> str:
+        return job.item_name or job.text
+
+    def window_text(self, show: int = 8) -> typing.Dict[str, str]:
+        """The three labels of the Status tab: what waits (and what is in flight), what failed, what was delivered lately."""
+        jobs = self.pending_jobs()
+        if jobs:
+            lines = ["Deliveries waiting: %d" % len(jobs)]
+            for job in jobs[:show]:
+                lines.append("  %s %s%s" % ("sending" if job is self.current else "queued ", self._label(job),
+                                            " (sent %d times)" % job.sends if job.sends > 1 else ""))
+            if len(jobs) > show:
+                lines.append("  ... and %d more" % (len(jobs) - show))
+            waiting = "\n".join(lines)
+        else:
+            waiting = "Deliveries waiting: none"
+        failed = [j for j in self.history if j.state == "failed"]
+        done = [j for j in self.history if j.state in ("applied", "duplicate")]
+        failed_text = "\n".join(["Failed deliveries (%d):" % len(failed)] + ["  %s: %s" % (self._label(j), j.fail_reason) for j in failed[-3:]]) if failed else ""
+        recent_text = "\n".join(["Recently delivered:"] + ["  " + self._label(j) for j in done[-5:][::-1]]) if done else "Recently delivered: none"
+        return {"waiting": waiting, "failed": failed_text, "recent": recent_text}
 
     # ---- answers from the game --------------------------------------------------------------------------------------
     def on_event(self, line: str) -> None:
@@ -234,18 +268,25 @@ class DispatchClient:
                 self.on_applied(job)
         else:
             self.stats["duplicate"] += 1
+            if job.fixed_seq and job.abs_idx is not None:
+                self.abs_applied = job.abs_idx
             job.finish("duplicate")
 
     def _on_sync(self, seq: int, counter: int) -> None:
         job = self.current
         self.counter = counter
-        if job is None or job.seq != seq or job.fixed_seq or job.done.is_set():
+        if job is None or job.seq != seq or job.done.is_set():
+            return
+        if job.fixed_seq:
+            # a replayed job whose number does not fit the game's: another save was loaded while the replay was running. The replay is worked out again from the
+            # number the game has now (found live: the old replay stayed in flight for ever and failed with "no answer from the game").
+            self._rolled_back(counter)
             return
         if self.abs_applied is not None and counter_of(self.abs_applied) != counter:
             self._rolled_back(counter)
         job.seq = next_seq(counter)
         self.stats["resync"] += 1
-        logger.info("[dispatch] the game has job number %d; renumbering to %d" % (counter, job.seq))
+        diag.info("[dispatch] the game has job number %d; renumbering to %d" % (counter, job.seq))
         self._send(job)
 
     def _on_guard(self, seq: int, saved: int, job_guard: int) -> None:
@@ -260,32 +301,40 @@ class DispatchClient:
             logger.warning("[dispatch] the game refused job %d (%s)" % (seq, job.text))
 
     def _rolled_back(self, counter: int) -> None:
-        """The game's number is lower than ours: an older save was loaded. Send again the jobs it never had, in order."""
+        """The game's number is not the one we expect: another save was loaded. Send again the jobs that save never had, in order. Called again when yet
+        another save is loaded while a replay runs: the old replay is dropped and worked out again from the ledger (which keeps every counted job)."""
         if self.abs_applied is None:
             return
+        top = max([self.abs_applied] + [e[0] for e in self.ledger])
         target = None
-        for idx in range(self.abs_applied, max(0, self.abs_applied - 255), -1):
+        for idx in range(top, max(-1, top - 255), -1):
             if counter_of(idx) == counter:
                 target = idx
                 break
-        if counter == 0 and target is None:
-            target = 0
+        self._drop_replay()
         if target is None:
+            self.abs_applied = counter            # a number the ledger cannot place (a save from before this run of the client): take the game as it is
             return
         missing = [e for e in self.ledger if e[0] > target]
         self.stats["rollback"] += 1
-        logger.info("[dispatch] an older save was loaded (game number %d, expected %d): replaying %d job(s)" % (
+        diag.info("[dispatch] a different save was loaded (game number %d, expected %d): replaying %d job(s)" % (
             counter, counter_of(self.abs_applied), len(missing)))
         self.abs_applied = target
+        if self.on_rollback:
+            try:
+                self.on_rollback()
+            except Exception:
+                logger.exception("[dispatch] rollback callback raised")
         replay: typing.List[Job] = []
         for idx, action, args, message, replayable in missing:
             seq = counter_of(idx)
-            if replayable:
-                replay.append(Job(action, args, "", seq))
+            if replayable and ("%s:%s" % (action, args) if args else action) not in NEVER_REPLAYED:       # also for a ledger an earlier client wrote
+                job = Job(action, args, "", seq)
             else:
-                replay.append(Job("notify", "", "", seq))   # the number still has to be counted; a death is never repeated
+                job = Job("notify", "", "", seq)    # the number still has to be counted; a death or an inventory loss is never repeated
+            job.abs_idx = idx
+            replay.append(job)
             self.stats["replayed"] += 1
-        self.ledger = [e for e in self.ledger if e[0] <= target]
         for job in reversed(replay):
             self._queue.appendleft(job)
         # the job in flight (if any) is renumbered after the replay: put it back
@@ -296,3 +345,10 @@ class DispatchClient:
             cur.state = "queued"
             self._queue.insert(len(replay), cur)
         self._ensure_pump()
+
+    def _drop_replay(self) -> None:
+        """Forget the replay that is queued or in flight (a new one is worked out by the caller)."""
+        if self.current is not None and self.current.fixed_seq and self.current.abs_idx is not None:
+            self.current.finish("replaced")
+            self.current = None
+        self._queue = collections.deque(j for j in self._queue if not (j.fixed_seq and j.abs_idx is not None))

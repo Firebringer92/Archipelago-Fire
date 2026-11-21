@@ -5,7 +5,7 @@ The tests were written against the development folder: the Archipelago core with
 same files under KotoR2/Source. This script copies them into place:
 
   work/Archipelago/worlds/kotor2/     <- Source/worlds/kotor2 (the world and its tests), with the data files from Source/data in its data/ folder
-  work/client, work/tools, work/data, work/nss, work/worlds/kotor2   <- the same folders in Source (the layout of the development folder)
+  work/client, work/tools, work/data, work/nss, work/installer, work/worlds/kotor2   <- the same folders in Source (the layout of the development folder)
   work/docs/KotOR2_TEMPLATE.yaml   <- Docs/KotOR2_TEMPLATE.yaml (next to Source)
 
   python ci_layout.py --source KotoR2/Source --work work      (work/Archipelago must already hold an Archipelago checkout)
@@ -29,7 +29,7 @@ def main():
     if not os.path.isfile(os.path.join(core, "Generate.py")):
         sys.exit(f"{core} does not hold an Archipelago checkout (Generate.py is missing)")
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
-    for folder in ("client", "tools", "data", "nss"):
+    for folder in ("client", "tools", "data", "nss", "installer"):
         shutil.rmtree(os.path.join(work, folder), ignore_errors=True)
         shutil.copytree(os.path.join(source, folder), os.path.join(work, folder), ignore=ignore)
     for target in (os.path.join(work, "worlds", "kotor2"), os.path.join(core, "worlds", "kotor2")):

@@ -24,9 +24,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 
-# scripts of nss/ that are compiled as they are (they hold nothing from the game). The roster console's scripts (k2se_rp, k2se_ps*, k_plev_spcsuit) are not here:
-# the roster console is not part of this build yet.
-PROJECT_SCRIPTS = ("k2se_ap_enter", "k2se_cwb", "k2se_cup", "k2se_clab", "k2se_cok_bench", "k2se_cok_up", "k2se_cok_lab", "ap_jedi_inc", "k_ptat_sandper")
+# scripts of nss/ that are compiled as they are (they hold nothing from the game). The early roster console's research scripts (k2se_rp, k2se_ps*, k_plev_spcsuit) are not
+# here: the Party Console (k2ap_pc*, nss/k2ap_stand.nss) replaced them.
+PROJECT_SCRIPTS = ("k2se_ap_enter", "k2se_cwb", "k2se_cup", "k2se_clab", "k2se_cok_bench", "k2se_cok_up", "k2se_cok_lab", "ap_jedi_inc", "k_ptat_sandper", "k2ap_gok", "k2ap_gans", "k2ap_pcopen", "k2ap_pcdone", "k2ap_pcstand", "k2ap_pcsdone", "k2ap_pcclear")
 COLLECT = (".ncs", ".are")
 
 
@@ -95,7 +95,7 @@ def build(game: str, out: str, k1_dir: str = None) -> dict:
     collect(prepared, found, report["problems"], "prepare_game_scripts")
     report["steps"]["prepare_game_scripts"] = r.stdout.strip().splitlines()[-1:] if r.stdout.strip() else []
 
-    # 3. area wrappers
+    # 3. area entry hooks: the game's own entry scripts with ours joined on (tools/ncs_merge.py)
     wrapped = os.path.join(work, "wrappers")
     r = run([os.path.join(HERE, "build_area_wrappers.py"), "--game-dir", game, "--out", wrapped, "--work", os.path.join(work, "wrappers_src"),
              "--with-harness", "--no-manifest"], env)

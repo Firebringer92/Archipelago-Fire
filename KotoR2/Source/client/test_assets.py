@@ -52,8 +52,8 @@ class TestBuilt(unittest.TestCase):
         self.assertEqual((str(entry.text), len(entry.links), entry.plot_index), ("<CUSTOM9201>", 0, -1))
 
     def test_files(self):
-        self.assertEqual(sorted(A.asset_files()), sorted(["k2se_msg.dlg", "k2se_craft.uti", "k2se_craft.dlg"]))
-        self.assertEqual(sorted(A.asset_files(console=False)), ["k2se_msg.dlg"])
+        self.assertEqual(sorted(A.asset_files()), sorted(["k2se_msg.dlg", "k2se_craft.uti", "k2se_craft.dlg", "ap_gift.uti", "ap_gift.dlg", "ap_partycon.uti", "ap_partycon.dlg", "ap_drdhide.uti"]))
+        self.assertEqual(sorted(A.asset_files(console=False)), ["ap_drdhide.uti", "ap_gift.dlg", "ap_gift.uti", "ap_partycon.dlg", "ap_partycon.uti", "k2se_msg.dlg"])
 
 
 PROVEN = [("k2se_craft.uti", A.console_item), ("k2se_craft.dlg", A.console_menu)]

@@ -10,7 +10,16 @@ Nothing already in a module is changed or removed. Each template's source is "gl
 import math
 import typing
 
+from k2_bounty import build_item as build_datapad, with_datapad
+
 CLONE_PREFIX = "apen"
+# Modules that never get new creatures, whatever the seed's plan says (a seed made before a module was excluded still lists its spawns): 305NAR's pit is the arena of the
+# Hanharr / Mira encounter, which the story stages itself.
+NO_ENEMY_MODULES = frozenset({"305NAR"})
+# The share of a module's planned creatures that is really added (the rest is left out), for the areas where the full count was a grind in play: the two Dxun tombs. A
+# creature that carries a Bounty Datapad is always kept, so no bounty check can become unreachable.
+ENEMY_SHARE = {"410DXN": 0.5, "411DXN": 0.5}
+HOSTILE_FACTION = 1            # Hostile_1, the faction of the pool's ordinary enemies
 
 
 def _source_utc(inst_holder: list, game_dir: str, store, template: str, source: str) -> typing.Optional[bytes]:
@@ -29,12 +38,24 @@ def _source_utc(inst_holder: list, game_dir: str, store, template: str, source: 
     return res.data if res else None
 
 
+def _datapad_files(inst_holder: list, game_dir: str) -> typing.Dict[str, bytes]:
+    """{"ap_bounty_card.uti": bytes}, made from the game's own plain plot item (the one the Bazaar's tokens use)."""
+    from k2_bazaar import config as bazaar_config
+    from pykotor.extract.installation import Installation
+    if not inst_holder:
+        inst_holder.append(Installation(game_dir))
+    return build_datapad(inst_holder[0], bazaar_config()["item_base"])
+
+
 def clone_utc(data: bytes, clone: str) -> bytes:
     from pykotor.common.misc import ResRef
     from pykotor.resource.formats.gff import bytes_gff, read_gff
     gff = read_gff(data)
     gff.root.set_string("Tag", clone)
     gff.root.set_resref("TemplateResRef", ResRef(clone))
+    # A template of the same name can be a scripted, non-hostile version in the module it comes from (the Sith Assassins of 221TEL and 222TEL are faction 5, the
+    # Mandalorian and Vulkar templates of several modules are faction 3 or 5): an added creature must always be an enemy.
+    gff.root.set_uint16("FactionID", HOSTILE_FACTION)
     return bytes_gff(gff)
 
 
@@ -55,12 +76,27 @@ def add_creatures(root, entries: typing.Sequence[dict]) -> bool:
     return True
 
 
+def thin_spawns(spawns: typing.Sequence[dict]) -> typing.List[dict]:
+    """Leaves out part of the spawns of the modules listed in ENEMY_SHARE: evenly spread over the module's points, in a fixed order, and never a bounty carrier."""
+    out: typing.List[dict] = []
+    for module in sorted({s["module"] for s in spawns}):
+        mine = sorted((s for s in spawns if s["module"] == module), key=lambda s: (s["x"], s["y"], s["template"]))
+        share = ENEMY_SHARE.get(module.upper(), 1.0)
+        if share >= 1.0:
+            out += mine
+            continue
+        plain = [s for s in mine if not s.get("bounty")]
+        keep = {id(s) for i, s in enumerate(plain) if math.floor((i + 1) * share) > math.floor(i * share)}
+        out += [s for s in mine if s.get("bounty") or id(s) in keep]
+    return out
+
+
 def enemy_files(game_dir: str, store, plan: dict) -> typing.Tuple[typing.Dict[str, bytes], int, typing.List[str]]:
     """Builds the creature copies and edits the GITs. Returns ({Override file: bytes}, creatures added, problems). A spawn whose template or module cannot be found
     is skipped and reported; the rest goes ahead."""
     files: typing.Dict[str, bytes] = {}
     problems: typing.List[str] = []
-    spawns = (plan or {}).get("spawns") or []
+    spawns = thin_spawns([s for s in ((plan or {}).get("spawns") or []) if s["module"].upper() not in NO_ENEMY_MODULES])
     if not spawns:
         return files, 0, problems
     inst_holder: list = []
@@ -69,6 +105,13 @@ def enemy_files(game_dir: str, store, plan: dict) -> typing.Tuple[typing.Dict[st
     missing_templates = set()
     missing_modules = set()
     number = 0
+    carriers = 0
+    datapad: typing.Dict[str, bytes] = {}
+    if any(s.get("bounty") for s in spawns):
+        try:
+            datapad = _datapad_files(inst_holder, game_dir)
+        except Exception as e:                       # without the item file a creature must not list it: the datapads are left out and the rest goes ahead
+            problems.append("the bounty datapad could not be built, so no creature carries one: %s" % e)
     for spawn in sorted(spawns, key=lambda s: (s["module"], s["template"], s["x"], s["y"])):
         module = spawn["module"]
         if not store.exists(module):
@@ -88,6 +131,9 @@ def enemy_files(game_dir: str, store, plan: dict) -> typing.Tuple[typing.Dict[st
         number += 1
         clone = "%s%03d" % (CLONE_PREFIX, number)
         files[clone + ".utc"] = clone_utc(data, clone)
+        if spawn.get("bounty") and datapad:
+            files[clone + ".utc"] = with_datapad(files[clone + ".utc"])
+            carriers += 1
         by_module.setdefault(module, []).append(dict(spawn, clone=clone))
     added = 0
     for module, entries in sorted(by_module.items()):
@@ -97,6 +143,8 @@ def enemy_files(game_dir: str, store, plan: dict) -> typing.Tuple[typing.Dict[st
             problems.append("the enemy randomizer: module %s has no area list to add to, so it gets no new creatures" % module)
             for e in entries:
                 files.pop(e["clone"] + ".utc", None)
+    if carriers:
+        files.update(datapad)
     if missing_modules:
         problems.append("the enemy randomizer: module file(s) not found: %s" % ", ".join(sorted(missing_modules)))
     if missing_templates:

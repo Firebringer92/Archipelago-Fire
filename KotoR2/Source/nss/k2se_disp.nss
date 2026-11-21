@@ -3,7 +3,7 @@
 // One job at a time. The client writes the job into %LOCALAPPDATA%\K2SE\ap\inbox.txt:
 //     job_seq=<1..255>      job number (wraps after 255 back to 1)
 //     job_guard=<1..31>     seed guard: a save belongs to one seed
-//     job_action=<name>     notify | credits | xp | item | skill | ability | token | trap | release
+//     job_action=<name>     notify | credits | xp | item | skill | ability | token | trap | release | gift
 //     job_args=<text>       action arguments
 //     job_msg=<text>        one line shown to the player after the job is applied (optional)
 // The script takes the job when the moment is calm, applies it at most once, writes an acknowledgement to ap\outbox.txt and shows the message.
@@ -221,7 +221,9 @@ int DispTrapEligible(object oItem)
     return GetLocalBoolean(oItem, 40) == 0;      // 40: already picked by this trap (the destroyed item may still be listed this frame)
 }
 
-// Half of the eligible backpack items (a stack counts as one), picked at random.
+// Half of the eligible backpack items (a stack counts as one), picked at random. One pass to count and one pass to take: each eligible item is taken with the chance that
+// leaves exactly half taken at the end (nTake of the nLeft still to look at). The first version looked through the whole backpack again for every item it took; with a
+// big backpack it ran out of instructions before it finished, was not counted as done, and took more of the backpack on every retry.
 int DispTrapInventory(object oPC)
 {
     int nEligible = 0;
@@ -232,27 +234,21 @@ int DispTrapInventory(object oPC)
         oItem = GetNextItemInInventory(oPC);
     }
     int nTake = nEligible / 2;
-    while (nTake > 0)
+    int nLeft = nEligible;
+    oItem = GetFirstItemInInventory(oPC);
+    while (GetIsObjectValid(oItem) && nTake > 0 && nLeft > 0)
     {
-        int nPick = Random(nEligible);
-        int n = 0;
-        oItem = GetFirstItemInInventory(oPC);
-        while (GetIsObjectValid(oItem))
+        if (DispTrapEligible(oItem))
         {
-            if (DispTrapEligible(oItem))
+            if (Random(nLeft) < nTake)
             {
-                if (n == nPick)
-                {
-                    SetLocalBoolean(oItem, 40, TRUE);
-                    DestroyObject(oItem, 0.0, TRUE);
-                    break;
-                }
-                n++;
+                SetLocalBoolean(oItem, 40, TRUE);
+                DestroyObject(oItem, 0.0, TRUE);
+                nTake--;
             }
-            oItem = GetNextItemInInventory(oPC);
+            nLeft--;
         }
-        nEligible--;
-        nTake--;
+        oItem = GetNextItemInInventory(oPC);
     }
     return TRUE;
 }
@@ -284,27 +280,61 @@ int DispField(string sArgs, int nField)
 // The class rebuild (nss/k2se_rb.nss) on the player. args: kind:class:level:position:mode[:race[:look]]  (kind 0 convert the class at that position, 1 add a class,
 // 2 resume an interrupted conversion; level 0 = the level the class has now; mode 0 keep, 1 strip the Jedi content). The result code (0 nothing changed,
 // 1 changed, 2 partial, 3 bad state, 4 refused) is reported as RB|<args>|<code>; codes 0-2 count as applied.
-int DispClassJob(object oPC, string sArgs)
+// The pack k2se_rb takes (nss/k2se_rb.nss RB_Pack) for a class order a:b:...; the level 0 of an order means the level the character has now.
+int DispClassPack(object oPC, string sArgs)
 {
     int nKind = DispField(sArgs, 0);
     int nClass = DispField(sArgs, 1);
     int nLevel = DispField(sArgs, 2);
     int nPos = DispField(sArgs, 3);
     int nMode = DispField(sArgs, 4);
+    if (nLevel == 0) nLevel = GetLevelByPosition(nPos + 1, oPC);
+    if (nLevel < 1) return -1;
+    return nKind + 4 * nClass + 128 * nLevel + 8192 * nPos + 32768 * nMode + 65536 * 12;
+}
+
+// What follows a finished conversion: the droid race, the droid look and the report line.
+int DispClassFinish(object oPC, string sArgs)
+{
     int nRace = DispField(sArgs, 5);
     int nLook = DispField(sArgs, 6);
-    if (nLevel == 0) nLevel = GetLevelByPosition(nPos + 1, oPC);
-    if (nLevel < 1) return FALSE;
-    ExecuteScript("k2se_rb", oPC, nKind + 4 * nClass + 128 * nLevel + 8192 * nPos + 32768 * nMode + 65536 * 12);
     if (nRace > 0) K2SE_SetRace(oPC, nRace);        // 5 = droid: the race write zeroes the maximum Force
     // The player's model is never replaced (that broke the 3D view); a look is a permanent disguise effect, an appearance.2da row such as 66 (Droid_War_01).
-    if (nLook > 0) ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectDisguise(nLook), oPC);
+    if (nLook > 0 && !K2AP_HasDisguise(oPC)) ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectDisguise(nLook), oPC);   // the tick puts it back when the game removes it (K2AP_PlayerLookEnforce)
     int nRes = 0;
     if (GetLocalBoolean(oPC, 59) != 0) nRes = nRes + 1;
     if (GetLocalBoolean(oPC, 60) != 0) nRes = nRes + 2;
     if (GetLocalBoolean(oPC, 61) != 0) nRes = nRes + 4;
     K2SE_OutboxPut("RB|" + sArgs + "|" + IntToString(nRes));
-    return nRes <= 2;
+    return nRes;
+}
+
+// The player's conversion runs in four script runs (K2SE_MemSet("rb_phase") in nss/k2se_rb.nss): one run is allowed too few instructions for all of it (found live 2026-11-18).
+// The next phase is scheduled before this one starts, so a phase that is cut short does not stop the rest; each phase writes a line to k2se.log.
+void DispClassPhase(object oPC, string sArgs, int nPhase)
+{
+    if (nPhase < 4) DelayCommand(1.0, DispClassPhase(oPC, sArgs, nPhase + 1));
+    int nPack = DispClassPack(oPC, sArgs);
+    if (nPack < 0) return;
+    K2SE_MemSet("rb_phase", IntToString(nPhase));
+    ExecuteScript("k2se_rb", oPC, nPack);
+    K2SE_MemSet("rb_phase", "0");
+    if (nPhase == 4) DispClassFinish(oPC, sArgs);
+}
+
+int DispClassJob(object oPC, string sArgs)
+{
+    int nKind = DispField(sArgs, 0);
+    int nPack = DispClassPack(oPC, sArgs);
+    if (nPack < 0) return FALSE;
+    if (nKind == 0)
+    {
+        DelayCommand(0.5, DispClassPhase(oPC, sArgs, 1));   // the rest follows in runs of its own; the job counts as delivered, the report line comes from the last phase
+        return TRUE;
+    }
+    K2SE_MemSet("rb_phase", "0");
+    ExecuteScript("k2se_rb", oPC, nPack);
+    return DispClassFinish(oPC, sArgs) <= 2;
 }
 
 // Starting stats (starting_stats randomized): fourteen numbers a0:...:a13, the six abilities (Strength, Dexterity, Constitution, Intelligence, Wisdom,
@@ -352,8 +382,9 @@ int DispCompClass(string sArgs)
     int nRace = DispField(sArgs, 5);
     int nPos = DispField(sArgs, 6);
     if (nSlot < 0 || nSlot > 31 || nLevel < 1) return FALSE;
-    object oC = GetObjectByTag(DispCompTag(nSlot));
+    object oC = PollCompObject(DispCompTag(nSlot));                     // the one in the party when the tag is on two objects (nss/k2se_poll.nss)
     if (!GetIsObjectValid(oC)) return FALSE;
+    K2SE_MemSet("rb_phase", "0");
     ExecuteScript("k2se_rb", oC, nKind + 4 * nClass + 128 * nLevel + 8192 * nPos + 32768 * nMode + 65536 * nSlot);
     if (nRace > 0) K2SE_SetRace(oC, nRace);
     int nRes = 0;
@@ -419,17 +450,18 @@ int DispApply(object oPC, string sAction, string sArgs)
     {
         int nSkill = DispSkillIndex(sArgs);
         if (nSkill < 0) return FALSE;
-        int nRank = K2SE_GetSkillRankBase(oPC, nSkill);
-        if (nRank < 0) return FALSE;
-        return K2SE_SetSkillRank(oPC, nSkill, nRank + 1) == 1;
+        // the Exile and every companion in the party get the rank together (nss/k2ap_party.nss); the Exile's write decides whether the job counts
+        if (!K2AP_RaiseSkill(oPC, nSkill)) return FALSE;
+        K2AP_RaisePartyMembers(oPC, 0, nSkill);
+        return TRUE;
     }
     if (sAction == "ability")
     {
         int nAbility = DispAbilityIndex(sArgs);
         if (nAbility < 0) return FALSE;
-        int nScore = K2SE_GetAbilityScoreBase(oPC, nAbility);
-        if (nScore < 0) return FALSE;
-        return K2SE_SetAbilityScoreBase(oPC, nAbility, nScore + 1) == 1;
+        if (!K2AP_RaiseAbility(oPC, nAbility)) return FALSE;
+        K2AP_RaisePartyMembers(oPC, 1, nAbility);
+        return TRUE;
     }
     if (sAction == "token")
     {
@@ -463,6 +495,21 @@ int DispApply(object oPC, string sAction, string sArgs)
         // a piece of gear from the item pool (crafting mode off): the item itself, by template name
         object oGear = CreateItemOnObject(sArgs, oPC, 1);
         return GetIsObjectValid(oGear);
+    }
+    if (sAction == "gift")
+    {
+        // AP Companion Gifts (nss/k2ap_gift.nss): a stack of the item the client's patch put into Override
+        int nGifts = StringToInt(sArgs);
+        if (nGifts < 1) return FALSE;
+        CreateItemOnObject("ap_gift", oPC, nGifts, 1);
+        return TRUE;
+    }
+    if (sAction == "partycon")
+    {
+        // the Party Console (item ap_partycon, nss/k_ptat_sandper.nss): one, never used up; a repeated job leaves the one the player has
+        if (GetIsObjectValid(GetItemPossessedBy(oPC, "ap_partycon"))) return TRUE;
+        object oConsole = CreateItemOnObject("ap_partycon", oPC, 1, 1);
+        return GetIsObjectValid(oConsole);
     }
     if (sAction == "materials")
     {
@@ -598,6 +645,27 @@ void DispPollOnce()
     string sAction = K2SE_InboxStr("job_action");
     string sArgs = K2SE_InboxStr("job_args");
     string sMsg = K2SE_InboxStr("job_msg");
+    // A job that destroys items is counted BEFORE it runs: a script that is cut short must never be run again (every run takes more). At most once beats exactly once.
+    if (sAction == "trap" && sArgs == "inventory")
+    {
+        if (nSavedGuard == 0 && nJobGuard > 0) DispGuardSet(oPC, nJobGuard);
+        DispCounterSet(oPC, nSeq);
+    }
+    // A job whose script is cut short (too many instructions, say) never reaches the lines below, so the same job is tried again at the next poll, for ever, and nothing behind
+    // it is delivered. Three tries per job and game session; then it is given up, reported, and the queue moves on.
+    string sTry = K2SE_MemGet("disp_try");
+    int nTries = 1;
+    if (GetStringLeft(sTry, GetStringLength(IntToString(nSeq)) + 1) == IntToString(nSeq) + ":")
+        nTries = StringToInt(GetSubString(sTry, GetStringLength(IntToString(nSeq)) + 1, 4)) + 1;
+    K2SE_MemSet("disp_try", IntToString(nSeq) + ":" + IntToString(nTries));
+    if (nTries > 3)
+    {
+        K2SE_OutboxPut("W|" + IntToString(nSeq) + "|gave up " + sAction + " after 3 tries");
+        if (nSavedGuard == 0 && nJobGuard > 0) DispGuardSet(oPC, nJobGuard);
+        DispCounterSet(oPC, nSeq);
+        K2SE_OutboxPut("D|" + IntToString(nSeq) + "|" + sAction + "|" + IntToString(nSeq));
+        return;
+    }
     if (!DispApply(oPC, sAction, sArgs))
     {
         K2SE_OutboxPut("W|" + IntToString(nSeq) + "|refused " + sAction);
@@ -622,17 +690,28 @@ void DispTick(int nGen)
         DelayCommand(1.0, DispTick(nGen));
         return;
     }
+    // While the player controls a companion's body (the Dxun jungle tomb, the yacht, the Mira and Atton switches) GetFirstPC() is that companion, not the Exile.
+    // The job number, the seed guard and the companion unlock set live on the Exile, so that body shows its own old numbers: the client would take them for a
+    // loaded older save and send every job since then again, onto the wrong body. Nothing is read, reported or delivered until the Exile is back; the jobs wait
+    // in the inbox. The Exile's own tag is empty, so any other tag is a played companion (the same test as nss/k2ap_comp.nss).
+    if (GetTag(oPC) != "")
+    {
+        DelayCommand(1.0, DispTick(nGen));
+        return;
+    }
+    // The next poll is scheduled first: a poll whose script is cut short (too many instructions) must not end the loop, or the same job would wait for ever.
+    AssignCommand(oPC, DelayCommand(K2SE_ConfigInt("disp_period", 3) + 0.0, DispTick(nGen)));
     DispPollOnce();
     // companions whose item has not arrived are kept hidden (nss/k2ap_comp.nss); only at calm moments, so a scene that needs them in the party is not cut
     if (GetIsObjectValid(oPC) && DispCalm(oPC)) K2AP_CompEnforce(oPC);
     if (GetIsObjectValid(oPC) && DispCalm(oPC)) K2AP_LookEnforce();
-    if (GetIsObjectValid(oPC) && DispCalm(oPC)) K2AP_BazaarEnsure(oPC);
+    if (GetIsObjectValid(oPC) && DispCalm(oPC)) K2AP_PlayerLookEnforce(oPC);
+    if (GetIsObjectValid(oPC) && DispCalm(oPC)) K2AP_CompLookEnforce();
+    if (GetIsObjectValid(oPC) && DispCalm(oPC) && K2AP_Patched() != 0) K2AP_DroidHideEnforce();    if (GetIsObjectValid(oPC) && DispCalm(oPC)) K2AP_BazaarEnsure(oPC);
     if (GetIsObjectValid(oPC) && DispCalm(oPC)) K2AP_CraftEnsure(oPC);
     if (GetIsObjectValid(oPC) && DispCalm(oPC)) K2AP_VendorEnsure(oPC);
     // a Master's +1 on the Jedi count that waited for its token is applied once the gate is open (nss/k2ap_master.nss)
     if (GetIsObjectValid(oPC) && K2AP_Patched() != 0) K2AP_MasterCatchUp(oPC);
-    if (GetIsObjectValid(oPC))
-        AssignCommand(oPC, DelayCommand(K2SE_ConfigInt("disp_period", 3) + 0.0, DispTick(nGen)));
 }
 
 void DispStart()
@@ -641,5 +720,8 @@ void DispStart()
     K2SE_MemSet("disp_gen", IntToString(nGen));
     K2SE_Diag("DISP", "dispatcher loop " + IntToString(nGen) + " started");
     K2SE_OutboxPut("V|" + GetStringUpperCase(GetModuleName()));
-    DispTick(nGen);
+    // The first poll runs a moment later, in a script run of its own. Run inline it shares the instruction budget of the area entry script (the game's own script, our hooks and
+    // the poll), and a class rebuild started by the first job ran out of it: the conversion stopped half way, the job was never acknowledged and nothing else was delivered
+    // (found live 2026-11-18, the first droid start). Every later poll already runs from a DelayCommand.
+    DelayCommand(1.0, DispTick(nGen));
 }

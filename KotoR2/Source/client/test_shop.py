@@ -159,5 +159,30 @@ class TestRealGame(unittest.TestCase):
         self.assertEqual({f: sha(os.path.join(mods, f)) for f in os.listdir(mods)}, before)
 
 
+@unittest.skipUnless(HAVE_GAME, "the game is not installed")
+class TestSupplyItems(unittest.TestCase):
+    def test_the_two_items_are_the_games_own_with_a_price(self):
+        from pykotor.resource.formats.gff import read_gff
+        files, problems = S.supply_items(GAME)
+        self.assertEqual(problems, [])
+        self.assertEqual(sorted(files), ["ap_shpchem.uti", "ap_shpcomp.uti"])
+        comp = read_gff(files["ap_shpcomp.uti"]).root
+        chem = read_gff(files["ap_shpchem.uti"]).root
+        self.assertEqual((comp.get_string("Tag"), chem.get_string("Tag")), ("Components", "Chemicals"))      # what the workbench and the lab count
+        self.assertEqual((comp.get_int32("BaseItem"), chem.get_int32("BaseItem")), (96, 95))
+        self.assertEqual((comp.get_uint32("Cost"), chem.get_uint32("Cost")), (S.SUPPLY_PRICE, S.SUPPLY_PRICE))
+
+    def test_shop_files_makes_them_only_for_a_supplies_plan(self):
+        class Store:
+            def exists(self, *a):
+                return False
+        files, _ = S.shop_files(Store(), {"stores": [], "silence": [], "supplies_only": True}, GAME)
+        self.assertIn("ap_shpcomp.uti", files)
+        files, _ = S.shop_files(Store(), {"stores": [], "silence": []}, GAME)
+        self.assertNotIn("ap_shpcomp.uti", files)
+        files, problems = S.shop_files(Store(), {"stores": [], "silence": [], "supplies_only": True})
+        self.assertTrue(problems)
+
+
 if __name__ == "__main__":
     unittest.main()

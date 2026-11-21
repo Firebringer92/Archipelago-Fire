@@ -16,6 +16,8 @@ Models, textures, icons, audio, conversations, scripts and data tables that belo
 | Item, creature, placeable and conversation templates | not in the repository | The client writes the few it needs (the Crafting Console, the message box, the Bazaar's Jawa and tokens, the extra companions) field by field on the player's machine. The check fails any template file that is not named `ap_*`. |
 | The extender (a game-side DLL, `version.dll`) | `Source/extender/src` | Ours, forked from K2SE (see `README.md`, Credits). Built with CMake; the program itself is not in the repository. |
 | The script compiler | `Source/tools/nwnsc` | nwnsc 1.1.5, MIT (Ken Johnson), with a compiler library under BSD-3. Downloaded unchanged; only its licence and credits are in the repository. |
+| The Archipelago core | not in the repository | The player bundle carries the Archipelago 0.6.8 source files the client imports in `core/` (MIT, the Archipelago contributors; licence in `core/LICENSE`), copied unchanged except a shortened `requirements.txt`. |
+| The model tool | not in the repository | MDLOps 1.0.0 (GPL; Chuck Chargin Jr. and contributors). Downloaded unchanged; the release zip carries it in `tools/mdlops` with its Perl source, licence, readme and tutorials. It compiles the droid models the client builds from the player's own game files. |
 | Data tables | `Source/data`, `Source/worlds/kotor2/data` | Facts read out of the game's data: identifiers, tags, coordinates, challenge ratings, module links, short item names. The check refuses a `description`, `text` or `dialogue` field in them, so no prose of the game's is stored. |
 | Documentation | `Docs` | Ours. A document that quotes the game's text is reviewed by a person before it is added. |
 
@@ -36,6 +38,8 @@ The client builds these into the game's `Override` folder (and edits the module 
 |---|---|---|
 | `version.dll` (the extender) | ours, derived from K2SE | built from `Source/extender/src`; its SHA-256 goes in each release's notes |
 | `tools/nwnsc/nwnsc.exe` | MIT + BSD-3 | https://github.com/nwneetools/nwnsc |
+| `core/` (release zip only) | MIT | https://github.com/ArchipelagoMW/Archipelago (tag 0.6.8) |
+| `tools/mdlops/mdlops.exe` (release zip only) | GPL | https://deadlystream.com/files/file/779-mdlops/ ; shipped with its Perl source, licence, readme and tutorials |
 
 The repository holds none of these programs (`.gitignore` keeps `.exe`, `.dll` and `.ncs` files out). Each program is listed in `provenance.json` with its SHA-256, so replacing or adding
 one is a visible change that the check rejects until it is recorded.

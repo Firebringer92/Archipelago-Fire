@@ -117,8 +117,10 @@ def plan_tokens(candidates: typing.Dict[str, list], seed_name: str, total: int =
     return chosen
 
 
-def apply_plan(store, chosen: typing.List[dict]) -> typing.Dict[str, bytes]:
-    """Points the GIT instances at the clones (module files, backed up) and returns {clone file name: bytes} for Override."""
+def apply_plan(store, chosen: typing.List[dict], make_clone=None) -> typing.Dict[str, bytes]:
+    """Points the GIT instances at the clones (module files, backed up) and returns {clone file name: bytes} for Override. make_clone(template bytes) builds a clone
+    (default: the template with a Bazaar token added)."""
+    make_clone = make_clone or with_token
     from pykotor.common.misc import ResRef
     by_module: typing.Dict[str, typing.List[dict]] = {}
     for item in chosen:
@@ -132,7 +134,7 @@ def apply_plan(store, chosen: typing.List[dict]) -> typing.Dict[str, bytes]:
             return True
         store.edit_gff(module, None, "git", change)
         for item in items:
-            files[item["clone"] + ".utp"] = with_token(item["raw"])
+            files[item["clone"] + ".utp"] = make_clone(item["raw"])
     return files
 
 

@@ -25,6 +25,9 @@ import json
 import os
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+# Modules with no story-beat entry take the requirements of the module of the same place that has one; without this their area check had no requirements at all,
+# so the fill treated them as reachable from the start (a progression item could be put in a vision or a sub-level the player reaches late).
+INHERIT_REQUIREMENTS = {"306NAR": "301NAR", "511OND": "502OND", "610DAN": "605DAN", "710KOR": "701KOR", "711KOR": "701KOR"}
 
 
 def load(path):
@@ -208,9 +211,9 @@ def main():
             cat = m["category"]
             used = cat in ("story_critical", "optional")
             why = "" if used else "not an area check (%s)" % cat
-            req, note = module_requirements(mod)
+            req, note = module_requirements(INHERIT_REQUIREMENTS.get(mod, mod))
             e = first_beat.get(mod)
-            late = e is not None and e >= pnr
+            late = (e is not None and e >= pnr) or mod.endswith("MAL")       # Malachor V only exists after the Council; its modules have no story-beat entry
             if used and late:
                 used, why = False, "end-game area (only exists after the Council)"
             area_rows.append({

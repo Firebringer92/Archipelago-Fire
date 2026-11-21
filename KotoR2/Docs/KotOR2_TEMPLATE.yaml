@@ -1,12 +1,11 @@
 # KOTOR 2 (TSL) Archipelago Randomizer -- player options template
 #
-# *** NOT READY TO PLAY. ***  This world is in development and has not been released. Every option below exists in the
-# world and generates a seed, but the game side has only been tested in part, and a few options do nothing in the game
-# yet (each says so in its own text). This file is published so the options can be read and discussed.
+# *** FIRST TEST RELEASE (0.1.0). *** Every option below exists in the world and generates a seed, but the game side has only been
+# tested in part. An option marked "Built, but not yet tried in the game" has not been played yet; expect problems there and report them.
 #
-# When it is released: back up your saves and your game's Modules and Override folders before playing a randomized
-# seed. Many options (shops, loot, enemies, doors, the Bazaar, crafting, the journal) change the game's files when the
-# KOTOR 2 Client connects, and /k2_unpatch puts them back.
+# Before playing a randomized seed, back up your saves and your game's Modules and Override folders. Many options (shops, loot,
+# enemies, doors, the Bazaar, crafting, the journal) change the game's files when the KOTOR 2 Client connects, and /k2_unpatch
+# puts them back.
 #
 # To use this for your own playthrough: copy this file to a new name under Players\ (for example my_game.yaml), then
 # edit `name:` below and delete this original -- Generate.py builds one seed slot per .yaml file it finds in Players\,
@@ -21,7 +20,7 @@
 
 name: TestPlayer
 game: KotOR 2 TSL
-description: KOTOR 2 TSL Archipelago randomizer -- development template, not ready to play
+description: KOTOR 2 TSL Archipelago randomizer -- first test release (0.1.0)
 requires:
   version: 0.6.7        # the oldest Archipelago version this world was made for
 KotOR 2 TSL:
@@ -58,7 +57,8 @@ KotOR 2 TSL:
   # cult_leader: recruit every companion your seed offers -- every recruit check, and in ap_gated every companion
   # item. Needs companions (not `none`).
   #
-  # Game side: only defeat_kreia is detected in the game today. The others are built in the world and the client.
+  # Game side: defeat_kreia comes from the game (the ending) and defeat_nihilus from the journal; high_level, influence_crew
+  # and cult_leader are decided by the client from the checks and items it knows. All are built; none has been played to the end.
   #
   # Valid: defeat_kreia, defeat_nihilus, high_level, influence_crew, cult_leader
   goal: defeat_kreia
@@ -85,6 +85,9 @@ KotOR 2 TSL:
   # progression item you receive moves that quest one stage forward. A loaded older save brings back the stage it had.
   # An "Archipelago Tracker" quest shows how far along your checks you are.
   #
+  # Progression items (the tokens) are only ever placed on area visits, on recruits outside an exclusive pair, and on
+  # quests the story forces; never on a quest you could miss, so nothing needed to finish can be lost.
+  #
   # true (default): the gates are enforced.
   # false: no gates and no progression items.
   story_gates: true
@@ -97,15 +100,15 @@ KotOR 2 TSL:
   # Valid: any of the 19 ids above
   disabled_gates: []
 
-  # Condenses the Peragus opening (the "short hallway"): Atton is freed at once; the T3-M4 trip, the mining tunnels,
-  # the outside walk and the dormitories are cut; the Sith arrive by a docking movie; and the Harbinger's locked doors
-  # and the hangar door are opened for you. Kept: Kreia, the HK-50 scene, Atton and T3-M4 joining, the Sion duel, the
-  # turret scene and the first Ebon Hawk visit.
+  # Condenses the Peragus opening (the "short hallway"): the doors that hold the opening up are unlocked so Atton can be
+  # freed at once, and when his talk is over the Sith arrive (a docking movie) and the story moves on to Act II. The
+  # T3-M4 trip, the mining tunnels, the walk outside and the dormitories are skipped, and you are handed the spikes and
+  # parts the Harbinger and hangar consoles use. Kept: Kreia, the HK-50 scene (started for you when you get near it,
+  # where Atton joins), T3-M4 joining, the Sion duel, the turret scene and the first Ebon Hawk visit.
   #
-  # The checks that only exist in the cut parts (the Mining Tunnels, Asteroid Exterior and Dormitories visits, and the
-  # Rescue, Turbolift Lockdown and Voiceprint Protocol quests) leave the seed.
+  # The checks of the skipped parts stay in the seed and are given out when you leave the opening.
   #
-  # NOT BUILT IN THE GAME YET: the seed carries the plan and removes those checks, but nothing is cut in the game.
+  # Built, but not yet tried in the game.
   shortened_peragus: false
 
   # --- Companions ----------------------------------------------------------------
@@ -140,14 +143,17 @@ KotOR 2 TSL:
   # Built, but not yet tried in the game.
   #
   # Example: extra_companions: [Carth Onasi, Juhani]
-  # Valid: Bastila Shan, Canderous Ordo, Carth Onasi, Darth Nihilus, Darth Sion, Jolee Bindo, Juhani, Kavar,
-  #        Mission Vao, Vrook Lamar, Zaalbar, Zez-Kai Ell
+  # Valid: Atris, Bastila Shan, Canderous Ordo, Carth Onasi, Darth Nihilus, Darth Sion, Jolee Bindo, Juhani, Kavar,
+  #        Mission Vao, Vash, Vrook Lamar, Zaalbar, Zez-Kai Ell
   extra_companions: []
 
   # How many generated companions (a different race and look each, named after players of this multiworld) are offered
   # as items in the modes ap_gated and ap_limited. The looks are Twi'lek, Devaronian, human and alien (Rodian, Duros,
   # Sullustan, Trandoshan, Quarren, Gran, Bith) characters, never a story companion's look. Armour shows on the first
   # three kinds only; gear can be equipped on all of them.
+  #
+  # The twenty extra party slots are shared with extra_companions: the more named extras you pick, the fewer generated
+  # ones fit (fourteen named extras leave room for six).
   #
   # Built, but not yet tried in the game.
   # Range: 0-8
@@ -162,9 +168,11 @@ KotOR 2 TSL:
   #
   # no_jedi: Jedi companions become non-Jedi.
   #
-  # droid: every companion who is not a droid becomes a Combat or Expert Droid -- class and race droid, with the droid
-  # look through a changed copy of their own creature template. (A companion who already joined in an old save keeps
-  # the look the save stored.)
+  # droid: every companion who is not a droid becomes a Combat, Expert or Battle Droid -- class and race droid, with the
+  # droid look through a changed copy of their own creature template. The Battle Droid is a Combat Droid that can use
+  # melee weapons and lightsabers (it takes the game's unused class slot 10, and its look is a droid model on a human
+  # skeleton, built when the game is patched); Combat and Expert Droids shoot. (A companion who already joined in an
+  # old save keeps the look the save stored.)
   #
   # randomize_base: each companion gets a random base class (never a prestige class).
   #
@@ -204,7 +212,8 @@ KotOR 2 TSL:
   # dark prestige class of one pair chosen by the seed -- Vanguard / Marauder, Shadow / Assassin or Sage / Sorcerer --
   # the side following your alignment (a random side when it is exactly neutral).
   #
-  # droid: you start as a Combat or Expert Droid and your race is droid (no Force). Your appearance is not changed.
+  # droid: you start as a Battle Droid (a droid that can use melee weapons and lightsabers) and your race is droid
+  # (no Force); your look is a droid look (a permanent disguise, your own model is never replaced).
   #
   # Valid: default, non_force_user, random_class, prestige_start, prestige_gated, droid
   starting_class: default
@@ -266,9 +275,9 @@ KotOR 2 TSL:
   # 16 checks for alignment thresholds (the same list as the KotOR 1 world). These never hold progression items.
   alignment_checks: true
 
-  # Holding a listed quest item for the first time is a check. Off by default: the current list is a draft taken from
-  # the game's data and is being replaced by a list built from play-through logs of main-story items.
-  quest_item_checks: false
+  # Finishing a quest gives this many more checks for every quest (0 to 3; 105 quests, so up to 315 more locations).
+  # They fire together with the quest's own check, need the same tokens, and never hold progression items. 0 = off.
+  additional_quest_checks: 0
 
   # The Archipelago Bazaar: a Jawa trader in the cargo hold of the Ebon Hawk.
   #   - 5 purchase checks, bought with credits (1,000 for the first, then 2,000 more for each);
@@ -343,7 +352,7 @@ KotOR 2 TSL:
   #
   # random_requirements: every rank random from 1 to 32 and every gear cost a random multiple (half to four times).
   #
-  # Built, but not yet tried in the game. Not built: loot turning into crafting materials.
+  # Built, but not yet tried in the game. (Loot turning into crafting materials is loot_mode crafting below.)
   #
   # Valid: off, simple, complex, random_requirements
   crafting_mode: off
@@ -353,6 +362,8 @@ KotOR 2 TSL:
   # parts and upgrade screen, and the chemical lab. Seven items go into the pool (two without a crafting_mode, which
   # gate the game's own crafting). The recipes and console entries of a locked type are hidden.
   # Whether the game reads a rewritten recipe table while it runs, or only after a restart, is not yet known.
+  # Every shop then sells only crafting supplies, Components and Chemicals (30 credits each), and nothing else; this
+  # applies with or without shop_randomizer. The Pazaak dealers and the special shops are left alone.
   crafting_gated: false
 
   # The Archipelago Vendor: stands in the Ebon Hawk's cargo hold next to the Bazaar's Jawa. Each of his menus is
@@ -372,7 +383,7 @@ KotOR 2 TSL:
   # Every shop that is not a Pazaak dealer is restocked, one list per planet. Each planet's list is shop_count items
   # drawn at random for this seed, plus medpacs, droid repair kits and spikes so healing can always be bought. The
   # Pazaak dealers are left alone, and the game's own random stock scripts are silenced.
-  # With crafting_gated, shops will sell crafting supplies only (the seed carries the flag; the game side is not built).
+  # With crafting_gated the shops sell crafting supplies only, and that replaces this list.
   shop_randomizer: false
 
   # Items drawn for each planet's shops when shop_randomizer is on (the staples come on top). How many items a store
@@ -388,17 +399,21 @@ KotOR 2 TSL:
   # What loot_randomizer does to the ordinary gear in containers and dropped by creatures. Quest items, credits and the
   # like are never touched.
   #
-  # replace (default): each piece of gear becomes a random piece from the shop pool. A creature keeps and uses its own
-  # gear, but drops the random piece instead.
+  # default: no change; the loot stays as the game has it.
+  #
+  # replace: each piece of gear becomes a random piece from the shop pool. A creature keeps and uses its own gear, but
+  # drops the random piece instead.
   #
   # bonus: everything stays, and every container that holds gear -- and every creature that carries something -- gets
   # one more random piece.
   #
-  # With a crafting mode, the same two words will decide whether materials replace the gear or come on top (the seed
-  # carries the flag; the game side is not built).
+  # crafting: each piece of gear becomes crafting Components (more for a more valuable piece, at most ten). A creature
+  # keeps and uses its own gear, but drops Components instead.
   #
-  # Valid: replace, bonus
-  loot_mode: replace
+  # Independent of crafting_mode: crafting mode never changes what loot does.
+  #
+  # Valid: default, replace, bonus, crafting
+  loot_mode: default
 
   # Adds new hostile creatures to the combat areas (27 of them, 311 fixed spots chosen to be walkable and clear of
   # objects). Nothing that is already there is touched, removed or replaced; the extra creatures only come on top.
@@ -418,6 +433,12 @@ KotOR 2 TSL:
   #
   # Valid: area_appropriate, random_sane, fully_random
   enemy_mode: random_sane
+
+  # With enemy_randomizer on: forty of the new creatures (spread over the free-roam combat areas) carry a Bounty
+  # Datapad. Taking one from the body adds to a count, and holding 1, 2, ... 40 datapads are forty checks (Bounty
+  # Datapad #1 to #40). A datapad is a quest item: it cannot be sold or dropped, so the count only goes up. Does
+  # nothing when enemy_randomizer is off.
+  bounty_cards: true
 
   # The doors and walk-through exits between the areas of Telos and the Citadel, Nar Shaddaa, Dxun, Onderon and
   # Dantooine are re-linked in coupled pairs (walk back through the door you came by and you are where you were).

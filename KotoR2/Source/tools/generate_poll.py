@@ -2,7 +2,7 @@
 
 Reads data/locations.json. Output functions (all report only when a value changed, using the extender's in-memory store):
   PollQuests(oPC)      Q|tag=stage,...     quests past stage 0, in chunks
-  PollCharacter(oPC)   L|level  A|alignment  R|slot (recruits)  I|slot=value,... (available companions only)
+  PollCharacter(oPC)   L|level  A|alignment  R|slot (recruits)  I|slot=value,... (available companions only)  UL|mask (the companion unlock set)
   PollQuestItems(oPC)  O|tag,...           (list pending: curated quest items)
   PollBazaar(oPC)      B|purchases|exchanges (pending: the Bazaar Jawa)
   PollAll(oPC)         everything above
@@ -62,6 +62,9 @@ def main():
     for slot in slots:
         out.append('    if (IsAvailableCreature(%d)) { PollReport("pr%d", "1", "R|%d"); sInf = sInf + "%d=" + IntToString(GetInfluence(%d)) + ","; }' % (slot, slot, slot, slot, slot))
     out.append('    if (sInf != "") PollReport("pi", sInf, "I|" + GetStringLeft(sInf, GetStringLength(sInf) - 1));')
+    out.append('    // the companion unlock set (nss/k2ap_comp.nss: player local numbers 5 and 6; the report puts slot n at bit n): the client compares it with the companion items it has received')
+    out.append('    int nUnlock = (GetLocalNumber(oPC, 5) & 127) | (((GetLocalNumber(oPC, 6) >> 4) & 1) << 7) | ((GetLocalNumber(oPC, 6) & 15) << 8);')
+    out.append('    PollReport("pul", IntToString(nUnlock), "UL|" + IntToString(nUnlock));')
     out.append("}")
     out.append("")
     tags = ["Atton", "BaoDur", "Mand", "G0T0", "Handmaiden", "HK47", "Kreia", "Mira", "T3M4", "VisasMarr", "Hanharr", "Disciple"]
@@ -136,14 +139,18 @@ def main():
     out.append("{")
     out.append("    int nBuy = 0;")
     out.append("    int nSwap = 0;")
+    out.append("    int nCard = 0;")
     out.append("    object oItem = GetFirstItemInInventory(oPC);")
     out.append("    while (GetIsObjectValid(oItem))")
     out.append("    {")
     out.append('        if (GetTag(oItem) == "ap_bz_buy") nBuy += GetItemStackSize(oItem);')
     out.append('        else if (GetTag(oItem) == "ap_bz_swap") nSwap += GetItemStackSize(oItem);')
+    out.append('        else if (GetTag(oItem) == "ap_bounty_card") nCard += GetItemStackSize(oItem);')
     out.append("        oItem = GetNextItemInInventory(oPC);")
     out.append("    }")
     out.append('    if (nBuy + nSwap > 0) PollReport("pbz", IntToString(nBuy) + "," + IntToString(nSwap), "B|" + IntToString(nBuy) + "|" + IntToString(nSwap));')
+    out.append("    // the Bounty Datapads (bounty_cards): the count held, a plot item so it only goes up; the client fires the nth check when the count reaches n")
+    out.append('    if (nCard > 0) PollReport("pbc", IntToString(nCard), "BC|" + IntToString(nCard));')
     out.append("}")
     out.append("")
     out.append("void PollAll(object oPC)")

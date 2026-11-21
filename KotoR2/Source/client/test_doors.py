@@ -116,6 +116,21 @@ class TestDoors(unittest.TestCase):
     def test_an_empty_plan_changes_nothing(self):
         self.assertEqual(D.door_files(self.store, {}), (0, []))
 
+    def test_shortened_peragus_unlocks_every_door_template_of_the_peragus_modules_and_restores(self):
+        from pykotor.resource.formats.gff import read_gff
+        make_rim(os.path.join(self.mods, "103PER_s.rim"), {("door_a", "utd"): make_utd(1, 1), ("door_b", "utd"): make_utd(0, 0)})
+        before = {f: sha(os.path.join(self.mods, f)) for f in os.listdir(self.mods)}
+        changed, problems = D.peragus_unlock(self.store)
+        self.assertEqual((changed, problems), (1, []))                                        # only the locked template changed; modules that are absent are skipped
+        res = self.store.resources("103PER", "_s")
+        for name in ("door_a", "door_b"):
+            root = read_gff(res[(name, "utd")]).root
+            self.assertEqual((root.get_uint8("Locked"), root.get_uint8("KeyRequired")), (0, 0))
+        a = read_gff(self.store.resources("aaa", "_s")[("door_a", "utd")]).root                # a module that is not Peragus is not touched
+        self.assertEqual(a.get_uint8("Locked"), 1)
+        self.assertEqual(self.store.restore_all()[1], [])
+        self.assertEqual({f: sha(os.path.join(self.mods, f)) for f in os.listdir(self.mods)}, before)
+
 
 @unittest.skipUnless(HAVE_GAME, "needs the game files")
 class TestRealGame(unittest.TestCase):

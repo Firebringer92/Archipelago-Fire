@@ -60,10 +60,11 @@ class TestTemplate(unittest.TestCase):
             default = option.from_any(option.default) if hasattr(option, "from_any") else None
             self.assertEqual(shown.value, default.value, f"{name}: the template shows {value!r}, the default is {option.default!r}")
 
-    def test_says_it_is_not_ready(self):
+    def test_says_what_state_the_release_is_in(self):
         with open(TEMPLATE, encoding="utf-8") as f:
             head = f.read(1500)
-        self.assertIn("NOT READY TO PLAY", head)
+        self.assertIn("FIRST TEST RELEASE (0.1.0)", head)           # the header says it is a test release and what that means; update with each release
+        self.assertIn("not yet tried in the game", head)
 
 
 if __name__ == "__main__":

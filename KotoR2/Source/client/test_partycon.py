@@ -10,6 +10,9 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import k2_assets as A  # noqa: E402
 
+GAME = os.environ.get("K2_GAME_DIR") or r"C:\Program Files (x86)\Steam\steamapps\common\Knights of the Old Republic II"
+HAVE_GAME = os.path.isfile(os.path.join(GAME, "swkotor2.exe"))
+
 
 def read(rel):
     with open(os.path.join(ROOT, rel), encoding="utf-8") as f:
@@ -61,6 +64,7 @@ class TestScripts(unittest.TestCase):
         for name in ("k2ap_pcdone", "k2ap_pcstand", "k2ap_pcsdone", "k2ap_pcclear"):
             self.assertIn(name, build_payload.PROJECT_SCRIPTS)
 
+    @unittest.skipUnless(HAVE_GAME, "the game is not installed")
     def test_the_scripts_compile(self):
         import shutil
         import tempfile
@@ -126,6 +130,7 @@ class TestStanding(unittest.TestCase):
     def test_the_active_screen_takes_a_standing_companion_out_of_standing(self):
         self.assertIn("IsNPCPartyMember(nSlot)) K2AP_StandSet(k, -1);", read("nss/k2ap_pcdone.nss"))
 
+    @unittest.skipUnless(HAVE_GAME, "the game is not installed")
     def test_the_scripts_compile_together_with_the_area_tail(self):
         import shutil
         import tempfile

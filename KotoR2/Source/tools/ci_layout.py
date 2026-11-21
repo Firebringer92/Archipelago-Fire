@@ -5,7 +5,7 @@ The tests were written against the development folder: the Archipelago core with
 same files under KotoR2/Source. This script copies them into place:
 
   work/Archipelago/worlds/kotor2/     <- Source/worlds/kotor2 (the world and its tests), with the data files from Source/data in its data/ folder
-  work/client, work/tools, work/data, work/nss, work/installer, work/worlds/kotor2   <- the same folders in Source (the layout of the development folder)
+  work/client, work/tools, work/data, work/nss, work/installer, work/src (the extender's source), work/worlds/kotor2   <- the same folders in Source (the layout of the development folder)
   work/docs/KotOR2_TEMPLATE.yaml   <- Docs/KotOR2_TEMPLATE.yaml (next to Source)
 
   python ci_layout.py --source KotoR2/Source --work work      (work/Archipelago must already hold an Archipelago checkout)
@@ -32,6 +32,8 @@ def main():
     for folder in ("client", "tools", "data", "nss", "installer"):
         shutil.rmtree(os.path.join(work, folder), ignore_errors=True)
         shutil.copytree(os.path.join(source, folder), os.path.join(work, folder), ignore=ignore)
+    shutil.rmtree(os.path.join(work, "src"), ignore_errors=True)       # the extender's source: a client test reads src/cwrite.cpp
+    shutil.copytree(os.path.join(source, "extender", "src"), os.path.join(work, "src"), ignore=ignore)
     for target in (os.path.join(work, "worlds", "kotor2"), os.path.join(core, "worlds", "kotor2")):
         shutil.rmtree(target, ignore_errors=True)
         shutil.copytree(os.path.join(source, "worlds", "kotor2"), target, ignore=ignore)

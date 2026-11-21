@@ -8,7 +8,7 @@ import sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 CORE = os.environ.get("K2_CORE") or os.path.join(ROOT, "ap_core")      # GitHub's workflow points this at its Archipelago checkout
-SUITES = ("test_dispatcher.py", "test_tracker.py", "test_patch.py", "test_gates.py", "test_ncs_merge.py", "test_companions.py", "test_extras.py", "test_bazaar.py", "test_modules.py", "test_shop.py", "test_loot.py", "test_enemies.py", "test_doors.py", "test_crafting.py", "test_assets.py", "test_partycon.py", "test_journal.py", "test_dialogues.py", "test_vendor.py", "test_k2_droid.py", "test_payload.py", "test_status.py", "test_bundle.py", "test_droid_models.py", "test_context.py")
+SUITES = ("test_dispatcher.py", "test_tracker.py", "test_patch.py", "test_gates.py", "test_ncs_merge.py", "test_companions.py", "test_extras.py", "test_bazaar.py", "test_modules.py", "test_shop.py", "test_loot.py", "test_enemies.py", "test_doors.py", "test_crafting.py", "test_assets.py", "test_partycon.py", "test_journal.py", "test_dialogues.py", "test_vendor.py", "test_k2_droid.py", "test_payload.py", "test_status.py", "test_bundle.py", "test_droid_models.py", "test_gift.py", "test_installer.py", "test_context.py")
 
 
 def failure_lines(output: str, limit: int = 12):

@@ -224,6 +224,10 @@ FEATS = [
     (104, "Train Scoundrel's Luck", False),
     (88, "Train Force Focus", True),
     (98, "Train Force Immunity: Fear", True),
+    # Force Sensitive (feat.2da FORCE_SENSITIVE): offered to every character, not only Jedi.
+    (116, "Train Force Sensitive", False),
+    # Jedi Defense (feat.2da JEDI_DEFENSE), passive; a Jedi feat, so offered to Jedi like the other signature feats.
+    (55, "Train Jedi Defense", True),
 ]
 
 # Curated from spells.2da directly (not guessed) -- every row here has an
@@ -286,6 +290,17 @@ POWERS = [
 # power_id -> list of OTHER power_ids that must ALL already be known before the power can be bought (empty or absent = no gate). Every
 # power in the pool above has an empty spells.2da "prerequisites" column, so none needs one today.
 POWER_PREREQUISITES = {}
+
+# Feats the "list is full, forget one" step can offer (the held ones are shown): every real row of feat.2da that has a name (the reference file's ids).
+def _replaceable_feat_ids():
+    with open(os.path.join(REPO_ROOT, "force_powers_and_feats.json"), encoding="utf-8") as f:
+        feats = json.load(f)["feats"]
+    return sorted(int(k) for k, v in feats.items() if v.get("name") and "XXXX" not in str(v.get("label", "")))
+
+
+REPLACEABLE_FEAT_IDS = _replaceable_feat_ids()
+# Reply slots of the Remove a feat picker (the character's feat list holds 16 at most today; more pages through 'More feats').
+REMOVE_SLOTS = 16
 
 VENDOR_LOCATION = (55.5, 36.5, 1.80)
 
@@ -408,6 +423,32 @@ int StartingConditional()
     object oPC = GetPCSpeaker();
     return {has_token_expr("power")} && {is_jedi_expr};
 }}
+''')
+    # The verdict of the feat purchase attempt (ap_vfg*, ap_vfr*), read by the links that follow it.
+    for state in ("poor", "full", "ok"):
+        ok &= write_and_compile(f"ap_vst_{state}", f'''#include "kse"
+
+int StartingConditional()
+{{
+    return KSE_GetData("vend_state") == "{state}";
+}}
+''')
+    # The "Remove a feat" picker has REMOVE_SLOTS fixed reply slots whose text is a custom token (<CUSTOM101>...), filled by ap_vrs_build from the feats the
+    # character holds. A dialogue script cannot learn which reply was clicked, so each slot has its own condition (is the slot filled) and action.
+    for slot in range(REMOVE_SLOTS):
+        ok &= write_and_compile(f"ap_vrs_c{slot}", f'''#include "kse"
+
+int StartingConditional()
+{{
+    return StringToInt(KSE_GetData("vslot{slot}")) > 0;
+}}
+''')
+    ok &= write_and_compile("ap_vrs_more", '''#include "kse"
+
+int StartingConditional()
+{
+    return StringToInt(KSE_GetData("vrs_total")) > StringToInt(KSE_GetData("vrs_off")) + 16;
+}
 ''')
     # Train Feat's top-level entry had no conditional before; it is now the pass check.
     ok &= write_and_compile("ap_vft_gate", f'''#include "kse"
@@ -589,6 +630,10 @@ void main()
     KSE_Diag(200, "AP|APPLIED|vendor_train_ability|ability={const}|creditsAfter=" + IntToString(nAfter) + "|count=" + IntToString(nCount));
 }}
 ''')
+    # Feat purchase, run when the player clicks the feat in the picker (it is the picker reply's own script). It never charges unless the feat is really
+    # granted, and it leaves its verdict in the KSE data key vend_state for the links that follow: "ok" (granted and charged), "poor" (not enough credits),
+    # "full" (the character's feat list is full, KSE_E_AT_CAPACITY: the dialogue then offers to forget a feat, see ap_vfr*) or "fail" (anything else).
+    # vend_feat keeps the feat the player picked, for the replace step.
     for feat_id, _text, _is_signature in FEATS:
         resref = f"ap_vfg{feat_id}"
         ok &= write_and_compile(resref, f'''#include "kse"
@@ -596,9 +641,115 @@ void main()
 void main()
 {{
     object oPC = GetPCSpeaker();
-    int nAfter = KSE_SetCredits(oPC, GetGold(oPC) - {FEAT_PRICE});
+    KSE_SetData("vend_feat", "{feat_id}");
+    if (GetGold(oPC) < {FEAT_PRICE})
+    {{
+        KSE_SetData("vend_state", "poor");
+        return;
+    }}
+    KSE_GetVersion();   // clears the errno, so the read below belongs to this grant
     KSE_GrantFeatArrayA({feat_id}, oPC);
-    KSE_Diag(200, "AP|APPLIED|vendor_train_feat|feat={feat_id}|creditsAfter=" + IntToString(nAfter));
+    if (KSE_GetFeatAcquired({feat_id}, oPC))
+    {{
+        int nAfter = KSE_SetCredits(oPC, GetGold(oPC) - {FEAT_PRICE});
+        KSE_SetData("vend_state", "ok");
+        KSE_Diag(200, "AP|APPLIED|vendor_train_feat|feat={feat_id}|creditsAfter=" + IntToString(nAfter));
+        return;
+    }}
+    if (KSE_ERRNO() == KSE_E_AT_CAPACITY())
+    {{
+        KSE_SetData("vend_state", "full");
+        KSE_Diag(200, "AP|VENDOR|feat_list_full|feat={feat_id}");
+        return;
+    }}
+    KSE_SetData("vend_state", "fail");
+    KSE_Diag(200, "AP|REFUSED|vendor_train_feat|feat={feat_id}|errno=" + IntToString(KSE_ERRNO()) + "|credits=" + IntToString(GetGold(oPC)));
+}}
+''')
+    # Remove a feat (free). ap_vrs_build lists the held feats (from position vrs_off, REMOVE_SLOTS at a time) into the slots: KSE data vslot<n> holds the feat id and
+    # custom token 101+n its name (the game's own text, by string reference). ap_vfm_list writes the whole list into token 100 for the menu line.
+    strrefs = _feat_name_strrefs(Installation(GAME_DIR))
+    held = [fid for fid in REPLACEABLE_FEAT_IDS if fid in strrefs]
+    build_lines = []
+    list_lines = []
+    for fid in held:
+        build_lines.append(f"    if (KSE_GetFeatAcquired({fid}, oPC))")
+        build_lines.append("    {")
+        build_lines.append(f"        if (nPos >= nOff && nSlot < {REMOVE_SLOTS})")
+        build_lines.append("        {")
+        build_lines.append(f"            KSE_SetData(\"vslot\" + IntToString(nSlot), \"{fid}\");")
+        build_lines.append(f"            SetCustomToken(101 + nSlot, GetStringByStrRef({strrefs[fid]}));")
+        build_lines.append("            nSlot = nSlot + 1;")
+        build_lines.append("        }")
+        build_lines.append("        nPos = nPos + 1;")
+        build_lines.append("    }")
+        list_lines.append(f"    if (KSE_GetFeatAcquired({fid}, oPC))")
+        list_lines.append("    {")
+        list_lines.append(f"        if (sList != \"\") sList = sList + \", \";")
+        list_lines.append(f"        sList = sList + GetStringByStrRef({strrefs[fid]});")
+        list_lines.append("    }")
+    build_body = chr(10).join(build_lines)
+    list_body = chr(10).join(list_lines)
+    ok &= write_and_compile("ap_vrs_build", f'''#include "kse"
+
+void main()
+{{
+    object oPC = GetPCSpeaker();
+    int nOff = StringToInt(KSE_GetData("vrs_off"));
+    int nPos = 0;
+    int nSlot = 0;
+    int nClear = 0;
+    while (nClear < {REMOVE_SLOTS})
+    {{
+        KSE_SetData("vslot" + IntToString(nClear), "0");
+        nClear = nClear + 1;
+    }}
+{build_body}
+    KSE_SetData("vrs_total", IntToString(nPos));
+}}
+''')
+    ok &= write_and_compile("ap_vfm_list", f'''#include "kse"
+
+void main()
+{{
+    object oPC = GetPCSpeaker();
+    string sList = "";
+{list_body}
+    if (sList == "") sList = "none";
+    SetCustomToken(100, sList);
+}}
+''')
+    ok &= write_and_compile("ap_vrs_reset", '''#include "kse"
+
+void main()
+{
+    KSE_SetData("vrs_off", "0");
+}
+''')
+    ok &= write_and_compile("ap_vrs_next", '''#include "kse"
+
+void main()
+{
+    KSE_SetData("vrs_off", IntToString(StringToInt(KSE_GetData("vrs_off")) + 16));
+}
+''')
+    for slot in range(REMOVE_SLOTS):
+        ok &= write_and_compile(f"ap_vrs_a{slot}", f'''#include "kse"
+
+void main()
+{{
+    object oPC = GetPCSpeaker();
+    int nFeat = StringToInt(KSE_GetData("vslot{slot}"));
+    KSE_SetData("vend_state", "fail");
+    if (nFeat <= 0) return;
+    KSE_RemoveFeatArrayA(nFeat, oPC);
+    if (KSE_GetFeatAcquired(nFeat, oPC))
+    {{
+        KSE_Diag(200, "AP|REFUSED|vendor_remove_feat|feat=" + IntToString(nFeat));
+        return;
+    }}
+    KSE_SetData("vend_state", "ok");
+    KSE_Diag(200, "AP|APPLIED|vendor_remove_feat|feat=" + IntToString(nFeat));
 }}
 ''')
     for power_id, _text in POWERS:
@@ -694,18 +845,18 @@ void main()
 }}
 ''')
 
-    # Alignment Change -- real native AdjustAlignment(oSubject, nAlignment,
-    # nShift), not KSE_SetCreatureField (unlike ability/skill training,
-    # there's no engine limitation here forcing a raw-offset write --
-    # AdjustAlignment is a real, standard NWScript native, same one every
-    # vanilla dialogue alignment shift in the base game already uses).
+    # Alignment Change -- the real native SetGoodEvilValue(oCreature, nAlignment) with the new value worked out here
+    # (clamped to 0..100), not AdjustAlignment: with randomised alignment pushes on, the extender changes every
+    # AdjustAlignment call, and this purchase has to move the value by exactly the shift it sells.
     ok &= write_and_compile("ap_val_steal", f'''#include "kse"
 
 void main()
 {{
     object oPC = GetPCSpeaker();
     int nAfter = KSE_SetCredits(oPC, GetGold(oPC) + {ALIGN_STEAL_GAIN});
-    AdjustAlignment(oPC, ALIGNMENT_DARK_SIDE, {ALIGN_SHIFT_AMOUNT});
+    int nNew = GetGoodEvilValue(oPC) - {ALIGN_SHIFT_AMOUNT};
+    if (nNew < 0) nNew = 0;
+    SetGoodEvilValue(oPC, nNew);
     KSE_Diag(200, "AP|APPLIED|vendor_align_steal|creditsAfter=" + IntToString(nAfter));
 }}
 ''')
@@ -715,7 +866,9 @@ void main()
 {{
     object oPC = GetPCSpeaker();
     int nAfter = KSE_SetCredits(oPC, GetGold(oPC) - {ALIGN_DONATE_PRICE});
-    AdjustAlignment(oPC, ALIGNMENT_LIGHT_SIDE, {ALIGN_SHIFT_AMOUNT});
+    int nNew = GetGoodEvilValue(oPC) + {ALIGN_SHIFT_AMOUNT};
+    if (nNew > 100) nNew = 100;
+    SetGoodEvilValue(oPC, nNew);
     KSE_Diag(200, "AP|APPLIED|vendor_align_donate|creditsAfter=" + IntToString(nAfter));
 }}
 ''')
@@ -766,7 +919,29 @@ def new_reply(text):
     return r
 
 
-def build_dlg():
+def _feat_name_strrefs(installation):
+    """{feat id: string reference of its name in dialog.tlk}, from the player's own feat.2da."""
+    if installation is None:
+        return {}
+    from pykotor.resource.formats.twoda import read_2da
+    res = installation.resource("feat", ResourceType.TwoDA)
+    if res is None:
+        return {}
+    table = read_2da(bytes(res.data))
+    out = {}
+    for feat_id in REPLACEABLE_FEAT_IDS:
+        try:
+            value = table.get_row(feat_id).get_string("name")
+            if value and value.isdigit():
+                out[feat_id] = int(value)
+        except Exception:
+            pass
+    return out
+
+
+def build_dlg(installation=None):
+    # strings of the game's own feat names: feat id -> string reference (empty without an installation, then the forget list is not built)
+    FEAT_NAME_STRREFS = _feat_name_strrefs(installation)
     dlg = DLG()
     # Skippable: the player can click through a line. Left off (the default) every line has to run out its reading time, which is what made these menus slow.
     dlg.skippable = True
@@ -807,7 +982,6 @@ def build_dlg():
     # counter. Train Feat itself is always visible; Train Force Power is
     # gated on the PC having real Force levels (see ap_vpwr_jedi).
     reply_feat = new_reply(f"Train Feat -- {FEAT_PRICE} credits each")
-    reply_feat.links.append(DLGLink(entry_feat_picker))
     reply_feat_link = DLGLink(reply_feat)
     reply_feat_link.active1 = ResRef("ap_vft_gate")
 
@@ -868,23 +1042,82 @@ def build_dlg():
 
         entry_ability_picker.links.append(DLGLink(picker_reply))
 
+    # Train Feat is a small menu: the feats the character holds are listed (token 100, ap_vfm_list), then "Add a feat" (the picker below), "Remove a feat"
+    # (free, REMOVE_SLOTS reply slots filled by ap_vrs_build) or "Never mind". Buying: the picker reply's own script (ap_vfg<id>) does the whole attempt and
+    # leaves its verdict for the links: poor -> not enough credits, full -> the feat list is full (remove a feat first), ok -> done, anything else -> failed.
+    entry_feat_menu = new_entry("Your feats: <CUSTOM100>. What would you like to do?")
+    entry_feat_menu.script1 = ResRef("ap_vfm_list")
+    entry_feat_full = new_entry("Your feat list is full. Remove a feat first (Remove a feat is free), then buy again. Nothing was charged.")
+    entry_feat_fail = new_entry("That did not work. Nothing was charged and nothing was lost.")
+    entry_feat_done = new_entry("Transaction completed. Your training is done.")
+    entry_feat_removed = new_entry("The feat was removed. It was free.")
+    entry_remove_picker = new_entry("Which feat should be forgotten? Removing is free and cannot be undone.")
+    entry_remove_picker.script1 = ResRef("ap_vrs_build")
+
+    def back_to_feat_menu():
+        # a blank reply advances by itself (the loop-back technique used for reply_continue), so a message can lead back to the menu
+        blank = new_reply("")
+        blank.links.append(DLGLink(entry_feat_menu))
+        return blank
+
+    entry_feat_full.links.append(DLGLink(back_to_feat_menu()))
+    entry_feat_fail.links.append(DLGLink(back_to_feat_menu()))
+    entry_feat_done.links.append(DLGLink(back_to_feat_menu()))
+    entry_feat_removed.links.append(DLGLink(back_to_feat_menu()))
+
+    reply_feat_add = new_reply(f"Add a feat -- {FEAT_PRICE} credits each")
+    reply_feat_add.links.append(DLGLink(entry_feat_picker))
+    reply_feat_remove = new_reply("Remove a feat -- free")
+    reply_feat_remove.script1 = ResRef("ap_vrs_reset")
+    reply_feat_remove.links.append(DLGLink(entry_remove_picker))
+    reply_feat_leave = new_reply("Nevermind.")
+    reply_feat_leave.links.append(DLGLink(entry_greet))
+    entry_feat_menu.links.append(DLGLink(reply_feat_add))
+    entry_feat_menu.links.append(DLGLink(reply_feat_remove))
+    entry_feat_menu.links.append(DLGLink(reply_feat_leave))
+
     for feat_id, text, _is_signature in FEATS:
         picker_reply = new_reply(text)
+        picker_reply.script1 = ResRef(f"ap_vfg{feat_id}")
         picker_link = DLGLink(picker_reply)
         picker_link.active1 = ResRef(f"ap_vfck{feat_id}")
-
-        success_entry = new_entry("Transaction completed. Your training is done.")
-        success_entry.script1 = ResRef(f"ap_vfg{feat_id}")
-
-        link_yes = DLGLink(success_entry)
-        link_yes.active1 = ResRef("ap_vg3000y")
-        link_no = DLGLink(entry_not_enough)
-        link_no.active1 = ResRef("ap_vg3000n")
-        picker_reply.links.append(link_yes)
-        picker_reply.links.append(link_no)
-
+        link_poor = DLGLink(entry_not_enough)
+        link_poor.active1 = ResRef("ap_vst_poor")
+        link_full = DLGLink(entry_feat_full)
+        link_full.active1 = ResRef("ap_vst_full")
+        link_ok = DLGLink(entry_feat_done)
+        link_ok.active1 = ResRef("ap_vst_ok")
+        picker_reply.links.append(link_poor)
+        picker_reply.links.append(link_full)
+        picker_reply.links.append(link_ok)
+        picker_reply.links.append(DLGLink(entry_feat_fail))
         entry_feat_picker.links.append(picker_link)
+    reply_picker_back = new_reply("Back.")
+    reply_picker_back.links.append(DLGLink(entry_feat_menu))
+    entry_feat_picker.links.append(DLGLink(reply_picker_back))
 
+    # Remove a feat: fixed reply slots whose text is a custom token (<CUSTOM101>..), one condition and one action script per slot.
+    for slot in range(REMOVE_SLOTS):
+        slot_reply = new_reply(f"<CUSTOM{101 + slot}>")
+        slot_reply.script1 = ResRef(f"ap_vrs_a{slot}")
+        link_removed = DLGLink(entry_feat_removed)
+        link_removed.active1 = ResRef("ap_vst_ok")
+        slot_reply.links.append(link_removed)
+        slot_reply.links.append(DLGLink(entry_feat_fail))
+        slot_link = DLGLink(slot_reply)
+        slot_link.active1 = ResRef(f"ap_vrs_c{slot}")
+        entry_remove_picker.links.append(slot_link)
+    reply_remove_more = new_reply("More feats...")
+    reply_remove_more.script1 = ResRef("ap_vrs_next")
+    reply_remove_more.links.append(DLGLink(entry_remove_picker))
+    link_more = DLGLink(reply_remove_more)
+    link_more.active1 = ResRef("ap_vrs_more")
+    entry_remove_picker.links.append(link_more)
+    reply_remove_back = new_reply("Back.")
+    reply_remove_back.links.append(DLGLink(entry_feat_menu))
+    entry_remove_picker.links.append(DLGLink(reply_remove_back))
+
+    reply_feat.links.append(DLGLink(entry_feat_menu))
     for power_id, text in POWERS:
         picker_reply = new_reply(text)
         picker_link = DLGLink(picker_reply)
@@ -1006,7 +1239,7 @@ def main():
         sys.exit(1)
 
     print("Building dialogue tree...")
-    dlg = build_dlg()
+    dlg = build_dlg(Installation(GAME_DIR))
     gff = dismantle_dlg(dlg, Game.K1)
     dlg_path = os.path.join(SRC_DIR, "ap_vendor_dlg.dlg")
     data = bytearray()

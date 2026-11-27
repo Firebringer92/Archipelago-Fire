@@ -16,6 +16,7 @@ Categories (each a function below):
   feat_training_dialogs  the seven companion dialogs with the feat training menu added (generate_feat_training.inject)
   saber_colors           the six extra lightsaber crystal colours: models, glow textures, templates, icons, upcrystals.2da (saber_colors.py)
   edited_templates       three of the game's creature and trigger templates with one field changed (template_fixes.py)
+  party_layout           the game's party selection screen layout with 16 portrait slots in four columns and two page buttons (party_layout.py)
   companion_models       (only with --only) the game's Malak model with weapon animations added, made with MDLOps (model_builders.py)
 """
 import argparse
@@ -103,6 +104,12 @@ def edited_templates(game):
     return template_fixes.edited_templates(game)
 
 
+def party_layout(game):
+    """partyselection.gui for the 32-slot party roster (extender/src_k1se/party32_gui.inc): the game's own layout plus the extra controls (party_layout.py)."""
+    import party_layout as pl
+    return pl.build(game)
+
+
 def companion_models(game):
     """N_DarthMalak with the weapon animations the game's own model lacks (the New Companion option's Malak). Made with MDLOps from the player's own
     model (fix_malak_basic_attack_animations.py, about 20 seconds, then kept in the KotorAP models folder under LOCALAPPDATA)."""
@@ -119,6 +126,7 @@ CATEGORIES = {
     "preserved_scripts": preserved_scripts,
     "saber_colors": saber_colors,
     "edited_templates": edited_templates,
+    "party_layout": party_layout,
     "cutstart_dialogs": cutstart_dialogs,
     "feat_training_dialogs": feat_training_dialogs,
 }

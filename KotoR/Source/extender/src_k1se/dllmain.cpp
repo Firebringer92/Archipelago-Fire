@@ -117,6 +117,11 @@ static bool VerifyFingerprint(BYTE* base)
     return false;
 }
 
+bool DialogRandInstall();   // dialogrand.cpp
+bool AlignRandInstall();    // alignrand.cpp
+bool PartyGatherInstall();  // partygather.cpp
+int Party32Install();       // party32.cpp
+
 static DWORD WINAPI WorkerThread(LPVOID)
 {
     BYTE* base = reinterpret_cast<BYTE*>(GetModuleHandleW(NULL));
@@ -184,6 +189,15 @@ static DWORD WINAPI WorkerThread(LPVOID)
         LogTesterBlock(KSE_LOAD_PARTIAL, "the code hook could not be installed.");
         return 0;
     }
+
+    // KOTOR AP 0.2.1: randomised dialogue replies (dialogrand.cpp). Optional: a refusal leaves everything else running.
+    DialogRandInstall();
+    // KOTOR AP 0.2.1: randomised alignment pushes (alignrand.cpp), off unless ap_alignrand.txt enables it.
+    AlignRandInstall();
+    // KOTOR AP 0.2.1: area transitions do not require the party to be gathered (partygather.cpp).
+    PartyGatherInstall();
+    // KOTOR AP 0.2.1: 32-slot companion roster (party32.cpp), off unless ap_party32.txt enables it.
+    Party32Install();
 
 // The worker/banner arms for the early stages have been removed; the epilogue chain
 // below covers the stages that remain.

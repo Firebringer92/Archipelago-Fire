@@ -92,33 +92,32 @@ SKIP_BRANCH_RUN = {
     ],
 }
 
-WRAPPER_TEMPLATE = """// Suppression wrapper for {name}'s real story recruitment script
+WRAPPER_TEMPLATE = """// Recruit wrapper for {name}'s real story recruitment script
 // (originally {module}'s {resref}, preserved as apo_{name}_orig).
 //
-// Runs the real script unchanged, then immediately reverses the
-// availability grant with RemoveAvailableNPC so the vanilla unlock never
-// actually sticks -- the real grant will come from AP later, through the
-// existing companion apply script (phase 06).
+// Runs the real script unchanged, then BENCHES the companion (ApBenchNpc in
+// ap_companion_roster.nss): out of the party and not selectable, but still on
+// the roster and still existing in the world, exactly like Zaalbar during the
+// Kashyyyk story. The real grant (selectable, in the party) comes from AP
+// later, through the companion apply script (DtArm_companion_{name}).
 //
-// GUARD: if {npc_const} is ALREADY available when this fires, our own
-// companion_{name} AP arm already ran (early item, or an admin re-grant)
-// and {name} is already an active party member. Running apo_{name}_orig
-// + RemoveAvailableNPC on an already-recruited companion kicks them OUT
-// of the active party -- RemoveAvailableNPC is not the harmless no-op on
-// an active member that the vanilla script assumes. So skip the vanilla
-// script and the
-// RemoveAvailableNPC in that case; the AP location check still fires
-// either way below, since reaching this trigger is the check regardless
-// of whether recruitment logic needs to run.
+// GUARD: if {npc_const} is ALREADY available when this fires, either our own
+// companion_{name} AP arm already ran (early item, or an admin re-grant) or
+// this recruit already happened and the companion is benched. Running the
+// vanilla script again could put them into the party, so it is skipped in
+// that case; the AP location check still fires either way below, since
+// reaching this trigger is the check regardless of whether recruitment logic
+// needs to run.
 #include "kse"
 #include "ap_recruit_marker"
+#include "ap_companion_roster"
 {hook_include}
 void main()
 {{
     if (!IsAvailableCreature({npc_const}))
     {{
 {run_original}
-        RemoveAvailableNPC({npc_const});
+        if (!ApNpcEntitled({npc_const})) ApBenchNpc({npc_const});
         KSE_Diag({diag_code}, "AP|SUPPRESSED|companion_{name}");
     }}
     else
@@ -137,6 +136,10 @@ void main()
 """
 
 def main():
+    # --override-dir=DIR writes the preserved originals and the compiled wrappers there instead of the live game's Override (a staging folder).
+    global OVERRIDE
+    OVERRIDE = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--override-dir=")), OVERRIDE)
+    os.makedirs(OVERRIDE, exist_ok=True)
     only = next((a.split("=", 1)[1].split(",") for a in sys.argv[1:] if a.startswith("--only=")), None)
     for name, module, resref, npc_const, diag_code, npc_idx in COMPANIONS:
         if only and name not in only:

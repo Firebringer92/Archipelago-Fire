@@ -58,9 +58,9 @@ _BAZAAR_RE = re.compile(r"AP\|BAZAAR\|(\d+)\|(\d+)")
 # (no door or trigger leads to it), so its check is completed once the other two modules of that base have been visited.
 # Keyed by the unreachable check -> the checks that must all be done first.
 _IMPLIED_AREA_CHECKS = {
-    "Visited: Taris - Black Vulkar Base (tar_m10ab)": (
-        "Visited: Taris - Black Vulkar Base (tar_m10aa)",
-        "Visited: Taris - Black Vulkar Base (tar_m10ac)",
+    "Visited: Taris - Black Vulkar Base (Laboratory)": (
+        "Visited: Taris - Black Vulkar Base (Cantina)",
+        "Visited: Taris - Black Vulkar Base (Hangar)",
     ),
 }
 _ALIGNMENT_RE = re.compile(r"AP\|ALIGNMENT\|(\d+)")

@@ -6,13 +6,13 @@
 // The real script makes Carth available (AddAvailableNPCByTemplate), sets
 // DAN_CARTH_AT_JEDI/DAN_CARTH_BACKUP and opens the party-selection screen.
 // Under companion_mode=ap_gated/none that would hand him over before his AP
-// item arrives, so the wrapper lets it run and then takes away the
-// availability it added.
+// item arrives, so the wrapper lets it run and then benches him
 //
 // GUARD: if NPC_CARTH was ALREADY available, his AP grant already ran and he
 // is a legitimate roster member (possibly in the active party). Leave him
-// alone: RemoveAvailableNPC on an active member kicks him out of the party.
+// alone: benching an entitled active member would kick him out of the party.
 #include "kse"
+#include "ap_companion_roster"
 
 void main()
 {
@@ -20,10 +20,10 @@ void main()
 
     ExecuteScript("apo_addcarth_orig", OBJECT_SELF);
 
-    if (!bWasAvailable)
+    // Benched whether or not he was already on the roster: the vanilla script puts him in the party and opens the party screen.
+    if (!ApNpcEntitled(NPC_CARTH))
     {
-        RemovePartyMember(NPC_CARTH);
-        RemoveAvailableNPC(NPC_CARTH);
-        KSE_Diag(28, "AP|SUPPRESSED|companion_carth|council");
+        ApBenchNpc(NPC_CARTH);
+        KSE_Diag(28, "AP|SUPPRESSED|companion_carth|council|wasAvailable=" + IntToString(bWasAvailable));
     }
 }

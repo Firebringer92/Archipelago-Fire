@@ -182,6 +182,7 @@ lines.append("// file is the only redevelopment cost for new checks -- the 97 ar
 lines.append("// trampolines that call it never need to change.")
 lines.append('#include "kse"')
 lines.append('#include "ap_jolee_field"')
+lines.append('#include "ap_companion_roster"')
 lines.append('#include "ap_lev_cast"')
 lines.append("")
 lines.append("// Area-visited checks are done INLINE in each area trampoline, not here --")
@@ -664,7 +665,6 @@ _PROGRESSION_ITEM_RESREFS = [
     # 0.2.0 plot items -- same keys/order as entitlement.py's PROGRESSION_ITEM_RESREFS.
     (f"ft_{_k}", f"ap_ft_{_k}") for _k in ("bastila", "canderous", "carth", "jolee", "juhani", "mission", "zaalbar")
 ] + [
-    ("nc_console", "ap_nc_console"),
     ("party_console", "ap_partycon_a"),
 ]
 lines.append("// Roster report for the reconciler's stray-companion cleanup (kotor_")
@@ -1517,6 +1517,25 @@ int DtGiveItem(object oPC, string sArgs)
     return 1;
 }
 
+// extra_companion:<slot>:<template> -- adds one of the extra companions (Items.py's EXTRA_COMPANIONS) to the roster in its own slot above the game's nine
+// (the 32-slot roster in extender/src_k1se/party32.cpp). Safe to repeat: a slot that is already available is left alone. Returns 2 when the roster did not
+// take it, which is what a game without the roster patch does, so the dispatcher tries again later instead of calling it done.
+int DtExtraCompanion(string sArgs)
+{
+    int nC = FindSubString(sArgs, ":");
+    if (nC < 0) return 2;
+    int nSlot = StringToInt(GetSubString(sArgs, 0, nC));
+    string sTemplate = GetSubString(sArgs, nC + 1, GetStringLength(sArgs));
+    if (nSlot < 9 || nSlot > 31 || sTemplate == "") return 2;
+    int nWas = IsAvailableCreature(nSlot);
+    if (!nWas) AddAvailableNPCByTemplate(nSlot, sTemplate);
+    SetNPCSelectability(nSlot, TRUE);
+    int nNow = IsAvailableCreature(nSlot);
+    DtLog("EXTRA|slot=" + IntToString(nSlot) + "|template=" + sTemplate + "|was=" + IntToString(nWas) + "|available=" + IntToString(nNow));
+    if (!nNow) return 2;
+    return 1;
+}
+
 // The actions. Returns 0 for one it does not know, 1 when done, 2 when it ran but could not do its job (for example an item
 // that does not exist). "notify" does nothing itself: its text is the message.
 // "arm:<name>" runs one of the fixed arms (DtArm, generated from generate_trampoline_batch.py's APPLIES table).
@@ -1525,6 +1544,7 @@ int DtRun(object oPC, string sAction, string sArgs)
     if (sAction == "notify") return 1;
     if (sAction == "arm") return DtArm(sArgs);
     if (sAction == "give_item") return DtGiveItem(oPC, sArgs);
+    if (sAction == "extra_companion") return DtExtraCompanion(sArgs);
     if (sAction == "set_xp") return DtSetXp(sArgs);
     if (sAction == "delevel") return DtDelevel(sArgs);
     if (sAction == "force_power") return DtForcePower(sArgs);
@@ -1724,6 +1744,8 @@ lines.append("    EnsureHeartbeat();")
 if cli_args.dispatch_test:
     lines.append("    DtTick();")
 lines.append('    if (bTrace) KSE_Diag(176, "AP|POLLRUN|s1");')
+lines.append("    // 0.2.1: a companion the player is not entitled to stays benched (out of the party, not selectable); vanilla scenes and conversations can undo that.")
+lines.append("    if (!ApSceneBusy() && !GetIsInConversation(GetFirstPC())) ApEnforceRoster();")
 lines.append("    CheckCompanionStuck();")
 lines.append('    if (bTrace) KSE_Diag(176, "AP|POLLRUN|s2");')
 lines.append("    CheckPartyLevels();")

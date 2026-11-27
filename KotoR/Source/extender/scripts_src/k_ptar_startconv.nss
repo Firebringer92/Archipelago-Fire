@@ -97,6 +97,7 @@
 // wander off) -- guarded by the same KSE flag so it's a safe no-op if
 // click 2 already handled it normally.
 #include "kse"
+#include "ap_companion_roster"
 
 int GetCompanionNPCIndex(object oCompanion)
 {
@@ -117,7 +118,7 @@ int GetCompanionNPCIndex(object oCompanion)
 // created another one). Destroyed a while after the revert, only if she has not been recruited for real in the meantime.
 void PurgeForcefieldMission()
 {
-    if (IsAvailableCreature(NPC_MISSION)) return;
+    if (IsNPCPartyMember(NPC_MISSION) || ApNpcEntitled(NPC_MISSION)) return;
     int n = 0;
     object oStray = GetObjectByTag("mission", n);
     while (GetIsObjectValid(oStray))
@@ -136,8 +137,7 @@ void RevertForcefieldMission()
     // multiple real triggers of this whole sequence.
     if (KSE_GetData("ff_mission_staged") != "1") return;
 
-    RemovePartyMember(NPC_MISSION);
-    RemoveAvailableNPC(NPC_MISSION);
+    ApBenchNpc(NPC_MISSION);
 
     int nBenchedNPC = StringToInt(KSE_GetData("ff_benched_npc"));
     if (nBenchedNPC != -1)
@@ -202,7 +202,7 @@ void main()
     // EVERY player who reaches this console, including completely
     // vanilla companion_mode=normal ones -- not just the AP-gated case
     // this whole wrapper exists for.
-    if (GetJournalEntry("tar_bastsearch") < 28 || IsAvailableCreature(NPC_MISSION))
+    if (GetJournalEntry("tar_bastsearch") < 28 || ApNpcEntitled(NPC_MISSION) || IsNPCPartyMember(NPC_MISSION))
     {
         object oFF = GetObjectByTag("tar05_forcefield");
         if (GetIsObjectValid(oFF) && !GetIsOpen(oFF) && IsNPCPartyMember(NPC_MISSION))
@@ -233,7 +233,7 @@ void main()
         }
     }
 
-    AddAvailableNPCByTemplate(NPC_MISSION, "p_mission");
+    if (!IsAvailableCreature(NPC_MISSION)) AddAvailableNPCByTemplate(NPC_MISSION, "p_mission");
     // Reuse a Mission that is already standing (an earlier staging's) instead of creating another.
     object oMission = GetObjectByTag("mission");
     if (!GetIsObjectValid(oMission))

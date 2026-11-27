@@ -1,10 +1,9 @@
-// Suppression wrapper for Carth's real story recruitment script
+// Recruit wrapper for Carth's real story recruitment script
 // (originally tar_m02aa's k_ptar_addcarth, preserved as apo_carth_orig).
 //
-// Runs the real script unchanged (AddAvailableNPCByTemplate), then
-// immediately reverses the availability grant with RemoveAvailableNPC so
-// the vanilla unlock never actually sticks -- the real grant will come
-// from AP later, through the existing companion apply script (phase 06).
+// Runs the real script unchanged (AddAvailableNPCByTemplate), then BENCHES him (ApBenchNpc,
+// ap_companion_roster.nss): out of the party and not selectable, but still on the roster and in
+// the world. The real grant comes from AP later, through the companion_carth apply script.
 //
 // GUARD: if NPC_CARTH is ALREADY available when this
 // fires, our own companion_carth AP arm already ran (early item, or an
@@ -18,13 +17,14 @@
 // of whether recruitment logic needs to run.
 #include "kse"
 #include "ap_recruit_marker"
+#include "ap_companion_roster"
 
 void main()
 {
     if (!IsAvailableCreature(NPC_CARTH))
     {
         ExecuteScript("apo_carth_orig", OBJECT_SELF);
-        RemoveAvailableNPC(NPC_CARTH);
+        if (!ApNpcEntitled(NPC_CARTH)) ApBenchNpc(NPC_CARTH);
         KSE_Diag(28, "AP|SUPPRESSED|companion_addcarth");
     }
     else

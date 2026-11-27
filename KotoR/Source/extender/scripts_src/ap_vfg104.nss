@@ -3,7 +3,27 @@
 void main()
 {
     object oPC = GetPCSpeaker();
-    int nAfter = KSE_SetCredits(oPC, GetGold(oPC) - 3000);
+    KSE_SetData("vend_feat", "104");
+    if (GetGold(oPC) < 3000)
+    {
+        KSE_SetData("vend_state", "poor");
+        return;
+    }
+    KSE_GetVersion();   // clears the errno, so the read below belongs to this grant
     KSE_GrantFeatArrayA(104, oPC);
-    KSE_Diag(200, "AP|APPLIED|vendor_train_feat|feat=104|creditsAfter=" + IntToString(nAfter));
+    if (KSE_GetFeatAcquired(104, oPC))
+    {
+        int nAfter = KSE_SetCredits(oPC, GetGold(oPC) - 3000);
+        KSE_SetData("vend_state", "ok");
+        KSE_Diag(200, "AP|APPLIED|vendor_train_feat|feat=104|creditsAfter=" + IntToString(nAfter));
+        return;
+    }
+    if (KSE_ERRNO() == KSE_E_AT_CAPACITY())
+    {
+        KSE_SetData("vend_state", "full");
+        KSE_Diag(200, "AP|VENDOR|feat_list_full|feat=104");
+        return;
+    }
+    KSE_SetData("vend_state", "fail");
+    KSE_Diag(200, "AP|REFUSED|vendor_train_feat|feat=104|errno=" + IntToString(KSE_ERRNO()) + "|credits=" + IntToString(GetGold(oPC)));
 }

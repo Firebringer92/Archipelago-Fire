@@ -33,13 +33,15 @@
 // conversation-aware fallback timer for a player who never completes it.
 #include "kse"
 #include "ap_zaal_mission"
+#include "ap_companion_roster"
 
 void main()
 {
     object oEntering = GetEnteringObject();
 
     if (GetIsPC(oEntering)
-        && !IsAvailableCreature(NPC_MISSION)
+        && !ApNpcEntitled(NPC_MISSION)
+        && !IsNPCPartyMember(NPC_MISSION)
         && KSE_GetData("zaal_mission_staged") != "1"
         && !ZaalSceneAlreadyPlayed())
     {

@@ -668,7 +668,7 @@ class ReconciliationTracker:
         self.roster_cleanup_mode = "on"
         # The leak purge (a companion on the roster whose entitlement marker is not 10) has its own
         # switch, report-only by default (KotorClient's /ap_leak_purge).
-        # "auto" (default): report only until the Leviathan has been escaped, purge from then on. "on" / "log" / "off" are explicit
+        # "auto" (default): off since 0.2.1 (the game benches unentitled companions itself, see effective_leak_purge_mode). "on" / "log" / "off" are explicit
         # choices (/ap_leak_purge) that hold in every phase.
         self.leak_purge_mode = "auto"
         self._roster_first_seen: typing.Optional[float] = None
@@ -1516,9 +1516,12 @@ class ReconciliationTracker:
         return actions
 
     def effective_leak_purge_mode(self) -> str:
-        """The mode the leak purge acts on right now: "auto" means purge once the Leviathan has been escaped, report only before."""
+        """The mode the leak purge acts on right now: "auto" means off (0.2.1: unentitled companions are benched by the game itself, never purged)."""
         if self.leak_purge_mode == "auto":
-            return "on" if self.roster_leviathan_done else "log"
+            # 0.2.1: a companion on the roster the player is not entitled to is the NORMAL state now (benched: out of the party, not selectable, never
+            # deleted), and the game's own poll keeps them benched (ap_companion_roster.nss ApEnforceRoster). The client does not purge any more unless
+            # the player asks for it with /ap_leak_purge on.
+            return "off"
         return self.leak_purge_mode
 
     def _roster_extras(self) -> typing.List[str]:

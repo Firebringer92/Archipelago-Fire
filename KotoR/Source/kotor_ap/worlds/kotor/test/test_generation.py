@@ -95,7 +95,7 @@ class KotorScenario(WorldTestBase):
 class TestDefaults(KotorScenario):
     options = {}
     expected_locations = tuple(QUEST_ITEM_NAMES) + ("Companion Recruited: HK-47", "Ebon Hawk: HK-47")
-    forbidden_locations = tuple(BAZAAR_NAMES) + ("Companion Recruited: New Companion",)
+    forbidden_locations = tuple(BAZAAR_NAMES)
 
 
 class TestProgressionSystem(KotorScenario):
@@ -109,73 +109,81 @@ class TestGatedCompanions(KotorScenario):
     expected_items = tuple(n for n in item_table if n.startswith("Companion: "))
 
 
-class TestNewCompanion(KotorScenario):
-    """HK-47 stays; the replacement is a console choice, with one item to unlock the console."""
-    options = {"companion_mode": 0, "new_companion": 1, "progression_system": 1}
-    expected_items = ("Companion: HK-47", "Ebon Hawk: New Companion Selection")
-    forbidden_items = ("Companion: New Companion", "Additional Feats Character: New Companion")
-    expected_counts = {"Ebon Hawk: New Companion Selection": 1}
+ALL_EXTRA = ["Mystery Companion", "Darth Malak", "Calo Nord", "Yuthura Ban", "Darth Bandon", "Trask Ulgo"]
+EXTRA_ITEMS = tuple(n if n == "Mystery Companion" else f"Extra Companion: {n}" for n in ALL_EXTRA)
+
+
+class TestExtraCompanions(KotorScenario):
+    """HK-47 stays; each listed character is one ordinary item that adds them in a slot of their own."""
+    options = {"companion_mode": 0, "extra_companions": ["Mystery Companion", "Calo Nord"], "progression_system": 1}
+    expected_items = ("Companion: HK-47", "Mystery Companion", "Extra Companion: Calo Nord")
+    forbidden_items = ("Extra Companion: Darth Malak", "Extra Companion: Trask Ulgo", "Ebon Hawk: New Companion Selection")
+    expected_counts = {"Mystery Companion": 1, "Extra Companion: Calo Nord": 1}
     expected_locations = ("Companion Recruited: HK-47", "Ebon Hawk: HK-47")
-    forbidden_locations = ("Companion Recruited: New Companion",)
 
-
-class TestNewCompanionRandomClass(KotorScenario):
-    """random_class: the same console and item, and every console character is dealt a class for the seed."""
-    options = {"companion_mode": 0, "new_companion": 2}
-    expected_items = ("Ebon Hawk: New Companion Selection",)
-    expected_counts = {"Ebon Hawk: New Companion Selection": 1}
-
-    def test_every_character_is_dealt_a_class(self):
+    def test_each_character_has_its_own_slot_and_template(self):
         data = self.world.fill_slot_data()
-        self.assertEqual(data["new_companion"], 2)
-        self.assertEqual(sorted(data["new_companion_classes"]), sorted(["meetra", "malak", "calo", "yuthura", "bandon", "trask"]))
-        self.assertTrue(set(data["new_companion_classes"].values()) <= {"soldier", "scout", "scoundrel", "guardian", "consular", "sentinel"})
-
-    def test_the_keys_are_the_consoles_characters(self):
-        import os, sys
-        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "scripts")))
-        import generate_new_companion_console as console
-        self.assertEqual(set(self.world.fill_slot_data()["new_companion_classes"]), set(console.CHARACTERS))
+        self.assertEqual({c["key"]: (c["slot"], c["template"]) for c in data["extra_companions"]}, {"meetra": (9, "p_meetra_x"), "calo": (11, "p_calo_x")})
+        self.assertEqual(data["extra_companion_classes"], {})
+        self.assertEqual(data["new_companion"], 0)
 
 
-class TestNewCompanionOnKeepsTheirOwnClass(KotorScenario):
-    options = {"companion_mode": 0, "new_companion": 1}
-    expected_items = ("Ebon Hawk: New Companion Selection",)
+class TestExtraCompanionsAll(KotorScenario):
+    options = {"companion_mode": 0, "extra_companions": ALL_EXTRA}
+    expected_items = EXTRA_ITEMS
 
-    def test_no_classes_are_dealt(self):
-        self.assertEqual(self.world.fill_slot_data()["new_companion_classes"], {})
+    def test_the_six_slots_are_nine_to_fourteen(self):
+        slots = sorted(c["slot"] for c in self.world.fill_slot_data()["extra_companions"])
+        self.assertEqual(slots, [9, 10, 11, 12, 13, 14])
+
+    def test_the_arm_names_name_the_slot_and_template(self):
+        for name in EXTRA_ITEMS:
+            arm = item_table[name].arm_name
+            with self.subTest(name=name):
+                head, slot, template = arm.split(":")
+                self.assertEqual(head, "extra_companion")
+                self.assertTrue(9 <= int(slot) <= 14 and template.endswith("_x"))
 
 
-class TestNewCompanionRandomClassNoCompanions(KotorScenario):
-    options = {"companion_mode": 2, "new_companion": 2}
-    forbidden_items = ("Ebon Hawk: New Companion Selection",)
+class TestExtraCompanionsRandomClass(KotorScenario):
+    """Every listed character is dealt a class for the seed; only listed ones."""
+    options = {"companion_mode": 0, "extra_companions": ["Darth Malak", "Yuthura Ban", "Trask Ulgo"], "extra_companion_random_class": 1}
+    expected_items = ("Extra Companion: Darth Malak", "Extra Companion: Yuthura Ban", "Extra Companion: Trask Ulgo")
 
-    def test_no_classes_are_dealt(self):
-        self.assertEqual(self.world.fill_slot_data()["new_companion_classes"], {})
+    def test_every_listed_character_is_dealt_a_class(self):
+        data = self.world.fill_slot_data()
+        self.assertEqual(sorted(data["extra_companion_classes"]), ["malak", "trask", "yuthura"])
+        self.assertTrue(set(data["extra_companion_classes"].values()) <= {"soldier", "scout", "scoundrel", "guardian", "consular", "sentinel"})
 
 
-class TestNewCompanionRandomClassDroids(KotorScenario):
-    options = {"companion_mode": 0, "new_companion": 2, "companion_class": 4}
-    forbidden_items = ("Ebon Hawk: New Companion Selection",)
+class TestExtraCompanionsRandomClassNothingListed(KotorScenario):
+    options = {"companion_mode": 0, "extra_companion_random_class": 1}
+    forbidden_items = EXTRA_ITEMS
 
     def test_no_classes_are_dealt(self):
         data = self.world.fill_slot_data()
-        self.assertEqual((data["new_companion"], data["new_companion_classes"]), (0, {}))
+        self.assertEqual((data["extra_companions"], data["extra_companion_classes"]), ([], {}))
 
 
-class TestNewCompanionOff(KotorScenario):
-    options = {"companion_mode": 0, "new_companion": 0}
-    forbidden_items = ("Ebon Hawk: New Companion Selection",)
+class TestExtraCompanionsNoCompanions(KotorScenario):
+    """companion_mode none: no companions exist at all, so no extra ones either (and no Party Console)."""
+    options = {"companion_mode": 2, "extra_companions": ALL_EXTRA, "extra_companion_random_class": 1}
+    forbidden_items = EXTRA_ITEMS + ("Party Console",)
+
+    def test_nothing_reaches_the_client(self):
+        data = self.world.fill_slot_data()
+        self.assertEqual((data["extra_companions"], data["extra_companion_classes"]), ([], {}))
 
 
-class TestNewCompanionNoCompanions(KotorScenario):
-    options = {"companion_mode": 2, "new_companion": 1}
-    forbidden_items = ("Ebon Hawk: New Companion Selection", "Party Console")
+class TestExtraCompanionsWithDroids(KotorScenario):
+    """Extra companions are never rebuilt as droids, so the droid option does not remove them."""
+    options = {"companion_mode": 0, "companion_class": 4, "extra_companions": ["Mystery Companion"]}
+    expected_items = ("Mystery Companion",)
 
 
-class TestNewCompanionDroids(KotorScenario):
-    options = {"companion_mode": 0, "new_companion": 1, "companion_class": 4}
-    forbidden_items = ("Ebon Hawk: New Companion Selection",)
+class TestExtraCompanionsOff(KotorScenario):
+    options = {"companion_mode": 0}
+    forbidden_items = EXTRA_ITEMS + ("Ebon Hawk: New Companion Selection",)
 
 
 class TestPartyConsole(KotorScenario):
@@ -237,7 +245,7 @@ class TestAdditionalFeats(KotorScenario):
     """One unlock per non-droid companion; none for the player character, none for a replacement."""
     options = {"additional_feats": 1}
     expected_items = tuple(FEATS_ITEMS)
-    forbidden_items = ("Additional Feats Character: PC", "Additional Feats Character: New Companion")
+    forbidden_items = ("Additional Feats Character: PC",)
 
     def test_the_unlocks_deliver_plot_items(self):
         for name in FEATS_ITEMS:
@@ -280,7 +288,7 @@ class TestEverythingOn(KotorScenario):
     options = {
         "progression_system": 1, "companion_mode": 0, "companion_class": 2, "starting_class": 2, "additional_feats": 1,
         "archipelago_vendor": 1, "enable_traps": 2, "experience_mode": 2, "credit_mode": 2, "receive_inventory_items": 1,
-        "new_companion": 1, "bazaar": 1, "quest_item_checks": 1,
+        "extra_companions": ALL_EXTRA, "bazaar": 1, "quest_item_checks": 1,
     }
 
 

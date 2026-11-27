@@ -60,6 +60,7 @@
 // same way, and a creature this gate created is destroyed 45 seconds after
 // the scene (PurgeGateStrays), so repeated runs no longer pile up copies.
 #include "kse"
+#include "ap_companion_roster"
 
 int GetCompanionGateNPCIndex(object oCompanion)
 {
@@ -94,8 +95,8 @@ void PurgeCompanionByTag(string sTag)
 // its companion is not available, so a real recruit that happened in the meantime is never touched.
 void PurgeGateStrays(int bBastilaMade, int bCarthMade)
 {
-    if (bBastilaMade && !IsAvailableCreature(NPC_BASTILA)) PurgeCompanionByTag("bastila");
-    if (bCarthMade && !IsAvailableCreature(NPC_CARTH)) PurgeCompanionByTag("Carth");
+    if (bBastilaMade && !IsNPCPartyMember(NPC_BASTILA)) PurgeCompanionByTag("bastila");
+    if (bCarthMade && !IsNPCPartyMember(NPC_CARTH)) PurgeCompanionByTag("Carth");
 }
 
 // bAllowTempGrant lets a caller with its own extra real-story prerequisite
@@ -148,8 +149,9 @@ void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllo
     int nNeeded = 0;
     if (bAllowTempGrant)
     {
-        if (!IsAvailableCreature(NPC_BASTILA)) nNeeded++;
-        if (!IsAvailableCreature(NPC_CARTH)) nNeeded++;
+        // 0.2.1: the companions stay on the roster (benched), so the scene needs them put INTO the party: whoever is not in it and the player is not entitled to.
+        if (!IsNPCPartyMember(NPC_BASTILA) && !ApNpcEntitled(NPC_BASTILA)) nNeeded++;
+        if (!IsNPCPartyMember(NPC_CARTH) && !ApNpcEntitled(NPC_CARTH)) nNeeded++;
     }
 
     if (nNeeded >= 1)
@@ -181,9 +183,9 @@ void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllo
         }
     }
 
-    if (bAllowTempGrant && !IsAvailableCreature(NPC_BASTILA))
+    if (bAllowTempGrant && !IsNPCPartyMember(NPC_BASTILA) && !ApNpcEntitled(NPC_BASTILA))
     {
-        AddAvailableNPCByTemplate(NPC_BASTILA, "p_bastilla");
+        if (!IsAvailableCreature(NPC_BASTILA)) AddAvailableNPCByTemplate(NPC_BASTILA, "p_bastilla");
         // Reuse a Bastila that is already standing (a placed one, or one an earlier run left behind) instead of adding another.
         object oBastila = GetObjectByTag("bastila");
         if (!GetIsObjectValid(oBastila))
@@ -194,7 +196,7 @@ void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllo
         AddPartyMember(NPC_BASTILA, oBastila);
         bBastilaTemp = TRUE;
     }
-    if (bAllowTempGrant && !IsAvailableCreature(NPC_CARTH))
+    if (bAllowTempGrant && !IsNPCPartyMember(NPC_CARTH) && !ApNpcEntitled(NPC_CARTH))
     {
         // Reuse an existing placed "Carth" object if this module has one
         // (e.g. the Taris Hideout) instead of always creating fresh --
@@ -206,7 +208,7 @@ void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllo
             oCarth = CreateObject(OBJECT_TYPE_CREATURE, "p_carth", GetLocation(oPC));
             bCarthMade = TRUE;
         }
-        AddAvailableNPCByTemplate(NPC_CARTH, "p_carth");
+        if (!IsAvailableCreature(NPC_CARTH)) AddAvailableNPCByTemplate(NPC_CARTH, "p_carth");
         AddPartyMember(NPC_CARTH, oCarth);
         bCarthTemp = TRUE;
     }
@@ -219,13 +221,11 @@ void HandleBastilaCarthGate(string sOriginalResref, string sSceneName, int bAllo
 
     if (bBastilaTemp)
     {
-        RemovePartyMember(NPC_BASTILA);
-        RemoveAvailableNPC(NPC_BASTILA);
+        ApBenchNpc(NPC_BASTILA);
     }
     if (bCarthTemp)
     {
-        RemovePartyMember(NPC_CARTH);
-        RemoveAvailableNPC(NPC_CARTH);
+        ApBenchNpc(NPC_CARTH);
     }
 
     if (nBenchedB != -1 && GetIsObjectValid(oBenchedB))

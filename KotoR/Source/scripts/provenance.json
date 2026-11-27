@@ -115,6 +115,18 @@
       "origin": "third-party licence text: K1SE, MIT, Brandon Guffey"
     },
     {
+      "glob": "Source/extender/src_k1se/*.inc",
+      "origin": "authored: part of the extender's source (the party screen code, ported from KotOR Patch Manager, MIT, see PATCH_MANAGER_LICENSE.txt)"
+    },
+    {
+      "glob": "Source/extender/src_k1se/PATCH_MANAGER_LICENSE.txt",
+      "origin": "third-party licence text: KotOR Patch Manager, MIT, Lane Dibello and contributors"
+    },
+    {
+      "glob": "Source/scripts/party_layout.json",
+      "origin": "recipe: control positions and sizes (names and numbers only) used to build the party screen from the player's own game file; contains no game bytes"
+    },
+    {
       "glob": "Source/extender/kse.nss",
       "origin": "third-party: K1SE's script header (MIT, Brandon Guffey)"
     },
@@ -222,12 +234,13 @@
     },
     {
       "zip_path": "extender/build_new/binkw32.dll",
-      "sha256": "429fde1ddeae00f3764cfac5ea5f8a76a6dbf2b5540d75892bc15a20109eca05",
-      "origin": "built from Source/extender/src_k1se (ours, with K1SE's MIT hook code) linked with MinHook and the Hacker Disassembler Engine, using Source/extender/build.ps1. Not stored in the repository: the release zip carries it and its SHA-256 goes in the patch notes",
+      "sha256": "c1d57364d48a80b325a9fc75d2466cabdb3cb7eae4d091dc428c49ad0b5f6c85",
+      "origin": "built from Source/extender/src_k1se (ours, with K1SE's MIT hook code, and the 32-slot party roster ported from KotOR Patch Manager, MIT) linked with MinHook and the Hacker Disassembler Engine, using Source/extender/build.ps1. Not stored in the repository: the release zip carries it and its SHA-256 goes in the patch notes",
       "licence_file": "Source/extender/src_k1se/K1SE_LICENSE.txt",
       "notice_must_mention": [
         "K1SE",
-        "MinHook"
+        "MinHook",
+        "Patch Manager"
       ]
     },
     {

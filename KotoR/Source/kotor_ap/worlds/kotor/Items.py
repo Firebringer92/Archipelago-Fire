@@ -151,12 +151,42 @@ item_table: typing.Dict[str, ItemData] = {
     "Additional Feats Character: Juhani": ItemData(base_id + 55, ItemClassification.useful, "give_item:ap_ft_juhani"),
     "Additional Feats Character: Mission": ItemData(base_id + 56, ItemClassification.useful, "give_item:ap_ft_mission"),
     "Additional Feats Character: Zaalbar": ItemData(base_id + 57, ItemClassification.useful, "give_item:ap_ft_zaalbar"),
-    # NewCompanion: unlocks the console on the Ebon Hawk where HK-47 can be swapped for another companion (plot item ap_nc_console).
-    "Ebon Hawk: New Companion Selection": ItemData(base_id + 95, ItemClassification.useful, "give_item:ap_nc_console"),
+    # base_id+95 was "Ebon Hawk: New Companion Selection" (the console that swapped HK-47 or T3-M4 for another character) in 0.2.0. Retired in 0.2.1:
+    # those characters are now the separate Extra Companion items below. The code is not reused.
     # The Party Console: a usable inventory item that opens the party selection screen (generate_party_console.py); the unlimited-use
     # variant. One is always in the pool when companions exist.
     "Party Console": ItemData(base_id + 96, ItemClassification.useful, "give_item:ap_partycon_a"),
 }
+
+# Extra companions (ExtraCompanions option, 0.2.1): the characters the New Companion console used to offer, now ordinary companions in their own slots above the
+# game's nine (the 32-slot roster, extender/src_k1se/party32.cpp). Each item adds one character; nothing is replaced. key -> (name, party slot, template resref).
+# The templates carry their own tag (x<key>) and are written by scripts/generate_new_companion_assets.py.
+EXTRA_COMPANIONS: typing.Dict[str, typing.Tuple[str, int, str]] = {
+    "meetra": ("Mystery Companion", 9, "p_meetra_x"),
+    "malak": ("Darth Malak", 10, "p_malak_x"),
+    "calo": ("Calo Nord", 11, "p_calo_x"),
+    "yuthura": ("Yuthura Ban", 12, "p_yuthura_x"),
+    "bandon": ("Darth Bandon", 13, "p_bandon_x"),
+    "trask": ("Trask Ulgo", 14, "p_trask_x"),
+}
+EXTRA_COMPANION_BASE_ID = base_id + 300000
+EXTRA_COMPANION_NAMES: typing.Dict[str, str] = {}
+for _ei, (_key, (_label, _slot, _template)) in enumerate(EXTRA_COMPANIONS.items()):
+    # the first one's item keeps who it is a surprise
+    EXTRA_COMPANION_NAMES[_key] = _label if _key == "meetra" else f"Extra Companion: {_label}"
+    item_table[EXTRA_COMPANION_NAMES[_key]] = ItemData(
+        EXTRA_COMPANION_BASE_ID + _ei, ItemClassification.useful, f"extra_companion:{_slot}:{_template}")
+
+# AP companions (ApCompanions option, 0.2.1): "AP Companion <n>" adds the n-th generated companion (see ApCompanions.py) in party slot 14 + n. The item names are static; the
+# character's name, class and look come from the seed's plan in slot_data.
+from .ApCompanions import AP_COMPANION_FIRST_SLOT, AP_COMPANION_MAX, AP_COMPANION_TEMPLATE, item_name as _ap_item_name
+AP_COMPANION_BASE_ID = EXTRA_COMPANION_BASE_ID + 100
+AP_COMPANION_NAMES: typing.List[str] = []
+for _ai in range(AP_COMPANION_MAX):
+    AP_COMPANION_NAMES.append(_ap_item_name(_ai + 1))
+    item_table[AP_COMPANION_NAMES[-1]] = ItemData(
+        AP_COMPANION_BASE_ID + _ai, ItemClassification.useful,
+        f"extra_companion:{AP_COMPANION_FIRST_SLOT + _ai}:{AP_COMPANION_TEMPLATE.format(n=_ai + 1)}")
 
 # Story-gate progression items (ProgressionSystem option). Eight families of three plot items that hold story beats
 # until enough of them are owned (scripts/patch_story_gates.py, DEVELOPMENT_HISTORY.md section 17). The eight

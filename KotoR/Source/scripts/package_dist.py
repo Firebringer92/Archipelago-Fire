@@ -103,6 +103,8 @@ EXTRA_RAW_FILES = [
     "m01aa_c01.dlg", "k_hjuh_dialog.dlg",
     # Unknown World, Bastila's final choice: the two branches now move the player to exactly 100 / 0 alignment.
     "k_punk_goodfinal.ncs", "k_punk_evilfinal.ncs",
+    # Companion event scripts: a follower does not start a fight on its own and joins the party's fights (ap_hen_follow.nss).
+    "k_hen_percept01.ncs", "k_hen_combend01.ncs", "k_hen_dialogue01.ncs", "k_hen_heartbt01.ncs",
     # The extra lightsaber crystal colours (saber_colors.py) and the edited scene dialogs are made on the player's machine from the game's own files
     # (build_game_assets.py), so none of them is listed here or shipped.
     #

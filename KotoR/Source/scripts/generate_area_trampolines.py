@@ -234,11 +234,11 @@ def original_enter_guard(onenter):
     post = ""
     for npc_const, key in guards:
         pre += f"    int bWas_{key} = IsAvailableCreature({npc_const});\n"
+        # 0.2.1: whoever the original put into the party (or made selectable) and the player is not entitled to is benched, not deleted.
         post += (
-            f"    if (!bWas_{key} && IsAvailableCreature({npc_const}))\n"
+            f"    if (!ApNpcEntitled({npc_const}) && (IsNPCPartyMember({npc_const}) || GetNPCSelectability({npc_const})))\n"
             "    {\n"
-            f"        RemovePartyMember({npc_const});\n"
-            f"        RemoveAvailableNPC({npc_const});\n"
+            f"        ApBenchNpc({npc_const});\n"
             f'        KSE_Diag(28, "AP|SUPPRESSED|companion_{key}|area_enter");\n'
             "    }\n"
         )
@@ -363,6 +363,7 @@ for onenter, bases in by_onenter.items():
 // it only ever runs once per area PER ENTRY regardless of party size (it
 // will still fire again on a later, separate entry into the same area).
 #include "kse"
+#include "ap_companion_roster"
 
 void main()
 {{

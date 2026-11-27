@@ -1,11 +1,10 @@
-// Suppression wrapper for Canderous's real story recruitment script
+// Recruit wrapper for Canderous's real story recruitment script
 // (originally tar_m08aa's k_ptar_candadd, preserved as apo_cand_orig).
 //
 // Runs the real script unchanged (AddAvailableNPCByTemplate + party
-// selection GUI + world-object cleanup), then immediately reverses the
-// availability grant with RemoveAvailableNPC so the vanilla unlock never
-// actually sticks -- the real grant will come from AP later, through the
-// existing companion_canderous apply script (phase 06).
+// selection GUI + world-object cleanup), then BENCHES him (ApBenchNpc, ap_companion_roster.nss):
+// out of the party and not selectable, but still on the roster and in the world. The real grant
+// comes from AP later, through the companion_canderous apply script.
 //
 // GUARD: same fix as k_ptar_addcarth.nss -- if
 // NPC_CANDEROUS is ALREADY available when this fires, our own
@@ -16,13 +15,14 @@
 // check still fires either way below.
 #include "kse"
 #include "ap_recruit_marker"
+#include "ap_companion_roster"
 
 void main()
 {
     if (!IsAvailableCreature(NPC_CANDEROUS))
     {
         ExecuteScript("apo_cand_orig", OBJECT_SELF);
-        RemoveAvailableNPC(NPC_CANDEROUS);
+        if (!ApNpcEntitled(NPC_CANDEROUS)) ApBenchNpc(NPC_CANDEROUS);
         KSE_Diag(27, "AP|SUPPRESSED|companion_candadd");
     }
     else

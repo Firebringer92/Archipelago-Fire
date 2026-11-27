@@ -8,6 +8,7 @@ import sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 CORE = os.environ.get("K2_CORE") or os.path.join(ROOT, "ap_core")      # GitHub's workflow points this at its Archipelago checkout
+SUITE_TIMEOUT = int(os.environ.get("K2_SUITE_TIMEOUT") or 600)      # seconds per suite (the slowest, test_context, takes about two minutes)
 SUITES = ("test_dispatcher.py", "test_tracker.py", "test_patch.py", "test_gates.py", "test_ncs_merge.py", "test_companions.py", "test_extras.py", "test_bazaar.py", "test_modules.py", "test_shop.py", "test_loot.py", "test_enemies.py", "test_doors.py", "test_crafting.py", "test_assets.py", "test_partycon.py", "test_journal.py", "test_dialogues.py", "test_vendor.py", "test_k2_droid.py", "test_payload.py", "test_status.py", "test_bundle.py", "test_droid_models.py", "test_gift.py", "test_installer.py", "test_context.py")
 
 
@@ -34,12 +35,19 @@ def main():
     rc = 0
     for test in sys.argv[1:] or SUITES:
         print("== " + test, flush=True)
-        run = subprocess.run([sys.executable, os.path.join(ROOT, "client", test)], cwd=CORE, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-        print(run.stdout, end="", flush=True)
-        if run.returncode:
+        try:
+            run = subprocess.run([sys.executable, os.path.join(ROOT, "client", test)], cwd=CORE, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
+                                 timeout=SUITE_TIMEOUT)
+            output, code = run.stdout, run.returncode
+        except subprocess.TimeoutExpired as e:                         # a suite that hangs fails after the time limit instead of holding the whole run
+            output = (e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or ""))
+            output += "\nTimed out after %d seconds: the suite hung." % SUITE_TIMEOUT
+            code = -9
+        print(output, end="", flush=True)
+        if code:
             rc = 1
-            names = failure_lines(run.stdout) or ["exit code %d, no failure line found" % run.returncode]
-            print("FAILED SUITE %s (exit code %d)" % (test, run.returncode), flush=True)
+            names = failure_lines(output) or ["exit code %d, no failure line found" % code]
+            print("FAILED SUITE %s (exit code %d)" % (test, code), flush=True)
             if on_github:
                 print("::error title=Client test failed: %s::%s" % (test, " | ".join(names).replace("%", "%25").replace("\r", "").replace("\n", "%0A")), flush=True)
     return rc

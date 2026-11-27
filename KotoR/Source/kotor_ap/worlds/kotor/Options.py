@@ -1,7 +1,7 @@
 import typing
 from dataclasses import dataclass
 
-from Options import Choice, DeathLink, PerGameCommonOptions, Range, Toggle
+from Options import Choice, DeathLink, OptionSet, PerGameCommonOptions, Range, Toggle
 
 
 class CompanionMode(Choice):
@@ -43,32 +43,63 @@ class CompanionMode(Choice):
     default = 1
 
 
-class NewCompanion(Choice):
-    """Adds a console on the Ebon Hawk, beside HK-47's spot, with which HK-47 or T3-M4 can be swapped for a different companion:
-    Meetra Surik, Darth Malak, Calo Nord, Yuthura Ban, Darth Bandon or Trask Ulgo. The original can be switched back at any
-    time, and a character can stand in only one of the two places. The console appears once the item "Ebon Hawk: New Companion
-    Selection" has been received.
+class ExtraCompanions(OptionSet):
+    """Extra companions: characters from outside the nine, each added by its own item in the multiworld and kept in a party slot of its own
+    (the game's party screen is extended to 32 slots). Nothing is replaced: HK-47, T3-M4 and everyone else stay exactly as they are, and the
+    Party Console picks who is in your party.
 
-    HK-47's and T3-M4's recruitment, items and checks stay exactly as in the vanilla game: the replacements are only a choice
-    made at the console, never separate items or checks.
+    List the characters you want (any of: Mystery Companion, Darth Malak, Calo Nord, Yuthura Ban, Darth Bandon, Trask Ulgo). Each listed
+    character is one item placed in the pool; the item adds them to your roster the moment you receive it. They come with level 1
+    kits of their own and have no personal quest, only a greeting.
 
-    off (default): no console and no item.
+    Empty (default): no extra companions.
 
-    on: the six characters come with their own class (Meetra a Sentinel, Malak and Bandon Guardians, Yuthura a Consular, Calo
-    and Trask Soldiers).
+    Ignored when companion_mode is none (no companions exist at all)."""
+    display_name = "Extra Companions"
+    valid_keys = frozenset(["Mystery Companion", "Darth Malak", "Calo Nord", "Yuthura Ban", "Darth Bandon", "Trask Ulgo"])
+    default = frozenset()
 
-    random_class: the same console, but each of the six characters is dealt a random class for the whole seed (any of Soldier,
-    Scout, Scoundrel, Guardian, Consular, Sentinel; two can get the same). Their look and name do not change.
 
-    A replacement ignores companion_class (it is never rolled a class by that option) and has no Additional Feats item.
+class ExtraCompanionRandomClass(Toggle):
+    """Each extra companion is dealt a random class for the whole seed (any of Soldier, Scout, Scoundrel, Guardian, Consular, Sentinel; two
+    can get the same). Their look and name do not change. Off (default): each keeps their own class (the Mystery Companion a Sentinel, Malak and Bandon
+    Guardians, Yuthura a Consular, Calo and Trask Soldiers).
 
-    Ignored (treated as off) when companion_class is droid, or when companion_mode is none."""
-    display_name = "New Companion"
-    option_off = 0
-    option_on = 1
-    option_random_class = 2
-    alias_false = 0
-    alias_true = 1
+    Has no effect unless extra_companions lists at least one character."""
+    display_name = "Extra Companions Random Class"
+    default = 0
+
+
+class ApCompanions(Range):
+    """AP companions: generated companions added by items in the multiworld, in party slots of their own after the extra companions. Each is named after a player of
+    this multiworld (the first after another player, then the rest in turn; a second companion with the same name is "Name 2"), and is dealt a random class, a random look
+    and a portrait of the same sex for the whole seed. The looks are Twi'lek, Rodian, Duros, Bith, Mandalorian and human Republic, Jedi and Sith characters, never a
+    story companion's. Armour does not show on these looks; gear can still be equipped and counts. Level 1 with their class's starting kit and a greeting only.
+
+    0 (default): none. Ignored when companion_mode is none (no companions exist at all). Each one is one item placed anywhere in the multiworld."""
+    display_name = "AP Companions"
+    range_start = 0
+    range_end = 8
+    default = 0
+
+
+class RandomizeDialogue(Toggle):
+    """When you click a reply in a conversation, the game runs a different one of the replies that were on screen, chosen at random. Only replies the game itself offered
+    are ever picked, so every outcome is one you could have chosen. Nothing changes when only one reply is on screen. The Archipelago menus and the final choice about
+    Bastila on the Unknown World are never randomised.
+
+    Off (default): you get the reply you click."""
+    display_name = "Randomize Dialogue"
+    default = 0
+
+
+class RandomizeAlignment(Toggle):
+    """Every alignment push a script asks for (dialogue choices, Force power use, Korriban and so on) gets a random direction, light or dark, and a random size from 10 to
+    20 points whatever its original size, so alignment swings hard. The Vendor's Alignment Change items, the alignment checks and the final choice about Bastila on the
+    Unknown World are not randomised, and the final choice still ends at exactly full light or full dark.
+
+    Off (default): alignment moves the way the game normally moves it."""
+    display_name = "Randomize Alignment"
     default = 0
 
 
@@ -134,8 +165,8 @@ class JediClass(Choice):
 class CompanionClass(Choice):
     """Randomizes the class of the 7 non-droid companions (Bastila,
     Canderous, Carth, Jolee, Juhani, Mission, Zaalbar -- HK-47 and T3-M4
-    are droids and never affected, and neither is a new_companion
-    replacement). Independent
+    are droids and never affected, and neither is an extra companion).
+    Independent
     of starting_class/jedi_class, which only ever control the PC's own
     class.
 
@@ -160,8 +191,8 @@ class CompanionClass(Choice):
     droid: all 7 non-droid companions are rebuilt as droids (droid race,
     droid hide, a droid look) and dealt one of three droid classes -- 3
     Combat Droids, 2 Expert Droids and 2 Battle Droids, shuffled per seed.
-    Only Battle Droids use melee weapons and lightsabers. The new_companion
-    option is ignored (no console is given). If starting_class is also droid,
+    Only Battle Droids use melee weapons and lightsabers. Extra companions
+    are unaffected (they are never rebuilt as droids). If starting_class is also droid,
     the item pool and shop stock are droid-only.
     """
     display_name = "Companion Class"
@@ -1038,7 +1069,11 @@ STARTING_SKILL_ARMS: typing.Dict[str, str] = {
 @dataclass
 class KotorOptions(PerGameCommonOptions):
     companion_mode: CompanionMode
-    new_companion: NewCompanion
+    extra_companions: ExtraCompanions
+    extra_companion_random_class: ExtraCompanionRandomClass
+    ap_companions: ApCompanions
+    randomize_dialogue: RandomizeDialogue
+    randomize_alignment: RandomizeAlignment
     starting_class: StartingClass
     jedi_class: JediClass
     companion_class: CompanionClass

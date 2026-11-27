@@ -100,7 +100,7 @@ MALAK_DENYSUBRACE_BIT = 1 << MALAK_SUBRACE_ID  # 0x4
 # Head and Hands gear did not crash and stays allowed. What body armor would give an end-game character is built into the template instead: natural armor class and a bonus to each save.
 # GEAR_RESTRICTED names who gets both: a character is restricted only if a live test crashed on body gear.
 # Roughly end-game body armor: about 8 to 9 AC (more with upgrades), and robes about +1 on saves.
-GEAR_RESTRICTED = {"bandon"}       # live tests (2026-10-25): body armor crashed only Bandon (his row has one body model); Malak, Calo and Yuthura wore it without a crash, Trask not tried
+GEAR_RESTRICTED = {"bandon", "ap_companion"}       # live tests (2026-10-25): body armor crashed only Bandon (his row has one body model); Malak, Calo and Yuthura wore it without a crash, Trask not tried
 GEAR_SLOT_NATURAL_AC = 8
 GEAR_SLOT_SAVE_BONUS = 1
 
@@ -1181,6 +1181,165 @@ def _connected_new_companion() -> int:
         return 0
 
 
+# 0.2.1 AP companions (the ApCompanions option): generated companions, one template per entry of slot_data "ap_companions" ([{n, name, appearance, gender, portrait, class,
+# slot, template, tag}], made by worlds/kotor/ApCompanions.py). The body is an ordinary party body; the look is a permanent disguise put on by one shared spawn script
+# (ap_apc_spawn) that reads the appearance row from the creature's tag ("apl<row>x<n>"). A look that cannot show armour must not be able to wear body armour (it
+# crashed a disguised character in a live test), so these characters are in GEAR_RESTRICTED like Bandon.
+AP_SPAWN_SCRIPT = "ap_apc_spawn"
+AP_DIALOG = "ap_apc_dlg"
+AP_ABILITIES = {      # STR DEX CON INT WIS CHA, by class
+    "soldier": (16, 12, 14, 10, 10, 8), "scout": (12, 16, 12, 12, 12, 10), "scoundrel": (10, 16, 12, 12, 10, 14),
+    "guardian": (16, 14, 14, 8, 12, 10), "consular": (10, 12, 12, 14, 16, 14), "sentinel": (12, 14, 12, 12, 14, 12),
+}
+AP_SPAWN_SOURCE = '''// AP companion OnSpawn (generate_new_companion_assets.py): the real henchman spawn init, then the look as a permanent disguise. The appearance
+// row is in the creature's tag, "apl<row>x<n>".
+void main()
+{
+    ExecuteScript("k_hen_spawn01", OBJECT_SELF);
+    string sTag = GetTag(OBJECT_SELF);
+    int nX = FindSubString(sTag, "x");
+    if (GetStringLeft(sTag, 3) != "apl" || nX < 4) return;
+    int nRow = StringToInt(GetSubString(sTag, 3, nX - 3));
+    if (nRow > 0) ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectDisguise(nRow), OBJECT_SELF);
+}
+'''
+
+
+def build_ap_spawn_script() -> bytes:
+    """Writes and compiles the shared spawn script into extender/scripts_src (the checked-in precompiled convention) and returns the NCS."""
+    from nwnnsscomp_path import compile_nss
+    nss_path = os.path.join(SRC_DIR, f"{AP_SPAWN_SCRIPT}.nss")
+    ncs_path = os.path.join(SRC_DIR, f"{AP_SPAWN_SCRIPT}.ncs")
+    current = open(nss_path, encoding="utf-8").read() if os.path.isfile(nss_path) else None
+    if current != AP_SPAWN_SOURCE or not os.path.isfile(ncs_path):
+        with open(nss_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(AP_SPAWN_SOURCE)
+        before = os.path.getmtime(ncs_path) if os.path.exists(ncs_path) else None
+        result = compile_nss(nss_path, ncs_path, cwd=SRC_DIR, timeout=30)
+        if not os.path.exists(ncs_path) or os.path.getmtime(ncs_path) == before:
+            raise RuntimeError(f"compile failed for {AP_SPAWN_SCRIPT}:\n{result.stdout}\n{result.stderr}")
+    with open(ncs_path, "rb") as f:
+        return f.read()
+
+
+def _connected_ap_companions() -> list:
+    plan = _slot_data().get("ap_companions", [])
+    return [entry for entry in plan if isinstance(entry, dict) and entry.get("template") and entry.get("class") in CLASS_IDS]
+
+
+def build_ap_companion_utc(entry: dict, appearance_id: int) -> UTC:
+    """A level 1 template for one AP companion: the generated name, a portrait row of the game's own, the class's starting kit, and the tag that carries the look."""
+    cls = entry["class"]
+    spec = {
+        "key": "ap_companion", "resref": entry["template"], "first": entry["name"], "last": "", "dialog": AP_DIALOG, "spawn": AP_SPAWN_SCRIPT,
+        "gender": int(entry["gender"]), "soundset": 65535, "portrait_row": int(entry["portrait"]),
+        "class_id": CLASS_IDS[cls], "abilities": AP_ABILITIES[cls], "hp": 1, "fp": 0, "alignment": 50, "feats": [], "powers": [],
+    }
+    utc = build_character_utc(spec, appearance_id)
+    utc.tag = entry["tag"]
+    apply_rolled_class(utc, cls)
+    return utc
+
+
+def write_ap_companions(override_dir: str, game_dir: str, plan: list) -> list:
+    """Writes the shared spawn script, the greeting dialog and one template per plan entry. Returns the template resrefs."""
+    with open(os.path.join(override_dir, f"{AP_SPAWN_SCRIPT}.ncs"), "wb") as f:
+        f.write(build_ap_spawn_script())
+    dlg = build_character_dlg({"line": "Ready when you are."})
+    write_gff(dismantle_dlg(dlg, Game.K1), os.path.join(override_dir, f"{AP_DIALOG}.dlg"))
+    appearance_id = _party_npc_juhani_appearance_row(game_dir)
+    written = []
+    for entry in plan:
+        utc = build_ap_companion_utc(entry, appearance_id)
+        write_gff(dismantle_utc(utc), os.path.join(override_dir, f"{entry['template']}.utc"))
+        written.append(entry["template"])
+    ensure_malak_gear_restriction(game_dir)      # body gear is denied to the subrace these characters share
+    print(f"  wrote the AP companion templates: {', '.join(written)} (+ {AP_SPAWN_SCRIPT}.ncs, {AP_DIALOG}.dlg)")
+    return written
+
+
+# 0.2.1 extra companions (the ExtraCompanions option): each chosen character is an ordinary companion in a party slot of its own (slot_data "extra_companions"
+# = [{key, name, slot, template}], and "extra_companion_classes" = {key: class name} when the seed rolled classes). The template is the character's base template
+# written under its own resref (<base>_x) and its own tag (x<key>): the base templates carry the tag "HK47" so that they can stand in HK-47's slot, which an extra
+# companion must not do (two creatures with the same tag are ambiguous to the game's own scripts).
+EXTRA_TAG_PREFIX = "x"
+EXTRA_SUFFIX = "_x"
+
+
+def _slot_data() -> dict:
+    try:
+        with open(SLOT_DATA_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+# Computer consoles, droid terminals (the conversations whose dialog type is "computer") and the puzzle computers are menus: a swapped reply keeps
+# the player from finding the way out, so the dialogue randomiser leaves them alone. Names or name prefixes, 64 at most (the extender's limit). The
+# Dantooine trial terminals are built into the extender.
+DIALOG_RAND_EXCLUDE = (
+    "dan13_tutorial*", "dan16_comp*", "dan16_repdroid*", "end_damagedroid*", "end_securitycomp*", "k38b_plc_console*", "k_gen_comptest*",
+    "k_pman_comp01*", "k_pman_rep0*", "k_ptar_davcom*", "k_sta_gen_*", "k_tar09_repdroid*", "kas22_droid1_01*", "kas22_xrustbot*", "kas24_droid_01*",
+    "kas24_emitter_01*", "kas25_comp_01*", "kor35_duelcomp*", "kor38b_droid1*", "lev40_aacompdlg*", "lev40_abcompdlg*", "lev40_brigcomp*",
+    "lev40_comp*", "lev40_de*", "lev40_droid17*", "lev40_slice_dlg*", "man26_assault2*", "man26_bigcomp*", "man26_regcomp*", "man27_comp0*",
+    "man27_rep0*", "man28_airlock*", "man28_comp*", "man28_puzzle*", "man28aa_comp01*", "plev_elev_dlg*", "sta45_turretcomp*", "tar03_passwords*",
+    "tar03_rustdroid*", "tar05_rustdroid*", "tar08_aacompdlg*", "tar08_rustdroid*", "tar09_aacompdlg*", "tar09_comp*", "tar09_lowcompdlg*",
+    "tar09_reccompdlg*", "tar10_a*", "tar10_bardroid*", "tar10_comp*", "tar10_mainpanel*", "tar10_pooldroid*", "tar10_repdroid*", "tar10_vulkelev*",
+    "tar10_vulkjunkdr*", "tar11_aacompdlg*", "tar_repdroid*", "tat18_10droid_0*", "tat18_vorndroid", "tat18_xxrustbot*", "unk41_holo*",
+    "unk42_redcomp*", "unk44_brokdro001*", "unk44_comp*", "unk_comp*",
+)
+
+
+def write_randomizer_flags(game_dir: str) -> None:
+    """The extender's two randomisers (randomised dialogue replies, randomised alignment pushes) are switched by a file beside swkotor.exe each (first line 1 or 0). Written on
+    every connect from the seed's slot data, always (1 or 0), so a seed that has an option off turns it off again after one that had it on. The game reads the files when
+    a conversation starts / an alignment push happens, so no restart is needed."""
+    slot = _slot_data()
+    for key, name in (("randomize_dialogue", "ap_dialogrand.txt"), ("randomize_alignment", "ap_alignrand.txt")):
+        if key not in slot:
+            continue    # a seed made before the option existed (or no slot data yet): the file is left as it is
+        path = os.path.join(game_dir, name)
+        text = "1\n" if slot.get(key) else "0\n"
+        if key == "randomize_dialogue" and slot.get(key):
+            text += "".join(f"exclude={name}\n" for name in DIALOG_RAND_EXCLUDE)
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+        except OSError as exc:
+            print(f"WARNING: could not write {path}: {exc} (the {key} option will not take effect)")
+
+
+def _connected_extra_companions() -> list:
+    """The seed's chosen extra companion keys (empty if absent)."""
+    return [str(entry["key"]) for entry in _slot_data().get("extra_companions", []) if isinstance(entry, dict) and "key" in entry]
+
+
+def _connected_extra_companion_classes() -> dict:
+    return dict(_slot_data().get("extra_companion_classes", {}))
+
+
+def _base_template_resref(key: str) -> str:
+    return {"meetra": "p_meetra", "malak": "p_malak"}.get(key) or NEW_CHARACTERS[key]["resref"]
+
+
+def write_extra_slot_templates(override_dir: str, keys: list) -> list:
+    """Writes <base>_x.utc (tag x<key>) for each key from the already written base template. The base templates stay in Override, unused; Uninstall
+    removes them with the rest of what the client wrote."""
+    from pykotor.resource.formats.gff import read_gff
+    from pykotor.resource.generics.utc import construct_utc
+    written = []
+    for key in keys:
+        base = _base_template_resref(key)
+        with open(os.path.join(override_dir, f"{base}.utc"), "rb") as f:
+            utc = construct_utc(read_gff(f.read()))
+        utc.resref = ResRef(base + EXTRA_SUFFIX)
+        utc.tag = EXTRA_TAG_PREFIX + key
+        write_gff(dismantle_utc(utc), os.path.join(override_dir, f"{base}{EXTRA_SUFFIX}.utc"))
+        written.append(base + EXTRA_SUFFIX)
+    print(f"  wrote the extra companion templates: {', '.join(written)}")
+    return written
+
+
 def main():
     game_dir = DEFAULT_GAME_DIR
     new_companion = None
@@ -1191,6 +1350,8 @@ def main():
             new_companion = int(arg[len("--new-companion="):])
     if new_companion is None:
         new_companion = _connected_new_companion()
+    extra_keys = _connected_extra_companions()
+    ap_plan = _connected_ap_companions()
 
     override_dir = os.path.join(game_dir, "Override")
     import client_files
@@ -1201,7 +1362,7 @@ def main():
     # 0.2.0: nothing replaces HK-47 at his recruitment any more. The Tatooine trigger is always the vanilla one; with the option on, the
     # ship's New Companion console (generate_new_companion_console.py) swaps him for any of the characters below.
     deploy_vanilla_trigger(override_dir, 0, game_dir)
-    if new_companion:
+    if new_companion or extra_keys:
         write_new_companion_template(override_dir)
         write_placeholder_dlg(override_dir)
         # Malak: EffectDisguise(DISGUISE_TYPE_N_DARTHMALAK) on spawn (k_hmal_spawn01) over an ordinary party body (Juhani's row).
@@ -1221,7 +1382,15 @@ def main():
         ensure_malak_gear_restriction(game_dir)      # Head/Body/Hands gear is denied to the subrace those characters share
         if new_companion == 2:      # random_class: rewrite each character with the class the seed rolled for them (before the T3-M4 copies are made)
             apply_rolled_classes(override_dir, _connected_new_companion_classes())
-        write_t3_slot_variants(override_dir)
+        elif extra_keys and _connected_extra_companion_classes():
+            apply_rolled_classes(override_dir, _connected_extra_companion_classes())
+        if new_companion:
+            write_t3_slot_variants(override_dir)
+        if extra_keys:
+            write_extra_slot_templates(override_dir, extra_keys)
+    if ap_plan:
+        write_ap_companions(override_dir, game_dir, ap_plan)
+    write_randomizer_flags(game_dir)
     tracker.finish()
 
 

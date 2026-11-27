@@ -34,7 +34,7 @@ REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 # on the client or game side (this bundle) is a hotfix: only this version moves (0.1.9 -> 0.1.9.1) and the world zip keeps its version. The
 # bundle works with any world of the same x.y.z, so a hotfix is published as a bundle alone. No shared constant between the two scripts on
 # purpose; each script's default is updated by hand when its own version changes.
-BUNDLE_VERSION = "0.2.0.2"
+BUNDLE_VERSION = "0.2.1"
 
 # REMINDER: this list does not update itself. Every time a NEW file (not
 # just an edit to an existing one) becomes something a tester needs to run
@@ -200,6 +200,9 @@ FILES = [
     # The files that are edits of the game's own (scripts, dialogs, models, art) are not in the download: these build them from the player's
     # own install (build_game_assets.py, run by Install.bat and again on every Connect).
     (("scripts", "build_game_assets.py"), "scripts/build_game_assets.py"),
+    # The 32-slot party screen layout, built from the player's own partyselection.gui (party_layout.json holds numbers only).
+    (("scripts", "party_layout.py"), "scripts/party_layout.py"),
+    (("scripts", "party_layout.json"), "scripts/party_layout.json"),
     (("scripts", "preserved_originals.json"), "scripts/preserved_originals.json"),
     (("scripts", "dialog_fixes.py"), "scripts/dialog_fixes.py"),
     (("scripts", "template_fixes.py"), "scripts/template_fixes.py"),
@@ -291,7 +294,9 @@ Archipelago (core files in this folder: CommonClient.py, NetUtils.py, Utils.py, 
 """]
     for title, path in (("", os.path.join(ARCHIPELAGO_TREE, "LICENSE")),
                         ("K1SE (KOTOR Script Extender) -- its source is merged into binkw32.dll", os.path.join(REPO_ROOT, "extender", "src_k1se", "K1SE_LICENSE.txt")),
-                        ("MinHook, with the Hacker Disassembler Engine -- linked into binkw32.dll", os.path.join(REPO_ROOT, "extender", "third_party", "minhook", "LICENSE.txt"))):
+                        ("MinHook, with the Hacker Disassembler Engine -- linked into binkw32.dll", os.path.join(REPO_ROOT, "extender", "third_party", "minhook", "LICENSE.txt")),
+                        ("KotOR Patch Manager (https://github.com/LaneDibello/Kotor-Patch-Manager), mod PartyRosterLimit32K1 by Vriff -- the 32-slot party roster in binkw32.dll is ported from it",
+                         os.path.join(REPO_ROOT, "extender", "src_k1se", "PATCH_MANAGER_LICENSE.txt"))):
         if title:
             parts.append("\n\n" + "=" * 80 + "\n" + title + "\n" + "=" * 80 + "\n")
         with open(path, encoding="utf-8-sig") as f:

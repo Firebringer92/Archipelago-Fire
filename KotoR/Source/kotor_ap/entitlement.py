@@ -117,7 +117,7 @@ def is_heavy_arm(arm_name: str) -> bool:
     "companion_", so this one check covers both recruit arms and
     companion_class: sends -- deliberately not narrowed to just the
     "companion_class:" form."""
-    return arm_name.startswith("companion_") or arm_name in HEAVY_ARMS
+    return arm_name.startswith("companion_") or arm_name.startswith("extra_companion:") or arm_name in HEAVY_ARMS
 
 
 # Items whose silent loss would strand the player, so the reconciler re-grants any that go missing: the
@@ -135,11 +135,9 @@ PROGRESSION_ITEM_RESREFS: typing.Dict[str, str] = {
     "vendor_feat": "ap_vtok_feat",
     "vendor_power": "ap_vtok_power",
     "vendor_align": "ap_vtok_align",
-    # 0.2.0 plot items delivered by a plain give_item: the companion feat-training unlocks (one per companion), the New Companion
-    # console unlock and the Party Console (Items.py's Additional Feats Character items, "Ebon Hawk: New Companion Selection" and
-    # "Party Console"). Same order as generate_poll_shared.py's list.
+    # 0.2.0 plot items delivered by a plain give_item: the companion feat-training unlocks (one per companion), the Party Console
+    # (Items.py's Additional Feats Character items and "Party Console"). Same order as generate_poll_shared.py's list.
     **{f"ft_{_k}": f"ap_ft_{_k}" for _k in ("bastila", "canderous", "carth", "jolee", "juhani", "mission", "zaalbar")},
-    "nc_console": "ap_nc_console",
     "party_console": "ap_partycon_a",
 }
 

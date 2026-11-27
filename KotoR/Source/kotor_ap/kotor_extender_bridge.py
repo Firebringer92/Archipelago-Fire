@@ -372,6 +372,10 @@ class ExtenderBridge:
         """Sets a companion's class (the companion must be in the party; the game answers FAILED otherwise) as a dispatcher job."""
         return self._submit_job(f"companion_class:{name}", "companion_class", f"{name}:{class_name}", message)
 
+    async def send_extra_companion(self, slot: int, template: str, message: str = "") -> bool:
+        """Adds an extra companion to the roster in its own slot above the game's nine (the 32-slot roster), as a dispatcher job. Safe to repeat."""
+        return self._submit_job(f"extra_companion:{slot}", "extra_companion", f"{slot}:{template}", message)
+
     async def send_trap(self, trap_type: str, params: str, message: str = "") -> bool:
         """A trap item as a dispatcher job: trap:<type>:<params> ("-" when the type takes none)."""
         return self._submit_job(f"trap:{trap_type}", "trap", f"{trap_type}:{params}", message)

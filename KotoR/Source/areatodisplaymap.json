@@ -52,7 +52,7 @@
   {
     "base": "ebo_m41aa",
     "idx": 10,
-    "display_name": "Ebon Hawk"
+    "display_name": "Ebon Hawk (After the Leviathan)"
   },
   {
     "base": "kas_m22aa",
@@ -242,12 +242,12 @@
   {
     "base": "tar_m03ab",
     "idx": 48,
-    "display_name": "Taris - Lower City Apartments"
+    "display_name": "Taris - Lower City Apartments (Selven Bounty)"
   },
   {
     "base": "tar_m03ad",
     "idx": 49,
-    "display_name": "Taris - Lower City Apartments"
+    "display_name": "Taris - Lower City Apartments (Matrik Bounty)"
   },
   {
     "base": "tar_m03ae",
@@ -287,27 +287,27 @@
   {
     "base": "tar_m10aa",
     "idx": 57,
-    "display_name": "Taris - Black Vulkar Base"
+    "display_name": "Taris - Black Vulkar Base (Cantina)"
   },
   {
     "base": "tar_m10ab",
     "idx": 58,
-    "display_name": "Taris - Black Vulkar Base"
+    "display_name": "Taris - Black Vulkar Base (Laboratory)"
   },
   {
     "base": "tar_m10ac",
     "idx": 59,
-    "display_name": "Taris - Black Vulkar Base"
+    "display_name": "Taris - Black Vulkar Base (Hangar)"
   },
   {
     "base": "tar_m11aa",
     "idx": 60,
-    "display_name": "Taris - Hidden Bek Base"
+    "display_name": "Taris - Hidden Bek Base (Main Hall)"
   },
   {
     "base": "tar_m11ab",
     "idx": 61,
-    "display_name": "Taris - Hidden Bek Base"
+    "display_name": "Taris - Hidden Bek Base (Gadon's Chamber)"
   },
   {
     "base": "tat_m17aa",

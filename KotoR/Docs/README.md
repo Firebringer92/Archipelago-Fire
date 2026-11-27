@@ -62,7 +62,7 @@ To remove everything later, double-click **`Uninstall.bat`** the same way.
 2. In the Archipelago Launcher: click **Generate** and select your yaml,
    then click **Host** and select the seed zip it just made (or upload it to archipelago.gg).
 3. Double-click **`Start KOTOR Client.bat`** in your Client folder (or click **"KOTOR Client"** in the Archipelago Launcher, if you
-   put `kotor.apworld` there: it starts the same client). Then connect to the server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes. The client prints `[patching] ...` while it prepares the game files and a `Finished` line when you can start the game; if KOTOR was already running, relaunch it, because the game reads some of the tables the patches replace (the droid options) only at startup. The first time an option needs them (the Malak New Companion, the droid options) it also builds the Malak and droid models from your game
+   put `kotor.apworld` there: it starts the same client). Then connect to the server and your slot. As soon as you register into your slot you will have to wait as the client is finalizing your game files based on your seed. This might take 1-2 minutes. The client prints `[patching] ...` while it prepares the game files and a `Finished` line when you can start the game; if KOTOR was already running, relaunch it, because the game reads some of the tables the patches replace (the droid options) only at startup. The first time an option needs them (Darth Malak as an extra companion, the droid options) it also builds the Malak and droid models from your game
    with a small model tool, about half a minute each; they are kept and reused. Connect before you start KOTOR: the first connect after an
    install or update also adds a few entries to the game's `dialog.tlk` once, which can't happen while the game is running.
 4. Open the actual game. You should see on the client.py it switch status to `Extender: CONNECTED`  otherwise type   command  `/ap_status` to see if your client is talking to game. If it shows connected and your in the server. You are  good to go!
@@ -70,26 +70,23 @@ To remove everything later, double-click **`Uninstall.bat`** the same way.
 Note: If Kotor doesn't launch from archipelago launcher try launching it from your client folder instead.
 
 Every option that changes game files (Loot Mode, Progression System, door
-randomization, additional enemies, Galactic Shop, New Companion, the droid options, boss datapads,
+randomization, additional enemies, Galactic Shop, extra and AP companions, the droid options, boss datapads,
 the Archipelago Vendor and the Bazaar, whichever you enabled) applies itself automatically
 the moment you connect — no separate patch step. See `TESTING.md` for client commands and what to
 send if you hit a bug.
 
-New in 0.2.0:
-- **Items arrive when the game is calm.** Everything the client delivers now goes through one queue, one job at a time, and is applied the moment you are not in a
-  conversation, a cutscene or a fight (see "How do checks/locations work" below). The old wait for the next loading zone is gone.
-- **New Companion is a console** on the Ebon Hawk (`new_companion`: `off`, `on` or `random_class`). Once you receive the item "Ebon Hawk: New Companion Selection" you can
-  swap HK-47's place or T3-M4's place for Meetra Surik, Darth Malak, Calo Nord, Yuthura Ban, Darth Bandon or Trask Ulgo, and back. With `random_class` each of the six is
-  dealt a random class for the seed. A swap does not carry over gear or levels, so take the gear off first.
-- **Additional Feats is a training option in the companion's own conversation.** The item unlocks "train in a new feat" for one companion; you pick any feat they do not
-  know and pay credits, which rise with every feat.
-- **New checks:** `quest_item_checks` (13 checks for picking up the game's quest items, on by default) and `bazaar` (a Jawa trader on the Ebon Hawk: 5 purchases and 20
-  Bazaar Token Exchange checks, with tokens hidden in containers around the game).
-- **Traps with `item_filler` are limited to 36 per seed.**
-- **Nothing from the game ships in the download any more.** The files that are copies or edits of KOTOR's own are built on your machine from your install (see Step 2),
-  and the Malak, Calo Nord, Yuthura Ban and Darth Bandon console characters use the game's stock portraits.
-- Checks you never reached on Taris and the Endar Spire are released when the Ebon Hawk takes off from Taris, and several story-gate and area randomizer door problems were fixed.
-  `KotoR_TEMPLATE.yaml` documents every option.
+New in 0.2.1:
+- **Extra companions** (`extra_companions`, `extra_companion_random_class`): a Mystery Companion, Darth Malak, Calo Nord, Yuthura Ban, Darth Bandon and Trask Ulgo each arrive as
+  their own item and keep their own party slot. The party screen now holds 32 slots in pages, and the **Party Console** item opens it. They replace the New Companion
+  console and the `new_companion` option, which are gone.
+- **AP companions** (`ap_companions`, 0 to 8): generated companions named after players in the multiworld, with a random class, look and portrait.
+- **Randomize Dialogue and Randomize Alignment** (`randomize_dialogue`, `randomize_alignment`, both off by default).
+- **The Vendor's feat training is a menu:** it lists your feats, lets you remove one for free when the list is full, and charges only when training succeeds.
+- **Companions are never deleted.** One you have not unlocked yet stays in the world but cannot join. When an item adds a companion and your party is full, the companion
+  in the second slot leaves.
+- **Companions do not start fights on their own;** they join in as soon as your party is fighting.
+- **You no longer have to gather your party** to leave an area.
+- `KotoR_TEMPLATE.yaml` documents every option. Seeds generated with 0.2.0.x do not work with 0.2.1.
 
 
 
@@ -101,7 +98,7 @@ keep using the same Client folder instead, extract over it and let it replace th
 folders (copying over only the files you recognize can leave out `extender\scripts_src\`). Put the new `kotor.apworld` in the Launcher's
 `custom_worlds` (replace the old one). Seeds
 generated with an older world version have to be generated again when a release
-changes the item or location tables (0.1.8, 0.1.9 and 0.2.0 do); the client refuses a seed from a different world release. Then connect once with the
+changes the item or location tables (0.1.8, 0.1.9, 0.2.0 and 0.2.1 do); the client refuses a seed from a different world release. Then connect once with the
 game closed, as in Step 3, before launching KOTOR.
 
 **Switching to a new seed on the same install:** quit and restart the client first (a grant still waiting in the client from the
@@ -124,7 +121,7 @@ This mod repacks real game files in place — `modules\*.rim` and
 - **`Uninstall.bat`** reverts everything the installer touched, including
   restoring every module file the per-seed patches edited (doors, Loot Mode,
   additional enemies, boss datapads, Galactic Shop), removing the Progression System's story gates and the droid assets, deleting the files Install built from your game, and
-  removing what the client wrote into `Override\` and `dialog.tlk` while you were connected (the Jedi-trial suppressor, the shop price fixes, the New Companion files and the
+  removing what the client wrote into `Override\` and `dialog.tlk` while you were connected (the Jedi-trial suppressor, the shop price fixes, the extra and AP companion files and the
   tracker journal). It removes only files it recorded writing, and only while they are still the files it wrote. Files written by an older release were not recorded, so
   a game last patched by an older release may keep some.
 - `/ap_restore_all` in the client undoes the same things without uninstalling. A reconnect writes them again.
@@ -189,8 +186,8 @@ For more technical details on how it all works refer to DESIGN.md
   End game areas (leviathan/unknown world/star forge) are taken out of randomization on doors
 - DeathLink: an incoming death waits until you are out of a conversation, cutscene or fight, then kills you once; loading an older save does not repeat it, and a death caused by an
   incoming one is not sent on to the others. Deaths that arrive while the client is closed are discarded.
-- New Companion console: swapping does not carry over gear or levels. Darth Bandon cannot wear body armor or robes (equipping them crashed the game), so he has the armor built in instead.
-  On Kashyyyk the landing scenes treat whoever stands in HK-47's slot as HK-47 and play his lines.
+- Extra and AP companions have no personal quest, only a greeting. Darth Bandon and AP companions cannot wear body armor or robes (equipping them crashed the game), so
+  they have armor built in instead.
 - **Crash Confirmed In Game: opening a companion's Force Powers
   screen right after they've been granted a Jedi class, before they've
   reached level 2 in it.** A freshly-granted level-1 Jedi companion has
@@ -205,7 +202,13 @@ For more technical details on how it all works refer to DESIGN.md
 - `progression_system` holds story events (not doors or travel) until you own enough of that planet's Progression items, and the game says why a gate
   is closed. It works with every goal and with both area randomizer modes.
 - The Remove a Companion trap is permanent for the rest of the run.
-- Companions not following or fighting after some area transitions has not been confirmed fixed.
+- Companions join the fights your party is in but do not start them. Once a fight is on, they may go after any enemy they can see, including one farther off.
+  Companions not following or fighting after some area transitions has not been confirmed fixed.
+- The mod replaces four of the game's companion scripts in `Override\` (`k_hen_percept01`, `k_hen_combend01`, `k_hen_dialogue01`, `k_hen_heartbt01`); another mod that
+  replaces them will conflict.
+- `randomize_dialogue`: some conversations take several tries before you land on the reply that ends them. Computer consoles and droid terminals are left alone.
+- Loading an older save and then a newer one within a few seconds can apply some deliveries a second time, and a delayed level correction can set your current Force
+  points to an earlier value.
 - After escaping the Leviathan, the conversation that lets the Ebon Hawk take off is started by a trigger that fires before Carth has appeared,
   so the game falls back to a sensor console: use it to start the scene. Skipping the Dantooine council with the area randomizer can also
   keep Carth and Bastila off the Hawk.
@@ -247,6 +250,8 @@ and Archipelago communities. It would not exist without:
   the underlying PyKotor library — used constantly during research and
   development to inspect and understand KOTOR's own file formats
   (GFF/RIM/2DA/journal data) well enough to build on top of them.
+- **[KotOR Patch Manager](https://github.com/LaneDibello/Kotor-Patch-Manager)** by Lane Dibello and contributors, MIT licence. The 32-slot party roster is ported from
+  its PartyRosterLimit32K1 mod (author: Vriff). The licence text ships in `THIRD_PARTY_NOTICES.txt`.
 - **[Kotor Randomizer](https://github.com/LaneDibello/Kotor-Randomizer)**
   by LaneDibello — an existing KOTOR randomizer whose approach to entrance/
   location randomization was referenced while designing this project's own

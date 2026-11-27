@@ -171,7 +171,7 @@ GATE_EXTRAS: typing.Dict[str, typing.Tuple[typing.Tuple[str, int], ...]] = {
     # blocks the button on arrival with no known release point, so after Taris it is only treated as certain once the whole Dantooine story is done.
     "Ebon Hawk: Rapid Transit System": (("dan", 3),),
     # Hawk module that exists only after the Leviathan (m41 is the Unknown World's number)
-    "Visited: Ebon Hawk (ebo_m41aa)": (_TAR, _DAN) + _STAR_MAPS,
+    "Visited: Ebon Hawk (After the Leviathan)": (_TAR, _DAN) + _STAR_MAPS,
 }
 
 # 0.2.0 additions, each traced in the game files (FutureDesign.md, "0.2.0 world logic").

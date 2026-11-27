@@ -54,6 +54,7 @@
 //
 #include "kse"
 #include "ap_recruit_marker"
+#include "ap_companion_roster"
 
 void main()
 {
@@ -61,8 +62,7 @@ void main()
     {
         if (KSE_GetData("ap_canderous_legit") != "1")
         {
-            RemovePartyMember(NPC_CANDEROUS);
-            RemoveAvailableNPC(NPC_CANDEROUS);
+            if (!ApNpcEntitled(NPC_CANDEROUS)) ApBenchNpc(NPC_CANDEROUS);
             KSE_Diag(27, "AP|SUPPRESSED|companion_candadd_davik_hangar");
         }
         RecordRecruit("canderous", 1);

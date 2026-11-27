@@ -266,6 +266,8 @@ class TestClient(unittest.IsolatedAsyncioTestCase):
 
 class TestGui(unittest.TestCase):
     def test_manager_class(self):
+        if os.environ.get("GITHUB_ACTIONS") or os.environ.get("CI"):
+            self.skipTest("Kivy opens a window when it is imported, which hangs on a machine with no display (GitHub's runners)")
         try:
             from kvui import GameManager
             import kivymd  # noqa: F401

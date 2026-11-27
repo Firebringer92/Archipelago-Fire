@@ -228,8 +228,8 @@ location_table: typing.Dict[str, LocationData] = {
     "Visited: Dantooine - Grove": LocationData(base_id + 115, region="Exploration", location_type="area", area_idx=6),
     "Visited: Dantooine - Sandral Grounds": LocationData(base_id + 116, region="Exploration", location_type="area", area_idx=7),
     "Visited: Dantooine - Ruins": LocationData(base_id + 117, region="Exploration", location_type="area", area_idx=8),
-    "Visited: Ebon Hawk (ebo_m12aa)": LocationData(base_id + 118, region="Exploration", location_type="area", area_idx=9),
-    "Visited: Ebon Hawk (ebo_m41aa)": LocationData(base_id + 119, region="Exploration", location_type="area", area_idx=10),
+    "Visited: Ebon Hawk": LocationData(base_id + 118, region="Exploration", location_type="area", area_idx=9),
+    "Visited: Ebon Hawk (After the Leviathan)": LocationData(base_id + 119, region="Exploration", location_type="area", area_idx=10),
     "Visited: Kashyyyk - Czerka Landing Port": LocationData(base_id + 120, region="Exploration", location_type="area", area_idx=11),
     "Visited: Kashyyyk - Village of Rwookrrorro": LocationData(base_id + 121, region="Exploration", location_type="area", area_idx=12),
     "Visited: Kashyyyk - Hall of the Chieftain": LocationData(base_id + 122, region="Exploration", location_type="area", area_idx=13),
@@ -267,8 +267,8 @@ location_table: typing.Dict[str, LocationData] = {
     "Visited: Taris - Upper City Cantina": LocationData(base_id + 154, region="Exploration", location_type="area", area_idx=45),
     "Visited: Taris - Hideout": LocationData(base_id + 155, region="Exploration", location_type="area", area_idx=46),
     "Visited: Taris - Lower City": LocationData(base_id + 156, region="Exploration", location_type="area", area_idx=47),
-    "Visited: Taris - Lower City Apartments (tar_m03ab)": LocationData(base_id + 157, region="Exploration", location_type="area", area_idx=48),
-    "Visited: Taris - Lower City Apartments (tar_m03ad)": LocationData(base_id + 158, region="Exploration", location_type="area", area_idx=49),
+    "Visited: Taris - Lower City Apartments (Selven Bounty)": LocationData(base_id + 157, region="Exploration", location_type="area", area_idx=48),
+    "Visited: Taris - Lower City Apartments (Matrik Bounty)": LocationData(base_id + 158, region="Exploration", location_type="area", area_idx=49),
     "Visited: Taris - Javyar's Cantina": LocationData(base_id + 159, region="Exploration", location_type="area", area_idx=50),
     "Visited: Taris - Swoop Platform": LocationData(base_id + 160, region="Exploration", location_type="area", area_idx=51),
     "Visited: Taris - Undercity": LocationData(base_id + 161, region="Exploration", location_type="area", area_idx=52),
@@ -276,11 +276,11 @@ location_table: typing.Dict[str, LocationData] = {
     "Visited: Taris - Upper Sewers": LocationData(base_id + 163, region="Exploration", location_type="area", area_idx=54),
     "Visited: Taris - Davik's Estate": LocationData(base_id + 164, region="Exploration", location_type="area", area_idx=55),
     "Visited: Taris - Sith Base": LocationData(base_id + 165, region="Exploration", location_type="area", area_idx=56),
-    "Visited: Taris - Black Vulkar Base (tar_m10aa)": LocationData(base_id + 166, region="Exploration", location_type="area", area_idx=57),
-    "Visited: Taris - Black Vulkar Base (tar_m10ab)": LocationData(base_id + 167, region="Exploration", location_type="area", area_idx=58),
-    "Visited: Taris - Black Vulkar Base (tar_m10ac)": LocationData(base_id + 168, region="Exploration", location_type="area", area_idx=59),
-    "Visited: Taris - Hidden Bek Base (tar_m11aa)": LocationData(base_id + 169, region="Exploration", location_type="area", area_idx=60),
-    "Visited: Taris - Hidden Bek Base (tar_m11ab)": LocationData(base_id + 170, region="Exploration", location_type="area", area_idx=61),
+    "Visited: Taris - Black Vulkar Base (Cantina)": LocationData(base_id + 166, region="Exploration", location_type="area", area_idx=57),
+    "Visited: Taris - Black Vulkar Base (Laboratory)": LocationData(base_id + 167, region="Exploration", location_type="area", area_idx=58),
+    "Visited: Taris - Black Vulkar Base (Hangar)": LocationData(base_id + 168, region="Exploration", location_type="area", area_idx=59),
+    "Visited: Taris - Hidden Bek Base (Main Hall)": LocationData(base_id + 169, region="Exploration", location_type="area", area_idx=60),
+    "Visited: Taris - Hidden Bek Base (Gadon's Chamber)": LocationData(base_id + 170, region="Exploration", location_type="area", area_idx=61),
     "Visited: Tatooine - Anchorhead": LocationData(base_id + 171, region="Exploration", location_type="area", area_idx=62),
     "Visited: Tatooine - Docking Bay": LocationData(base_id + 172, region="Exploration", location_type="area", area_idx=63),
     "Visited: Tatooine - Hunting Lodge": LocationData(base_id + 173, region="Exploration", location_type="area", area_idx=64),
@@ -441,7 +441,7 @@ lookup_id_to_name: typing.Dict[int, str] = {data.id: name for name, data in loca
 # Keyed by location name -> the AP item name for the companion it needs.
 # Checks left out of every seed because a player can legitimately never reach them. The second Hidden Bek Base module is Gadon's private chamber,
 # entered only on the route that betrays him for Kandon; the other route never sees it.
-UNREACHABLE_BY_CHOICE_LOCATIONS = frozenset({"Visited: Taris - Hidden Bek Base (tar_m11ab)"})
+UNREACHABLE_BY_CHOICE_LOCATIONS = frozenset({"Visited: Taris - Hidden Bek Base (Gadon's Chamber)"})
 
 COMPANION_SUBPLOT_LOCATIONS: typing.Dict[str, str] = {
     "Ebon Hawk: Bastila": "Companion: Bastila Shan",

@@ -1,0 +1,3107 @@
+{
+ "comment": "Numbers only: for each control of the 32-slot layout, the stock control to copy (when it is new) and the fields that differ from it. See party_layout.py.",
+ "controls": [
+  {
+   "tag": "LBL_CHAR8",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     54
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR7",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR6",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR3",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     109
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR4",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     54
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR5",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR2",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR1",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR0",
+   "set": {
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC0",
+   "set": {
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     13
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     12
+    ],
+    "MOVETO/UP": [
+     "int32",
+     49
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC1",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     14
+    ],
+    "MOVETO/UP": [
+     "int32",
+     52
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC2",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     15
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     12
+    ],
+    "MOVETO/UP": [
+     "int32",
+     55
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC3",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     109
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     16
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     11
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     9
+    ],
+    "MOVETO/UP": [
+     "int32",
+     58
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC4",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     54
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     17
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     16
+    ],
+    "MOVETO/UP": [
+     "int32",
+     9
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC5",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     40
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     15
+    ],
+    "MOVETO/UP": [
+     "int32",
+     10
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC6",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     43
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     14
+    ],
+    "MOVETO/UP": [
+     "int32",
+     11
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC7",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     46
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     13
+    ],
+    "MOVETO/UP": [
+     "int32",
+     12
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC8",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     54
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     49
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     46
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     40
+    ],
+    "MOVETO/UP": [
+     "int32",
+     13
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA8",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     54
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA5",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA2",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA6",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA3",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     109
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA0",
+   "set": {
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA1",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA4",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     54
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA7",
+   "set": {
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_3D",
+   "set": {}
+  },
+  {
+   "tag": "LBL_TITLE",
+   "set": {}
+  },
+  {
+   "tag": "LBL_AVAILABLE",
+   "set": {}
+  },
+  {
+   "tag": "LBL_COUNT",
+   "set": {}
+  },
+  {
+   "tag": "LBL_BEVEL_M",
+   "set": {}
+  },
+  {
+   "tag": "LBL_NPC_NAME",
+   "set": {}
+  },
+  {
+   "tag": "LBL_NPC_LEVEL",
+   "set": {}
+  },
+  {
+   "tag": "LBL_BEVEL_R",
+   "set": {}
+  },
+  {
+   "tag": "LBL_BEVEL_L",
+   "set": {}
+  },
+  {
+   "tag": "BTN_DONE",
+   "set": {}
+  },
+  {
+   "tag": "BTN_BACK",
+   "set": {}
+  },
+  {
+   "tag": "BTN_ACCEPT",
+   "set": {
+    "MOVETO/UP": [
+     "int32",
+     52
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR9",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     39
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR9"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC9",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     40
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC9"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     52
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     17
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     43
+    ],
+    "MOVETO/UP": [
+     "int32",
+     14
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA9",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     41
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA9"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR10",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     42
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR10"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC10",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     43
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC10"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     55
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     40
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     46
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA10",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     44
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA10"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR11",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     45
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR11"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC11",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     46
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC11"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     58
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     43
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     17
+    ],
+    "MOVETO/UP": [
+     "int32",
+     16
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA11",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     47
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA11"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR12",
+   "from": "LBL_CHAR6",
+   "set": {
+    "ID": [
+     "int32",
+     48
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR12"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC12",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     49
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC12"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     108
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     58
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     52
+    ],
+    "MOVETO/UP": [
+     "int32",
+     17
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA12",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     50
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA12"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR13",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     51
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR13"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC13",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     52
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC13"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     108
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     49
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     55
+    ],
+    "MOVETO/UP": [
+     "int32",
+     40
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA13",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     53
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA13"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR14",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     54
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR14"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC14",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     55
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC14"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     109
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     52
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     58
+    ],
+    "MOVETO/UP": [
+     "int32",
+     43
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA14",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     56
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA14"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR15",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     57
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR15"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC15",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     58
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC15"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     109
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     55
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     49
+    ],
+    "MOVETO/UP": [
+     "int32",
+     46
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA15",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     59
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA15"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR16",
+   "from": "LBL_CHAR0",
+   "set": {
+    "ID": [
+     "int32",
+     60
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR16"
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC16",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     61
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC16"
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     73
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     70
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     64
+    ],
+    "MOVETO/UP": [
+     "int32",
+     97
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA16",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     62
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA16"
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR17",
+   "from": "LBL_CHAR2",
+   "set": {
+    "ID": [
+     "int32",
+     63
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR17"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC17",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     64
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC17"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     76
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     61
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     67
+    ],
+    "MOVETO/UP": [
+     "int32",
+     100
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA17",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     65
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA17"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR18",
+   "from": "LBL_CHAR2",
+   "set": {
+    "ID": [
+     "int32",
+     66
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR18"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC18",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     67
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC18"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     79
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     64
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     70
+    ],
+    "MOVETO/UP": [
+     "int32",
+     103
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA18",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     68
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA18"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR19",
+   "from": "LBL_CHAR2",
+   "set": {
+    "ID": [
+     "int32",
+     69
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR19"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC19",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     70
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC19"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     82
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     67
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     61
+    ],
+    "MOVETO/UP": [
+     "int32",
+     106
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA19",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     71
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA19"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR20",
+   "from": "LBL_CHAR6",
+   "set": {
+    "ID": [
+     "int32",
+     72
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR20"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC20",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     73
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC20"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     85
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     82
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     76
+    ],
+    "MOVETO/UP": [
+     "int32",
+     61
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA20",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     74
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA20"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR21",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     75
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR21"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC21",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     76
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC21"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     88
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     73
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     79
+    ],
+    "MOVETO/UP": [
+     "int32",
+     64
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA21",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     77
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA21"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR22",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     78
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR22"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC22",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     79
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC22"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     91
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     76
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     82
+    ],
+    "MOVETO/UP": [
+     "int32",
+     67
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA22",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     80
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA22"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR23",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     81
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR23"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC23",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     82
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC23"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     94
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     79
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     73
+    ],
+    "MOVETO/UP": [
+     "int32",
+     70
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA23",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     83
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA23"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     174
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR24",
+   "from": "LBL_CHAR6",
+   "set": {
+    "ID": [
+     "int32",
+     84
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR24"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC24",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     85
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC24"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     97
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     94
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     88
+    ],
+    "MOVETO/UP": [
+     "int32",
+     73
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA24",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     86
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA24"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR25",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     87
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR25"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC25",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     88
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC25"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     100
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     85
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     91
+    ],
+    "MOVETO/UP": [
+     "int32",
+     76
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA25",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     89
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA25"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR26",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     90
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR26"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC26",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     91
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC26"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     103
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     88
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     94
+    ],
+    "MOVETO/UP": [
+     "int32",
+     79
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA26",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     92
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA26"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR27",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     93
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR27"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC27",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     94
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC27"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     106
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     91
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     85
+    ],
+    "MOVETO/UP": [
+     "int32",
+     82
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA27",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     95
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA27"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     239
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR28",
+   "from": "LBL_CHAR6",
+   "set": {
+    "ID": [
+     "int32",
+     96
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR28"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC28",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     97
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC28"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     108
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     106
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     100
+    ],
+    "MOVETO/UP": [
+     "int32",
+     85
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA28",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     98
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA28"
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR29",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     99
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR29"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC29",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     100
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC29"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     108
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     97
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     103
+    ],
+    "MOVETO/UP": [
+     "int32",
+     88
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA29",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     101
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA29"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     122
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR30",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     102
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR30"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC30",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     103
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC30"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     109
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     100
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     106
+    ],
+    "MOVETO/UP": [
+     "int32",
+     91
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA30",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     104
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA30"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     190
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "LBL_CHAR31",
+   "from": "LBL_CHAR8",
+   "set": {
+    "ID": [
+     "int32",
+     105
+    ],
+    "TAG": [
+     "string",
+     "LBL_CHAR31"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_NPC31",
+   "from": "BTN_NPC0",
+   "set": {
+    "ID": [
+     "int32",
+     106
+    ],
+    "TAG": [
+     "string",
+     "BTN_NPC31"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     109
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     103
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     97
+    ],
+    "MOVETO/UP": [
+     "int32",
+     94
+    ]
+   }
+  },
+  {
+   "tag": "LBL_NA31",
+   "from": "LBL_NA0",
+   "set": {
+    "ID": [
+     "int32",
+     107
+    ],
+    "TAG": [
+     "string",
+     "LBL_NA31"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     258
+    ],
+    "EXTENT/TOP": [
+     "int32",
+     304
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     63
+    ],
+    "EXTENT/HEIGHT": [
+     "int32",
+     63
+    ]
+   }
+  },
+  {
+   "tag": "BTN_PAGE_PREV",
+   "from": "BTN_DONE",
+   "set": {
+    "ID": [
+     "int32",
+     108
+    ],
+    "TAG": [
+     "string",
+     "BTN_PAGE_PREV"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     73
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     74
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     38
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     37
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     109
+    ],
+    "MOVETO/UP": [
+     "int32",
+     49
+    ],
+    "TEXT/STRREF": [
+     "uint32",
+     4294967295
+    ],
+    "TEXT/TEXT": [
+     "string",
+     "<"
+    ]
+   }
+  },
+  {
+   "tag": "BTN_PAGE_NEXT",
+   "from": "BTN_DONE",
+   "set": {
+    "ID": [
+     "int32",
+     109
+    ],
+    "TAG": [
+     "string",
+     "BTN_PAGE_NEXT"
+    ],
+    "EXTENT/LEFT": [
+     "int32",
+     153
+    ],
+    "EXTENT/WIDTH": [
+     "int32",
+     74
+    ],
+    "MOVETO/DOWN": [
+     "int32",
+     38
+    ],
+    "MOVETO/LEFT": [
+     "int32",
+     108
+    ],
+    "MOVETO/RIGHT": [
+     "int32",
+     36
+    ],
+    "MOVETO/UP": [
+     "int32",
+     58
+    ],
+    "TEXT/STRREF": [
+     "uint32",
+     4294967295
+    ],
+    "TEXT/TEXT": [
+     "string",
+     ">"
+    ]
+   }
+  }
+ ]
+}

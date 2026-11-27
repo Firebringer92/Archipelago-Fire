@@ -92,8 +92,8 @@ KotOR:
 
   # Randomizes the class of the 7 non-droid companions (Bastila,
   # Canderous, Carth, Jolee, Juhani, Mission, Zaalbar -- HK-47 and T3-M4
-  # are droids and never affected, and neither is a new_companion
-  # replacement). Independent
+  # are droids and never affected, and neither is an extra or AP
+  # companion). Independent
   # of starting_class/jedi_class, which only ever control the PC's own
   # class.
   #
@@ -118,8 +118,8 @@ KotOR:
   # droid: all 7 non-droid companions are rebuilt as droids (droid race,
   # droid hide, a droid look) and dealt one of three droid classes -- 3
   # Combat Droids, 2 Expert Droids and 2 Battle Droids, shuffled per seed.
-  # Only Battle Droids use melee weapons and lightsabers. The new_companion
-  # option is ignored (no console is given). If starting_class is also droid,
+  # Only Battle Droids use melee weapons and lightsabers. Extra and AP
+  # companions are never rebuilt as droids. If starting_class is also droid,
   # the item pool and shop stock are droid-only.
   #
   # Valid: off, no_jedi, jedi_companion, randomize_all, droid
@@ -158,28 +158,51 @@ KotOR:
   # Valid: ap_gated, normal, none, ap_limited
   companion_mode: normal
 
-  # Adds a console on the Ebon Hawk, beside HK-47's spot, with which HK-47 or T3-M4 can be swapped for a different companion:
-  # Meetra Surik, Darth Malak, Calo Nord, Yuthura Ban, Darth Bandon or Trask Ulgo. The original can be switched back at any
-  # time, and a character can stand in only one of the two places. The console appears once the item "Ebon Hawk: New Companion
-  # Selection" has been received.
+  # Extra companions: characters from outside the nine, each added by its own
+  # item in the multiworld and kept in a party slot of its own (the game's
+  # party screen is extended to 32 slots). Nothing is replaced: HK-47, T3-M4
+  # and everyone else stay exactly as they are. The Party Console, an item
+  # placed in the pool whenever companions exist, opens the party selection
+  # screen.
   #
-  # HK-47's and T3-M4's recruitment, items and checks stay exactly as in the vanilla game: the replacements are only a choice
-  # made at the console, never separate items or checks.
+  # List the characters you want, for example [Darth Malak, Calo Nord]. Each
+  # listed character is one item; receiving it adds them to your roster. They
+  # start at level 1 with kits of their own and have no personal quest, only a
+  # greeting. Darth Bandon cannot wear body armor or robes; armor is built in
+  # instead.
   #
-  # off (default): no console and no item.
+  # Empty (default): no extra companions. Ignored when companion_mode is none.
   #
-  # on: the six characters come with their own class (Meetra a Sentinel, Malak and Bandon Guardians, Yuthura a Consular, Calo
-  # and Trask Soldiers).
+  # Valid: any of Mystery Companion, Darth Malak, Calo Nord, Yuthura Ban,
+  # Darth Bandon, Trask Ulgo
+  extra_companions: []
+
+  # Each extra companion is dealt a random class for the whole seed (Soldier,
+  # Scout, Scoundrel, Guardian, Consular or Sentinel; two can get the same).
+  # Their look and name do not change. Off (default): each keeps their own
+  # class (the Mystery Companion a Sentinel, Malak and Bandon Guardians,
+  # Yuthura a Consular, Calo and Trask Soldiers).
   #
-  # random_class: the same console, but each of the six characters is dealt a random class for the whole seed (any of Soldier,
-  # Scout, Scoundrel, Guardian, Consular, Sentinel; two can get the same). Their look and name do not change.
+  # Has no effect unless extra_companions lists at least one character.
   #
-  # A replacement ignores companion_class (it is never rolled a class by that option) and has no Additional Feats item.
+  # Valid: true, false
+  extra_companion_random_class: false
+
+  # Generated companions added by items in the multiworld, in party slots of
+  # their own. Each is named after a player of this multiworld (the first
+  # after another player, then the rest in turn; a repeated name gets a
+  # number) and is dealt a random class, look and portrait for the whole seed.
+  # The looks are Twi'lek, Rodian, Duros, Bith, Mandalorian and human
+  # Republic, Jedi and Sith characters, never a story companion's. They start
+  # at level 1 with their class's starting kit and have only a greeting. They
+  # cannot wear body armor or robes; armor is built in instead, and other gear
+  # can be equipped.
   #
-  # Ignored (treated as off) when companion_class is droid, or when companion_mode is none.
+  # 0 (default): none. Ignored when companion_mode is none. Each one is one
+  # item placed anywhere in the multiworld.
   #
-  # Valid: off, on, random_class
-  new_companion: off
+  # Valid range: 0 to 8
+  ap_companions: 0
 
   # --- Extra features (quest-item gating, traps, enemies) ------------------------
 
@@ -198,6 +221,33 @@ KotOR:
   #
   # Valid: true, false
   additional_feats: false
+
+  # When you click a reply in a conversation, the game runs a different one of
+  # the replies that were on screen, chosen at random. Only replies the game
+  # itself offered are picked, so every outcome is one you could have chosen.
+  # Some conversations can take several tries to leave.
+  #
+  # Never randomised: the Archipelago menus, computer consoles and droid
+  # terminals, the Dantooine trial, Uthar Wynn's code test and the final
+  # choice about Bastila on the Unknown World. Nothing changes when only one
+  # reply is on screen.
+  #
+  # Off (default): you get the reply you click.
+  #
+  # Valid: true, false
+  randomize_dialogue: false
+
+  # Every alignment push the game asks for (dialogue choices, Force power use,
+  # Korriban and so on) gets a random direction, light or dark, and a random
+  # size from 10 to 20 points whatever its original size, so alignment swings
+  # hard. The Vendor's Alignment Change, alignment checks and the final choice
+  # about Bastila are not randomised, and the final choice still ends at full
+  # light or full dark.
+  #
+  # Off (default): alignment moves the way the game normally moves it.
+  #
+  # Valid: true, false
+  randomize_alignment: false
 
   # Holds the main story back until you have found enough Archipelago
   # progression items, instead of letting the quest line run straight through.

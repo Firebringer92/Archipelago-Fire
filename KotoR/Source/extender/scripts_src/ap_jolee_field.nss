@@ -27,6 +27,7 @@
 // unused elsewhere in this project) so a save made while he is seated still
 // reverts after a reload.
 #include "kse"
+#include "ap_companion_roster"
 
 int GetJoleeFieldNPCIndex(object oCompanion)
 {
@@ -61,8 +62,8 @@ int JoleeFieldSecondsSince(int nThen)
 
 void StageJoleeForField()
 {
-    // Recruited (even if benched): vanilla behaviour. Already seated: nothing to do.
-    if (IsAvailableCreature(NPC_JOLEE)) return;
+    // Entitled (the player's own Jolee): vanilla behaviour. Already seated: nothing to do. A benched Jolee is put in for the scene.
+    if (ApNpcEntitled(NPC_JOLEE)) return;
     if (IsNPCPartyMember(NPC_JOLEE)) return;
 
     object oPC = GetFirstPC();
@@ -90,7 +91,7 @@ void StageJoleeForField()
     {
         oJolee = CreateObject(OBJECT_TYPE_CREATURE, "p_jolee", GetLocation(oPC));
     }
-    AddAvailableNPCByTemplate(NPC_JOLEE, "p_jolee");
+    if (!IsAvailableCreature(NPC_JOLEE)) AddAvailableNPCByTemplate(NPC_JOLEE, "p_jolee");
     AddPartyMember(NPC_JOLEE, oJolee);
 
     KSE_SetData("jolee_field_staged", "1");
@@ -110,10 +111,8 @@ void RevertJoleeField()
     KSE_SetData("jolee_field_staged", "0");
     SetLocalBoolean(oPC, 78, FALSE);
 
-    RemovePartyMember(NPC_JOLEE);
-    RemoveAvailableNPC(NPC_JOLEE);
-    // RemovePartyMember/RemoveAvailableNPC only edit the roster; the creature
-    // object keeps standing and could be walked up to and re-recruited.
+    if (!ApNpcEntitled(NPC_JOLEE)) ApBenchNpc(NPC_JOLEE);
+    // The staged creature keeps standing after benching (the roster is only edited); it is destroyed below so no second Jolee is left behind.
     int nStray = 0;
     object oStray = GetObjectByTag("jolee", nStray);
     while (GetIsObjectValid(oStray))

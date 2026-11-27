@@ -1174,6 +1174,14 @@ class KotorClientCommandProcessor(ClientCommandProcessor):
             self.ctx._queue_heavy(arm_name, f"(admin) companion_class:{parts[1]}:{parts[2]}")
             self.output(f"Admin: queued companion_class {parts[1]}:{parts[2]} (serialized, bypassing AP server).")
             return True
+        if arm_name.startswith("extra_companion:"):
+            parts = arm_name.split(":")
+            if len(parts) != 3 or not parts[1].isdigit() or not parts[2]:
+                self.output("Usage: /ap_apply extra_companion:<slot 9-31>:<template resref>, e.g. /ap_apply extra_companion:9:p_meetra_x")
+                return False
+            self.ctx._queue_heavy(arm_name, f"(admin) extra_companion:{parts[1]}:{parts[2]}")
+            self.output(f"Admin: queued extra_companion {parts[1]}:{parts[2]} (serialized, bypassing AP server).")
+            return True
         if arm_name.startswith("trap:"):
             # trap:<type> is a dynamically-parameterized action, not a
             # static registered name (same category as give_item:/
@@ -4175,6 +4183,10 @@ class KotorContext(CommonContext):
             parts = arm_name.split(":", 2)
             if len(parts) == 3 and (self._heavy_queue_holds(arm_name) or self.dispatcher.has_unfinished("companion_class", f"{parts[1]}:{parts[2]}")):
                 return True
+        elif arm_name.startswith("extra_companion:"):
+            parts = arm_name.split(":", 2)
+            if len(parts) == 3 and (self._heavy_queue_holds(arm_name) or self.dispatcher.has_unfinished("extra_companion", f"{parts[1]}:{parts[2]}")):
+                return True
         elif self._is_companion_recruit_arm(arm_name) and self._heavy_queue_holds(arm_name):
             return True  # waiting in the heavy queue, or held back in the Endar Spire
         record = self.extender.deliveries.get(arm_name)
@@ -4487,6 +4499,24 @@ class KotorContext(CommonContext):
                     self.reconciler.note_item_received(arm_name)
             else:
                 self._on_unstaged_send(item_name, arm_name, index, character, f"give_item:{resref}", is_correction)
+            return
+        if arm_name.startswith("extra_companion:"):
+            # An extra companion (Items.py's EXTRA_COMPANIONS): extra_companion:<slot>:<template>. The roster change is idempotent in the game (a slot that is already
+            # available is left alone), so a repeat is harmless; the delivery log and the dispatcher's retry cover the rest.
+            try:
+                _, slot_text, template = arm_name.split(":", 2)
+                slot = int(slot_text)
+            except ValueError:
+                logger.error(f"Malformed extra companion arm {arm_name!r}; not sent.")
+                return
+            sent = await self.extender.send_extra_companion(slot, template, message=receipt_message)
+            if sent:
+                sent = await self.extender.wait_staged(f"extra_companion:{slot}")
+            if sent:
+                logger.info(f"[queued for game] {item_name} -> extra_companion:{slot}:{template}")
+                self._log_delivery(character, index, item_name, arm_name, "sent")
+            else:
+                self._on_unstaged_send(item_name, arm_name, index, character, f"extra_companion:{slot}", is_correction)
             return
         if arm_name.startswith("companion_class:"):
             # CompanionClass=jedi_companion's real AP item -- a fixed

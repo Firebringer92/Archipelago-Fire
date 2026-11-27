@@ -1,23 +1,22 @@
-// Suppression wrapper for zaalbar's real story recruitment script
+// Recruit wrapper for zaalbar's real story recruitment script
 // (originally tar_m05aa's k_ptar_addzaal, preserved as apo_zaalbar_orig).
 //
-// Runs the real script unchanged, then immediately reverses the
-// availability grant with RemoveAvailableNPC so the vanilla unlock never
-// actually sticks -- the real grant will come from AP later, through the
-// existing companion apply script (phase 06).
+// Runs the real script unchanged, then BENCHES the companion (ApBenchNpc in
+// ap_companion_roster.nss): out of the party and not selectable, but still on
+// the roster and still existing in the world, exactly like Zaalbar during the
+// Kashyyyk story. The real grant (selectable, in the party) comes from AP
+// later, through the companion apply script (DtArm_companion_zaalbar).
 //
-// GUARD: if NPC_ZAALBAR is ALREADY available when this fires, our own
-// companion_zaalbar AP arm already ran (early item, or an admin re-grant)
-// and zaalbar is already an active party member. Running apo_zaalbar_orig
-// + RemoveAvailableNPC on an already-recruited companion kicks them OUT
-// of the active party -- RemoveAvailableNPC is not the harmless no-op on
-// an active member that the vanilla script assumes. So skip the vanilla
-// script and the
-// RemoveAvailableNPC in that case; the AP location check still fires
-// either way below, since reaching this trigger is the check regardless
-// of whether recruitment logic needs to run.
+// GUARD: if NPC_ZAALBAR is ALREADY available when this fires, either our own
+// companion_zaalbar AP arm already ran (early item, or an admin re-grant) or
+// this recruit already happened and the companion is benched. Running the
+// vanilla script again could put them into the party, so it is skipped in
+// that case; the AP location check still fires either way below, since
+// reaching this trigger is the check regardless of whether recruitment logic
+// needs to run.
 #include "kse"
 #include "ap_recruit_marker"
+#include "ap_companion_roster"
 #include "ap_zaal_mission"
 
 void main()
@@ -25,7 +24,7 @@ void main()
     if (!IsAvailableCreature(NPC_ZAALBAR))
     {
         ExecuteScript("apo_zaalbar_orig", OBJECT_SELF);
-        RemoveAvailableNPC(NPC_ZAALBAR);
+        if (!ApNpcEntitled(NPC_ZAALBAR)) ApBenchNpc(NPC_ZAALBAR);
         KSE_Diag(35, "AP|SUPPRESSED|companion_zaalbar");
     }
     else

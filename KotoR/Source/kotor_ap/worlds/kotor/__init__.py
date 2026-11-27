@@ -6,7 +6,8 @@ from worlds.AutoWorld import World, WebWorld
 from worlds.LauncherComponents import Component, components, Type
 
 from . import EntranceRando
-from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS, VENDOR_UNLOCK_ITEMS, STORY_TOKEN_NAMES
+from .Items import KotorItem, item_table, item_name_to_id, filler_items, arm_name_to_item, read_gear_json, TRAP_ITEMS, VENDOR_UNLOCK_ITEMS, STORY_TOKEN_NAMES, EXTRA_COMPANIONS, EXTRA_COMPANION_NAMES, AP_COMPANION_NAMES
+from .ApCompanions import build_plan as build_ap_companion_plan
 from .Locations import (KotorLocation, location_table, location_name_to_id, COMPANION_SUBPLOT_LOCATIONS, UNREACHABLE_BY_CHOICE_LOCATIONS,
                         QUEST_ITEM_LOCATIONS, BAZAAR_PURCHASE_LOCATIONS, LOOT_EXCHANGE_LOCATIONS)
 from .Options import (
@@ -182,8 +183,8 @@ COMPANION_ITEM_NAMES = [
 # that mode). Keys match KotorClient.py's COMPANION_IDX_TO_ARM suffix
 # ("companion_<key>") and generate_trampoline_batch.py's _COMPANION_TAGS.
 COMPANION_CLASS_KEYS = ["bastila", "canderous", "carth", "jolee", "juhani", "mission", "zaalbar"]
-# HK-47 and T3-M4 are droids and never eligible. A new_companion replacement is chosen at a console on the Ebon Hawk and is not in this
-# list: it is never rolled a class and has no Additional Feats item.
+# HK-47 and T3-M4 are droids and never eligible. The extra companions are not in this list: they are never rolled a class by
+# companion_class and have no Additional Feats item.
 NON_JEDI_COMPANION_KEYS = ["carth", "canderous", "zaalbar", "mission"]
 BASE_CLASS_NAMES = ["soldier", "scout", "scoundrel"]
 JEDI_CLASS_NAMES = ["guardian", "consular", "sentinel"]
@@ -193,9 +194,9 @@ MAX_FILLER_TRAPS = 36
 # The world's release number. scripts/package_apworld.py stamps it into kotor.apworld, and every seed carries it in slot_data ("world_version"):
 # the client refuses a seed made by a different one, because the item and location tables (and so the ids) can differ between releases.
 # Change it only with a release that changes the world; a client-only hotfix keeps it.
-WORLD_VERSION = "0.2.0"
-# The characters the New Companion console offers (generate_new_companion_console.py's CHARACTERS); new_companion=random_class deals each a class.
-NEW_COMPANION_KEYS = ["meetra", "malak", "calo", "yuthura", "bandon", "trask"]
+WORLD_VERSION = "0.2.1"
+# The extra companions (Items.py's EXTRA_COMPANIONS): the ExtraCompanions option names which of them exist in a seed.
+EXTRA_COMPANION_KEYS = list(EXTRA_COMPANIONS)
 
 # CompanionClass=droid. Looks are appearance.2da rows, grouped by model: at most 2 companions share a model, and then only
 # with different paint jobs. Rows 58 (war droid) and 82 (assassin droid) are the human-rig models patched in by
@@ -432,7 +433,7 @@ class KotorWorld(World):
         if self.options.additional_enemies == 0:  # off
             result = {name: data for name, data in result.items()
                        if data.location_type != "bounty"}
-        # 0.2.0: the optional checks. HK-47 is always the companion (a new_companion replacement is a console choice), so his two
+        # 0.2.0: the optional checks. HK-47 is always the companion (an extra companion never replaces him), so his two
         # checks are never removed.
         if not self.options.quest_item_checks:
             result = {name: data for name, data in result.items() if name not in QUEST_ITEM_LOCATIONS}
@@ -490,10 +491,11 @@ class KotorWorld(World):
         return int(self.options.starting_class == 4) + int(self.options.companion_class == 4)
 
     def generate_early(self) -> None:
-        # CompanionClass=droid rebuilds the 7 non-droid companions and leaves HK-47 alone, so a new_companion
-        # replacement is silently ignored rather than rejected.
-        if self.options.companion_class == 4:
-            self.options.new_companion.value = 0
+        # ExtraCompanions: the characters this seed adds (none when no companions exist at all). They are never rebuilt as droids.
+        names_to_keys = {label: key for key, (label, _slot, _template) in EXTRA_COMPANIONS.items()}
+        self.extra_companion_keys: typing.List[str] = []
+        if self.options.companion_mode != 2:
+            self.extra_companion_keys = [key for label, key in names_to_keys.items() if label in self.options.extra_companions.value]
 
         """Precollected (starting-inventory) items: the starting_class
         choice (only when starting_class is "jedi_start" -- "jedi_granted"
@@ -530,7 +532,7 @@ class KotorWorld(World):
         mode = self.options.companion_class.value
         # jedi_companion (mode 2) deliberately keeps iterating the static
         # NON_JEDI_COMPANION_KEYS, NOT self._companion_class_keys() -- per
-        # design, new_companion has no effect on this mode (she's not one
+        # design, extra companions have no effect on this mode (they're not one
         # of the 4 target companions it converts).
         if mode == 1:  # no_jedi
             for key in self._companion_class_keys():
@@ -542,12 +544,19 @@ class KotorWorld(World):
             for key in self._companion_class_keys():
                 self.companion_class_rolls[key] = self.random.choice(ALL_CLASS_NAMES)
 
-        # NewCompanion=random_class: each console character is dealt a class for the whole seed (sent in slot_data; the client's asset builder
+        # ExtraCompanionRandomClass: each chosen extra companion is dealt a class for the whole seed (sent in slot_data; the client's asset builder
         # writes it into the character's template). Rolled after the companion classes so the earlier options draw the same values as before.
-        self.new_companion_classes: typing.Dict[str, str] = {}
-        if self.options.new_companion.value == 2 and self.options.companion_mode != 2:
-            for key in NEW_COMPANION_KEYS:
-                self.new_companion_classes[key] = self.random.choice(ALL_CLASS_NAMES)
+        self.extra_companion_classes: typing.Dict[str, str] = {}
+        if self.options.extra_companion_random_class and self.extra_companion_keys:
+            for key in self.extra_companion_keys:
+                self.extra_companion_classes[key] = self.random.choice(ALL_CLASS_NAMES)
+
+        # ApCompanions: the generated companions (names from the players of the multiworld: the other players in order, then this one). Rolled after the extra companions'
+        # classes, so the earlier options draw the same values as before.
+        self.ap_companion_plan: typing.List[typing.Dict[str, typing.Any]] = []
+        if self.options.companion_mode != 2 and self.options.ap_companions.value:
+            others = [self.multiworld.player_name[p] for p in sorted(self.multiworld.player_ids) if p != self.player]
+            self.ap_companion_plan = build_ap_companion_plan(self.random, others + [self.player_name], self.options.ap_companions.value)
 
         # CompanionClass=droid: looks and droid classes are dealt here (seeded) and sent in slot_data; the client's
         # droid patcher writes them into the companion templates. Nothing is delivered at recruit time.
@@ -631,11 +640,11 @@ class KotorWorld(World):
             mandatory_names = mandatory_names + [
                 f"Additional Feats Character: {key.capitalize()}" for key in COMPANION_CLASS_KEYS]
 
-        # The Party Console is always placed when companions exist; NewCompanion adds the item that unlocks the swap console.
+        # The Party Console is always placed when companions exist; each extra companion is one more item, placed anywhere in the multiworld.
         if self.options.companion_mode != 2:
             mandatory_names = mandatory_names + ["Party Console"]
-            if self.options.new_companion:
-                mandatory_names = mandatory_names + ["Ebon Hawk: New Companion Selection"]
+            mandatory_names = mandatory_names + [EXTRA_COMPANION_NAMES[key] for key in self.extra_companion_keys]
+            mandatory_names = mandatory_names + [AP_COMPANION_NAMES[entry["n"] - 1] for entry in self.ap_companion_plan]
 
         # ProgressionSystem: the 24 story-gate progression items (8 families of 3) are guaranteed placement. The
         # access rules in StoryGates.py assume every item exists, so there is no weighted draw.
@@ -814,8 +823,20 @@ class KotorWorld(World):
             "companion_mode": self.options.companion_mode.value,
             # ap_limited: the seeded order companions are earned in (empty for every other mode)
             "companion_unlock_order": self.companion_unlock_order,
-            "new_companion": self.options.new_companion.value,
-            "new_companion_classes": self.new_companion_classes,
+            # The retired New Companion console is always off (the client's asset scripts still read this key).
+            "new_companion": 0,
+            "new_companion_classes": {},
+            # 0.2.1: the extra companions this seed adds ({key, name, slot, template}), in a fixed slot each, and their rolled classes
+            # (empty unless extra_companion_random_class).
+            "extra_companions": [
+                {"key": key, "name": EXTRA_COMPANIONS[key][0], "slot": EXTRA_COMPANIONS[key][1], "template": EXTRA_COMPANIONS[key][2]}
+                for key in self.extra_companion_keys],
+            "extra_companion_classes": self.extra_companion_classes,
+            # 0.2.1: the generated AP companions ({n, name, appearance, gender, portrait, class, slot, template, tag}); the client writes one template per entry.
+            "ap_companions": self.ap_companion_plan,
+            # 0.2.1: the extender's randomisers (the client writes ap_dialogrand.txt / ap_alignrand.txt from these on every connect).
+            "randomize_dialogue": bool(self.options.randomize_dialogue),
+            "randomize_alignment": bool(self.options.randomize_alignment),
             # 0.2.0: the quest item checks and the Archipelago Bazaar (read by the client for which checks exist).
             "quest_item_checks": bool(self.options.quest_item_checks),
             "bazaar": bool(self.options.bazaar),

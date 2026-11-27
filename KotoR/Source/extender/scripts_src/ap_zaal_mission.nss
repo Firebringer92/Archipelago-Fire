@@ -30,6 +30,7 @@
 // so whichever companion occupies slot 2 is benched first (same object
 // reference, no recreation) and restored afterward.
 #include "kse"
+#include "ap_companion_roster"
 
 int GetZaalMissionNPCIndex(object oCompanion)
 {
@@ -105,8 +106,7 @@ void RevertZaalbarMission()
     if (KSE_GetData("zaal_mission_staged") != "1") return;
     KSE_SetData("zaal_mission_staged", "0");
 
-    RemovePartyMember(NPC_MISSION);
-    RemoveAvailableNPC(NPC_MISSION);
+    ApBenchNpc(NPC_MISSION);
     PurgeStrayMission();
 
     int nBenchedNPC = StringToInt(KSE_GetData("zaal_benched_npc"));
@@ -164,7 +164,7 @@ void StageZaalbarMission()
     {
         oMission = CreateObject(OBJECT_TYPE_CREATURE, "p_mission", GetLocation(oPC));
     }
-    AddAvailableNPCByTemplate(NPC_MISSION, "p_mission");
+    if (!IsAvailableCreature(NPC_MISSION)) AddAvailableNPCByTemplate(NPC_MISSION, "p_mission");
     AddPartyMember(NPC_MISSION, oMission);
 
     KSE_SetData("zaal_mission_staged", "1");

@@ -378,11 +378,11 @@ def original_enter_guard(onenter):
     post = ""
     for npc_const, key in guards:
         pre += f"    int bWas_{key} = IsAvailableCreature({npc_const});\n"
+        # 0.2.1: whoever the original put into the party (or made selectable) and the player is not entitled to is benched, not deleted.
         post += (
-            f"    if (!bWas_{key} && IsAvailableCreature({npc_const}))\n"
+            f"    if (!ApNpcEntitled({npc_const}) && (IsNPCPartyMember({npc_const}) || GetNPCSelectability({npc_const})))\n"
             "    {\n"
-            f"        RemovePartyMember({npc_const});\n"
-            f"        RemoveAvailableNPC({npc_const});\n"
+            f"        ApBenchNpc({npc_const});\n"
             f'        KSE_Diag(28, "AP|SUPPRESSED|companion_{key}|area_enter");\n'
             "    }\n"
         )
@@ -475,11 +475,17 @@ def build_companion_xp_sync_lines(xp_var):
     because SetXP/GiveXPToCreature do nothing for a non-PC (the raw KSE_FIELD_XP write does work on companions). Companions
     are only ever raised, never lowered: a raw write below the level a companion already holds would leave XP and level out
     of step. Nothing reads a companion's level back, so no reconciler depends on this."""
-    lines = []
-    for i, (tag, npc_const) in enumerate(_XP_SYNC_COMPANIONS):
-        lines.append(f'object oXpC{i} = GetObjectByTag("{tag}");')
-        lines.append(f'if (IsNPCPartyMember({npc_const}) && GetIsObjectValid(oXpC{i}) && GetXP(oXpC{i}) < {xp_var})')
-        lines.append(f'    KSE_SetCreatureField(oXpC{i}, KSE_FIELD_XP(), {xp_var});')
+    # The guard compares LEVELS, not GetXP: in KOTOR 1 GetXP of any party member answers the party's shared XP, so right after the PC's XP is set a
+    # companion's GetXP already equals the new value. The level the new XP is worth comes from exptable.2da (level L needs L*(L-1)*500, capped at 20).
+    # Party members are found by party slot, not by roster index: a member can stand in the party while the roster does not list them (a trap or a
+    # scene edited the roster, or an old save), and IsNPCPartyMember then says no. Extra and AP companions are covered too.
+    lines = ["{", "    int nXpLvl = 1;", f"    while (nXpLvl < 20 && {xp_var} >= (nXpLvl + 1) * nXpLvl * 500) nXpLvl = nXpLvl + 1;",
+             "    int nXpSlot = 1;", "    while (nXpSlot <= 2)", "    {",
+             "        object oXpC = GetPartyMemberByIndex(nXpSlot);",
+             "        if (GetIsObjectValid(oXpC) && GetHitDice(oXpC) < nXpLvl)", "        {",
+             f"            KSE_SetCreatureField(oXpC, KSE_FIELD_XP(), {xp_var});",
+             '            KSE_Diag(5, "AP|XPSYNC|" + GetTag(oXpC) + "|hd=" + IntToString(GetHitDice(oXpC)) + "|target=" + IntToString(nXpLvl));',
+             "        }", "        nXpSlot = nXpSlot + 1;", "    }", "}"]
     return lines
 
 
@@ -606,14 +612,8 @@ APPLIES = {
         'int nMayGrant = (nCrew < 20);',
         'if (nCrew < 10) AddJournalQuestEntry("ap_ent_bastila", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable && nMayGrant)',
-        '{',
-        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        '    object oPC = GetFirstPC();',
-        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        '    nAdded = AddPartyMember(nNPC, oNPC);',
-        '}',
-        'SetNPCSelectability(nNPC, TRUE);',
+        # 0.2.1: the companion becomes available, selectable and a party member (the second companion slot leaves a full party); see ap_companion_roster.nss.
+        'if (nMayGrant) nAdded = ApGrantNpc(nNPC, sTemplate);',
         'KSE_Diag(4, "AP|APPLIED|companion_bastila|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_bastila")));',
     ]),
     10: ("companion_canderous", [
@@ -625,13 +625,8 @@ APPLIES = {
         'int nMayGrant = (nCrew < 20);',
         'if (nCrew < 10) AddJournalQuestEntry("ap_ent_canderous", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable && nMayGrant)',
-        '{',
-        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        '    object oPC = GetFirstPC();',
-        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        '    nAdded = AddPartyMember(nNPC, oNPC);',
-        '}',
+        # 0.2.1: the companion becomes available, selectable and a party member (the second companion slot leaves a full party); see ap_companion_roster.nss.
+        'if (nMayGrant) nAdded = ApGrantNpc(nNPC, sTemplate);',
         # Marks that Canderous's availability, whatever it is right now,
         # is legitimately AP's doing (this arm only ever runs via a real
         # received item or the vanilla_mode auto-grant, never vanilla
@@ -640,7 +635,6 @@ APPLIES = {
         # legitimate grant apart from vanilla making him available for
         # free with no AP gating at all.
         'KSE_SetData("ap_canderous_legit", "1");',
-        'SetNPCSelectability(nNPC, TRUE);',
         'KSE_Diag(4, "AP|APPLIED|companion_canderous|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_canderous")));',
     ]),
     11: ("xp", [
@@ -798,14 +792,8 @@ APPLIES = {
         'int nMayGrant = (nCrew < 20);',
         'if (nCrew < 10) AddJournalQuestEntry("ap_ent_carth", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable && nMayGrant)',
-        '{',
-        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        '    object oPC = GetFirstPC();',
-        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        '    nAdded = AddPartyMember(nNPC, oNPC);',
-        '}',
-        'SetNPCSelectability(nNPC, TRUE);',
+        # 0.2.1: the companion becomes available, selectable and a party member (the second companion slot leaves a full party); see ap_companion_roster.nss.
+        'if (nMayGrant) nAdded = ApGrantNpc(nNPC, sTemplate);',
         'KSE_Diag(50, "AP|APPLIED|companion_carth|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_carth")));',
     ]),
     20: ("companion_hk47", [
@@ -818,14 +806,8 @@ APPLIES = {
         'int nMayGrant = (nCrew < 20);',
         'if (nCrew < 10) AddJournalQuestEntry("ap_ent_hk47", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable && nMayGrant)',
-        '{',
-        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        '    object oPC = GetFirstPC();',
-        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        '    nAdded = AddPartyMember(nNPC, oNPC);',
-        '}',
-        'SetNPCSelectability(nNPC, TRUE);',
+        # 0.2.1: the companion becomes available, selectable and a party member (the second companion slot leaves a full party); see ap_companion_roster.nss.
+        'if (nMayGrant) nAdded = ApGrantNpc(nNPC, sTemplate);',
         'KSE_Diag(51, "AP|APPLIED|companion_hk47|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_hk47")));',
     ]),
     21: ("companion_jolee", [
@@ -837,14 +819,8 @@ APPLIES = {
         'int nMayGrant = (nCrew < 20);',
         'if (nCrew < 10) AddJournalQuestEntry("ap_ent_jolee", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable && nMayGrant)',
-        '{',
-        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        '    object oPC = GetFirstPC();',
-        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        '    nAdded = AddPartyMember(nNPC, oNPC);',
-        '}',
-        'SetNPCSelectability(nNPC, TRUE);',
+        # 0.2.1: the companion becomes available, selectable and a party member (the second companion slot leaves a full party); see ap_companion_roster.nss.
+        'if (nMayGrant) nAdded = ApGrantNpc(nNPC, sTemplate);',
         'KSE_Diag(52, "AP|APPLIED|companion_jolee|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_jolee")));',
     ]),
     22: ("companion_juhani", [
@@ -856,14 +832,8 @@ APPLIES = {
         'int nMayGrant = (nCrew < 20);',
         'if (nCrew < 10) AddJournalQuestEntry("ap_ent_juhani", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable && nMayGrant)',
-        '{',
-        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        '    object oPC = GetFirstPC();',
-        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        '    nAdded = AddPartyMember(nNPC, oNPC);',
-        '}',
-        'SetNPCSelectability(nNPC, TRUE);',
+        # 0.2.1: the companion becomes available, selectable and a party member (the second companion slot leaves a full party); see ap_companion_roster.nss.
+        'if (nMayGrant) nAdded = ApGrantNpc(nNPC, sTemplate);',
         'KSE_Diag(53, "AP|APPLIED|companion_juhani|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_juhani")));',
     ]),
     23: ("companion_mission", [
@@ -875,14 +845,8 @@ APPLIES = {
         'int nMayGrant = (nCrew < 20);',
         'if (nCrew < 10) AddJournalQuestEntry("ap_ent_mission", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable && nMayGrant)',
-        '{',
-        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        '    object oPC = GetFirstPC();',
-        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        '    nAdded = AddPartyMember(nNPC, oNPC);',
-        '}',
-        'SetNPCSelectability(nNPC, TRUE);',
+        # 0.2.1: the companion becomes available, selectable and a party member (the second companion slot leaves a full party); see ap_companion_roster.nss.
+        'if (nMayGrant) nAdded = ApGrantNpc(nNPC, sTemplate);',
         'KSE_Diag(54, "AP|APPLIED|companion_mission|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_mission")));',
     ]),
     24: ("companion_t3m4", [
@@ -894,14 +858,8 @@ APPLIES = {
         'int nMayGrant = (nCrew < 20);',
         'if (nCrew < 10) AddJournalQuestEntry("ap_ent_t3m4", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable && nMayGrant)',
-        '{',
-        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        '    object oPC = GetFirstPC();',
-        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        '    nAdded = AddPartyMember(nNPC, oNPC);',
-        '}',
-        'SetNPCSelectability(nNPC, TRUE);',
+        # 0.2.1: the companion becomes available, selectable and a party member (the second companion slot leaves a full party); see ap_companion_roster.nss.
+        'if (nMayGrant) nAdded = ApGrantNpc(nNPC, sTemplate);',
         'KSE_Diag(55, "AP|APPLIED|companion_t3m4|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_t3m4")));',
     ]),
     25: ("companion_zaalbar", [
@@ -913,14 +871,8 @@ APPLIES = {
         'int nMayGrant = (nCrew < 20);',
         'if (nCrew < 10) AddJournalQuestEntry("ap_ent_zaalbar", 10);',
         'int nAdded = FALSE;',
-        'if (!nWasAvailable && nMayGrant)',
-        '{',
-        '    AddAvailableNPCByTemplate(nNPC, sTemplate);',
-        '    object oPC = GetFirstPC();',
-        '    object oNPC = CreateObject(OBJECT_TYPE_CREATURE, sTemplate, GetLocation(oPC));',
-        '    nAdded = AddPartyMember(nNPC, oNPC);',
-        '}',
-        'SetNPCSelectability(nNPC, TRUE);',
+        # 0.2.1: the companion becomes available, selectable and a party member (the second companion slot leaves a full party); see ap_companion_roster.nss.
+        'if (nMayGrant) nAdded = ApGrantNpc(nNPC, sTemplate);',
         'KSE_Diag(56, "AP|APPLIED|companion_zaalbar|wasAvailable=" + IntToString(nWasAvailable) + "|added=" + IntToString(nAdded) + "|crew=" + IntToString(GetJournalEntry("ap_ent_zaalbar")));',
     ]),
     # Third Jedi class -- class_guardian/class_consular (13/14) covered
@@ -1957,17 +1909,12 @@ def build_trap_block(trap_type, params_str):
         ]
 
     elif trap_type == "remove_companion":
-        # params_str = "<companion_key>" -- one of the 9 real keys (see
-        # _COMPANION_NPC_CONST_ALL), a random currently-recruited one
-        # chosen client-side (KotorClient.py's own _recruited_companions
-        # tracking). RemoveAvailableNPC confirmed (see
-        # generate_companion_suppressors.py) to eject an ACTIVE party
-        # member outright, not just mark them unavailable -- exactly the
-        # trap behavior wanted, no extra RemovePartyMember call needed.
+        # params_str = "<companion_key>" -- one of the 9 real keys (see _COMPANION_NPC_CONST_ALL). 0.2.1: the companion is BENCHED (out of the party,
+        # not selectable; roster entry, availability and creature kept), never deleted from the roster -- see ap_companion_roster.nss.
         name = params_str
         npc_const = _COMPANION_NPC_CONST_ALL[name]
         lines = [  # no oPC needed for this one -- overwrite the default line
-            f"RemoveAvailableNPC({npc_const});",
+            f"ApBenchNpc({npc_const});",
             f'KSE_Diag(134, "AP|APPLIED|trap|type=remove_companion|name={name}");',
         ]
 
@@ -2108,57 +2055,26 @@ def build_trap_block(trap_type, params_str):
         ]
 
     elif trap_type == "purge_companion":
-        # ADMIN/cleanup action, not a Traps item: there is no Items.py entry
-        # and KotorClient's _resolve_trap never sends it. Send it by hand,
-        # e.g. `/ap_raw APPLYVALUE:trap:purge_companion:mission`.
-        #
-        # remove_companion above only calls RemoveAvailableNPC, which is a
-        # party-ROSTER operation: it ejects the companion from the party and
-        # the available list, but the creature OBJECT keeps standing in the
-        # area, so the player can still walk up to it. This also takes the
-        # companion out of the active party explicitly and destroys every
-        # object carrying their tag. Meant for a temporary companion that
-        # was staged to get past a vanilla scene and then left behind; a real
-        # grant later creates a fresh object, so nothing is lost by
-        # destroying a stray. params_str = the companion key.
+        # Reconciler / admin action: a companion on the roster the player is not entitled to. 0.2.1: benched, not purged -- out of the party and
+        # not selectable, roster entry and creature kept (see ap_companion_roster.nss). The name is kept so older clients and the admin command still work.
+        # `/ap_raw APPLYVALUE:trap:purge_companion:mission`. params_str = the companion key.
         name = params_str
         npc_const = _COMPANION_NPC_CONST_ALL[name]
-        tag = {**_COMPANION_TAGS, "t3m4": "t3m4"}[name]
         lines = [
-            f"RemovePartyMember({npc_const});",
-            f"RemoveAvailableNPC({npc_const});",
-            "int nPurged = 0;",
-            f'object oStray = GetObjectByTag("{tag}", nPurged);',
-            "while (GetIsObjectValid(oStray))",
-            "{",
-            "    DestroyObject(oStray);",
-            "    nPurged++;",
-            f'    oStray = GetObjectByTag("{tag}", nPurged);',
-            "}",
-            f'KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name={name}|destroyed=" + IntToString(nPurged));',
+            f"ApBenchNpc({npc_const});",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=purge_companion|name={name}|destroyed=0");',
         ]
 
     elif trap_type == "trap_companion":
-        # The Remove a Companion trap item (KotorClient.py picks the target): the same removal as purge_companion plus the entitlement
-        # marker ap_ent_<key> written as 20, "trapped off for good" -- a journal quest only moves forward, so no ordinary write can
-        # undo it, and the companion grant arms refuse once it is set. The reconciler's own leak purge stays purge_companion and
-        # leaves the marker alone, so a leaked companion who is later granted for real is not blocked.
+        # The Remove a Companion trap item (KotorClient.py picks the target): the same benching as purge_companion plus the entitlement marker
+        # ap_ent_<key> written as 20, "trapped off for good" -- a journal quest only moves forward, so no ordinary write can undo it, and the
+        # companion grant arms refuse once it is set.
         name = params_str
         npc_const = _COMPANION_NPC_CONST_ALL[name]
-        tag = {**_COMPANION_TAGS, "t3m4": "t3m4"}[name]
         lines = [
             f'if (GetJournalEntry("ap_ent_{name}") < 20) AddJournalQuestEntry("ap_ent_{name}", 20);',
-            f"RemovePartyMember({npc_const});",
-            f"RemoveAvailableNPC({npc_const});",
-            "int nPurged = 0;",
-            f'object oStray = GetObjectByTag("{tag}", nPurged);',
-            "while (GetIsObjectValid(oStray))",
-            "{",
-            "    DestroyObject(oStray);",
-            "    nPurged++;",
-            f'    oStray = GetObjectByTag("{tag}", nPurged);',
-            "}",
-            f'KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name={name}|destroyed=" + IntToString(nPurged) + "|crew=" + IntToString(GetJournalEntry("ap_ent_{name}")));',
+            f"ApBenchNpc({npc_const});",
+            f'KSE_Diag(134, "AP|APPLIED|trap|type=trap_companion|name={name}|destroyed=0|crew=" + IntToString(GetJournalEntry("ap_ent_{name}")));',
         ]
 
     elif trap_type == "unparty_companion":
@@ -2619,6 +2535,7 @@ def main():
         trampoline_src = f"""// AUTO-GENERATED trampoline for OnEnter={onenter}, WITH a pending arm
 // batch inlined (see generate_trampoline_batch.py). Covers: {base_list_comment}
 #include "kse"
+#include "ap_companion_roster"
 {notify_funcs_block}{area_funcs_block}
 void main()
 {{
